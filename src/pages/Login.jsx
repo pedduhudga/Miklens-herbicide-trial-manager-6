@@ -28,8 +28,14 @@ export default function Login() {
 
   const handleResetSettings = () => {
     if (window.confirm('Reset server connection settings? This will log you out.')) {
-       updateSettings({ scriptUrl: '', sheetId: '', folderId: '' });
-    }
+       updateSettings({
+         scriptUrl: '',
+         sheetId: '',
+         folderId: '',
+         firebaseEnabled: false,
+         firebaseConfig: { apiKey: '', projectId: '', appId: '', measurementId: '' }
+       });
+     }
   };
 
   return (
