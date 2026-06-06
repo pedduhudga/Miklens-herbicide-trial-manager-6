@@ -49,9 +49,7 @@ export async function fbGetAll(collectionName, userId = null) {
   if (userId) {
     q = query(collection(db, collectionName), where("CreatedBy", "==", userId));
   }
-  const snap = await getDocs(
-    q instanceof Function ? q : collection(db, collectionName),
-  );
+  const snap = await getDocs(q);
   return snapsToArray(snap);
 }
 

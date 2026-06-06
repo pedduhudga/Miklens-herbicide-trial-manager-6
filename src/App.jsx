@@ -104,7 +104,8 @@ function AppLayout() {
         });
       } catch (error) {
         if (!cancelled) {
-          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to load Google Sheet data: ${error?.message || 'Unknown error'}`, type: 'error' } }));
+          const source = firebaseEnabled ? 'Firebase' : 'Google Sheet';
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to load ${source} data: ${error?.message || 'Unknown error'}`, type: 'error' } }));
         }
       } finally {
         if (!cancelled) {
