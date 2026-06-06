@@ -49,12 +49,12 @@ export default function Dashboard({ onMenuClick }) {
   const activeCategory = state.activeCategory || 'herbicide';
   const catConfig = getCategoryConfig(activeCategory);
 
-  const trials = state.trials || [];
-  const projects = state.projects || [];
-  const formulations = state.formulations || [];
-  const ingredients = state.ingredients || [];
+  const trials = useMemo(() => (state.trials || []).filter(t => t.Category === activeCategory || (!t.Category && activeCategory === 'herbicide')), [state.trials, activeCategory]);
+  const projects = useMemo(() => (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide')), [state.projects, activeCategory]);
+  const formulations = useMemo(() => (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide')), [state.formulations, activeCategory]);
+  const ingredients = useMemo(() => (state.ingredients || []).filter(i => i.Category === activeCategory || (!i.Category && activeCategory === 'herbicide')), [state.ingredients, activeCategory]);
 
-  // ── Weed-finder state
+  // ── Target-finder state
   const [weedQuery, setWeedQuery] = useState('');
   const [minEfficacy, setMinEfficacy] = useState(70);
   const [weedResults, setWeedResults] = useState(null);
@@ -150,23 +150,26 @@ export default function Dashboard({ onMenuClick }) {
     return Array.from(years).sort((a, b) => b - a);
   }, [trials]);
 
-  // ── All weed species for datalist
+  // ── All weed species/targets for datalist
   const allWeedSpecies = useMemo(() => {
     const s = new Set();
+    const tField = catConfig.targetField || 'WeedSpecies';
     trials.forEach(t => {
-      String(t.WeedSpecies || '').split(',').map(w => w.trim()).filter(Boolean).forEach(w => s.add(w));
+      String(t[tField] || '').split(',').map(w => w.trim()).filter(Boolean).forEach(w => s.add(w));
     });
     return Array.from(s).sort();
-  }, [trials]);
+  }, [trials, catConfig.targetField]);
 
   // ── Top Formulations (filtered by year/weed/location)
   const topFormulationsFiltered = useMemo(() => {
     let filtered = trials;
+    const tField = catConfig.targetField || 'WeedSpecies';
+    const mKey = catConfig.primaryMetric.key;
     if (fYear) filtered = filtered.filter(t => {
       const d = new Date(t.Date || t.CreatedAt || '');
       return !isNaN(d) && String(d.getFullYear()) === fYear;
     });
-    if (fWeed) filtered = filtered.filter(t => String(t.WeedSpecies || '').toLowerCase().includes(fWeed.toLowerCase()));
+    if (fWeed) filtered = filtered.filter(t => String(t[tField] || '').toLowerCase().includes(fWeed.toLowerCase()));
     if (fLocation) filtered = filtered.filter(t => String(t.Location || '').toLowerCase().includes(fLocation.toLowerCase()));
 
     const counts = {};
@@ -175,7 +178,7 @@ export default function Dashboard({ onMenuClick }) {
       const name = t.FormulationName;
       if (!name) return;
       counts[name] = (counts[name] || 0) + 1;
-      const wce = parseFloat(t.WCE || t.FinalWCE || 0);
+      const wce = parseFloat(t[mKey] || t.FinalWCE || t.WCE || 0);
       if (isFinite(wce) && wce > 0) {
         if (!efficacies[name]) efficacies[name] = [];
         efficacies[name].push(wce);
@@ -189,7 +192,7 @@ export default function Dashboard({ onMenuClick }) {
         const avgEff = effs.length ? Math.round(effs.reduce((a, b) => a + b, 0) / effs.length) : null;
         return { name, count, avgEff };
       });
-  }, [trials, fYear, fWeed, fLocation]);
+  }, [trials, fYear, fWeed, fLocation, catConfig.targetField, catConfig.primaryMetric.key]);
 
   // ── Recent Trials
   const recentTrials = useMemo(() =>
@@ -205,15 +208,17 @@ export default function Dashboard({ onMenuClick }) {
   const handleFindByWeed = () => {
     const q = weedQuery.trim().toLowerCase();
     if (!q) return;
+    const tField = catConfig.targetField || 'WeedSpecies';
+    const mKey = catConfig.primaryMetric.key;
     const matched = trials.filter(t =>
-      String(t.WeedSpecies || '').toLowerCase().includes(q)
+      String(t[tField] || '').toLowerCase().includes(q)
     );
     const byFormulation = {};
     matched.forEach(t => {
       const name = t.FormulationName || 'Unknown';
       if (!byFormulation[name]) byFormulation[name] = { name, trials: [], efficacies: [] };
       byFormulation[name].trials.push(t);
-      const wce = parseFloat(t.WCE || t.FinalWCE || 0);
+      const wce = parseFloat(t[mKey] || t.FinalWCE || t.WCE || 0);
       if (isFinite(wce) && wce > 0) byFormulation[name].efficacies.push(wce);
     });
     const ranked = Object.values(byFormulation)
@@ -356,7 +361,7 @@ export default function Dashboard({ onMenuClick }) {
                   {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
                 <input value={fWeed} onChange={e => setFWeed(e.target.value)}
-                  placeholder="Filter by Weed" list="dash-fweed-list"
+                  placeholder={`Filter by ${catConfig.targetLabel}`} list="dash-fweed-list"
                   className="text-xs border rounded-lg px-2 py-1.5 w-36 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
                 <datalist id="dash-fweed-list">{allWeedSpecies.map(w => <option key={w} value={w} />)}</datalist>
                 <input value={fLocation} onChange={e => setFLocation(e.target.value)}
@@ -435,7 +440,7 @@ export default function Dashboard({ onMenuClick }) {
             </div>
 
             {weedResults === null ? (
-              <p className="text-sm text-slate-400 text-center py-4">Enter a weed species name and click Find to see results.</p>
+              <p className="text-sm text-slate-400 text-center py-4">Enter a {catConfig.targetLabel.toLowerCase()} name and click Find to see results.</p>
             ) : weedResults.results.length === 0 ? (
               <p className="text-sm text-slate-500 py-4">No trials found for "{weedResults.query}" with ≥{minEfficacy}% efficacy.</p>
             ) : (
@@ -454,10 +459,10 @@ export default function Dashboard({ onMenuClick }) {
                           <span className={`text-sm font-bold ${g.avgEfficacy >= 90 ? 'text-emerald-600' : g.avgEfficacy >= 70 ? 'text-blue-600' : 'text-amber-600'}`}>
                             {g.avgEfficacy.toFixed(1)}%
                           </span>
-                          <p className="text-xs text-slate-400">avg WCE</p>
+                          <p className="text-xs text-slate-400">avg {catConfig.primaryMetric.key}</p>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400">No WCE data</span>
+                        <span className="text-xs text-slate-400">No {catConfig.primaryMetric.key} data</span>
                       )}
                     </div>
                   ))}

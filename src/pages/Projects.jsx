@@ -14,7 +14,7 @@ import { safeJsonParse } from '../utils/helpers.js';
 import { AnalysisEngine } from '../utils/analysisUtils.js';
 import PlotMap from '../components/PlotMap.jsx';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../utils/dateUtils.js';
-import { getCategoryConfig } from '../utils/categoryConfig.js';
+import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 const INPUT = 'w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white';
@@ -52,7 +52,7 @@ function InlineBarChart({ data, color = '#10b981', height = 120 }) {
 }
 
 // ── Plot mini card ─────────────────────────────────────────────────────────
-function PlotMiniCard({ trial }) {
+function PlotMiniCard({ trial, activeCategory = 'herbicide' }) {
   const isControl = String(trial.IsControl).toLowerCase() === 'true';
   const isCheck = String(trial.IsStandardCheck).toLowerCase() === 'true';
   const isCompleted = String(trial.IsCompleted).toLowerCase() === 'true';
@@ -65,9 +65,15 @@ function PlotMiniCard({ trial }) {
       ? <span className="text-[7px] font-extrabold bg-purple-500 text-white px-1 py-0.5 rounded uppercase">Standard</span>
       : <span className="text-[7px] font-extrabold bg-blue-500 text-white px-1 py-0.5 rounded uppercase">Exptl</span>;
 
+  const categoryId = trial.Category || activeCategory;
+  const config = getCategoryConfig(categoryId);
+  const primaryObsField = getPrimaryObservationField(categoryId);
+
   const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
   const latest = efficacy.length ? efficacy[efficacy.length - 1] : null;
   const plotNum = trial.RandomizationOrder || trial.PlotNumber || '?';
+
+  const metricVal = latest ? latest[primaryObsField] : null;
 
   return (
     <div className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition relative overflow-hidden ${bg}`}>
@@ -78,9 +84,9 @@ function PlotMiniCard({ trial }) {
       </div>
       <p className="font-bold text-xs text-slate-800 truncate mb-0.5" title={trial.FormulationName}>{trial.FormulationName || '—'}</p>
       <p className="text-[9px] text-slate-500 truncate">{trial.Dosage || '—'}</p>
-      {latest?.weedCover !== undefined && (
+      {metricVal !== undefined && metricVal !== null && (
         <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-[8px]">
-          <span className="font-bold text-green-700">{latest.weedCover}% cover</span>
+          <span className="font-bold text-green-700">{metricVal}{config.primaryMetric.unit || ''} {config.primaryMetric.key}</span>
         </div>
       )}
       <div className="mt-1.5 flex justify-end">
@@ -93,7 +99,7 @@ function PlotMiniCard({ trial }) {
 }
 
 // ── Block card ─────────────────────────────────────────────────────────────
-function BlockCard({ block, trials }) {
+function BlockCard({ block, trials, activeCategory }) {
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
   const hasControl = controls.length > 0;
   const tooMany = controls.length > 1;
@@ -119,7 +125,7 @@ function BlockCard({ block, trials }) {
         {trials.length > 0 ? (
           <div className="flex gap-3 min-w-max pb-1">
             {[...trials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-              .map(t => <PlotMiniCard key={t.ID} trial={t} />)}
+              .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} />)}
           </div>
         ) : (
           <p className="text-xs text-slate-400 italic py-3">No plots in this block.</p>
@@ -251,6 +257,7 @@ export default function Projects({ onMenuClick }) {
     trials.forEach(t => safeJsonParse(t.EfficacyDataJSON, []).forEach(e => { if (e.daa > 0) daaSet.add(e.daa); }));
     const daas = [...daaSet].sort((a, b) => a - b);
     const treatmentNames = [...new Set(trials.map(t => t.FormulationName).filter(Boolean))];
+    const primaryObsField = getPrimaryObservationField(activeCategory);
 
     // Find UTC for WCE calc
     const utcName = treatmentNames.find(n => /control|untreated|check/i.test(n));
@@ -261,7 +268,7 @@ export default function Projects({ onMenuClick }) {
         const covers = trtTrials.map(t => {
           const eff = safeJsonParse(t.EfficacyDataJSON, []);
           const obs = eff.find(e => e.daa === daa);
-          return obs ? parseFloat(obs.weedCover ?? 0) : null;
+          return obs ? parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) : null;
         }).filter(v => v !== null);
         if (covers.length === 0) return null;
         const meanCover = covers.reduce((s, v) => s + v, 0) / covers.length;
@@ -271,11 +278,18 @@ export default function Projects({ onMenuClick }) {
           const utcCovers = utcTrials.map(t => {
             const eff = safeJsonParse(t.EfficacyDataJSON, []);
             const obs = eff.find(e => e.daa === daa);
-            return obs ? parseFloat(obs.weedCover ?? 0) : null;
+            return obs ? parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) : null;
           }).filter(v => v !== null);
           if (utcCovers.length > 0) {
             const utcMean = utcCovers.reduce((s, v) => s + v, 0) / utcCovers.length;
-            return utcMean > 0 ? parseFloat(((1 - meanCover / utcMean) * 100).toFixed(1)) : 0;
+            if (utcMean > 0) {
+              if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+                return parseFloat(((meanCover / utcMean - 1) * 100).toFixed(1));
+              } else {
+                return parseFloat(((1 - meanCover / utcMean) * 100).toFixed(1));
+              }
+            }
+            return 0;
           }
         }
         return parseFloat(meanCover.toFixed(1));
@@ -283,7 +297,7 @@ export default function Projects({ onMenuClick }) {
       return { name, values };
     });
     return { daas: daas.map(d => `DAA ${d}`), series };
-  }, [activeProject, state.trials]);
+  }, [activeProject, state.trials, activeCategory]);
 
   // ── Treatment performance chart data ───────────────────────────────────
   const perfChartData = useMemo(() => {
@@ -299,6 +313,7 @@ export default function Projects({ onMenuClick }) {
     const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
     const utcName = Object.keys(analysisResults.means).find(n => /control|untreated|check/i.test(n));
     const utcMean = utcName ? (analysisResults.means[utcName] ?? 0) : 0;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
 
     return (analysisResults.grouping || []).map(g => {
       const trtTrials = trials.filter(t => t.FormulationName === g.name);
@@ -306,7 +321,7 @@ export default function Projects({ onMenuClick }) {
         const eff = safeJsonParse(t.EfficacyDataJSON, []);
         if (!eff.length) return null;
         const last = eff.sort((a, b) => b.daa - a.daa)[0];
-        return last ? parseFloat(last.weedCover ?? 0) : null;
+        return last ? parseFloat(last[primaryObsField] ?? last.weedCover ?? 0) : null;
       }).filter(v => v !== null);
 
       const n = repValues.length;
@@ -314,10 +329,17 @@ export default function Projects({ onMenuClick }) {
       const variance = n > 1 ? repValues.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (n - 1) : 0;
       const sd = Math.sqrt(variance);
       const cv = mean > 0 ? (sd / mean) * 100 : 0;
-      const wce = utcMean > 0 ? Math.max(0, (1 - mean / utcMean) * 100) : 0;
+      let wce = 0;
+      if (utcMean > 0) {
+        if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+          wce = Math.max(0, (mean / utcMean - 1) * 100);
+        } else {
+          wce = Math.max(0, (1 - mean / utcMean) * 100);
+        }
+      }
       return { name: g.name, n, mean, sd, cv, wce, grouping: g.grouping, repValues };
     });
-  }, [activeProject, analysisResults, state.trials]);
+  }, [activeProject, analysisResults, state.trials, activeCategory]);
 
   // ── Significance formatter ─────────────────────────────────────────────
   const sigStars = (p) => {
@@ -497,7 +519,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const treatmentRows = (analysisResults.grouping || []).map(g => {
       const ts = treatmentStats.find(x => x.name === g.name);
       const metricVal = ts ? (ts.wce || ts.mean || 0) : 0;
-      return `<tr><td style="padding:8px 10px;border:1px solid #e2e8f0">${g.name}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${ts ? ts.sd.toFixed(2) : '-'}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${ts ? ts.cv.toFixed(1) : '-'}%</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${isFinite(metricVal) ? metricVal.toFixed(1) : '-'}%</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:#047857;background:#f0fdf4;border-radius:4px">${g.grouping}</td></tr>`;
+      return `<tr><td style="padding:8px 10px;border:1px solid #e2e8f0">${g.name}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${ts ? ts.sd.toFixed(2) : '-'}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${ts ? ts.cv.toFixed(1) : '-'}%</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${isFinite(metricVal) ? metricVal.toFixed(1) : '-'}${projectConfig.primaryMetric.unit || ''}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:#047857;background:#f0fdf4;border-radius:4px">${g.grouping}</td></tr>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><title>Scientific Report - ${activeProject.Name}</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;margin:40px;color:#1e293b;line-height:1.6}h1{color:#065f46;font-size:28px;border-bottom:3px solid #10b981;padding-bottom:12px}h2{color:#334155;font-size:16px;text-transform:uppercase;letter-spacing:1px;margin-top:30px;border-left:4px solid #10b981;padding-left:12px}table{border-collapse:collapse;width:100%;margin:12px 0}th{background:#f1f5f9;padding:10px;border:1px solid #e2e8f0;text-align:left;font-size:12px;text-transform:uppercase;color:#64748b}td{padding:8px 10px;border:1px solid #e2e8f0;font-size:13px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px;color:#475569;margin:20px 0;padding:16px;background:#f8fafc;border-radius:8px}.meta span{font-weight:600;color:#1e293b}.sig{background:#dcfce7;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:#166534}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.stat-box{background:#f8fafc;padding:12px;border-radius:8px;text-align:center;border:1px solid #e2e8f0}.stat-label{font-size:11px;color:#64748b;text-transform:uppercase}.stat-value{font-size:20px;font-weight:700;color:#1e293b}</style></head>
@@ -517,7 +539,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 <div class="stat-box"><div class="stat-label">P-Value</div><div class="stat-value">${isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '-'}</div></div>
 </div>
 <h2>Treatment Means & Statistical Grouping</h2>
-<table><thead><tr><th>Treatment</th><th style="text-align:center">Mean</th><th style="text-align:center">SD</th><th style="text-align:center">CV%</th><th style="text-align:center">WCE%</th><th style="text-align:center">Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${treatmentRows}</tbody></table>
+<table><thead><tr><th>Treatment</th><th style="text-align:center">Mean</th><th style="text-align:center">SD</th><th style="text-align:center">CV%</th><th style="text-align:center">${projectConfig.primaryMetric.key}${projectConfig.primaryMetric.unit || ''}</th><th style="text-align:center">Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${treatmentRows}</tbody></table>
 <p style="font-size:12px;color:#64748b;margin-top:8px">Means sharing the same letter are not significantly different (${postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05). Design: ${analysisResults.balance?.isBalanced ? 'Balanced RCBD' : 'Unbalanced RCBD (robust)'}</p>
 <h2>ANOVA Results</h2>
 <table><thead><tr><th>Source</th><th style="text-align:center">DF</th><th style="text-align:center">SS</th><th style="text-align:center">MS</th><th style="text-align:center">F</th><th style="text-align:center">P</th><th style="text-align:center">Sig</th></tr></thead>
@@ -539,6 +561,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   // ── Regulatory DOCX Export ────────────────────────────────────────────────
   const handleRegulatoryDOCX = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
+    const projectCategory = activeProject?.Category || activeCategory;
+    const projectConfig = getCategoryConfig(projectCategory);
     // Generate a simple HTML-based DOCX-compatible document
     const header = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -553,10 +577,10 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 <strong>Generated:</strong> ${formatDateTime(new Date())}</p>
 <h2>Treatment Means & Grouping (${postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"})</h2>
 <table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Treatment</th><th>Mean</th><th>SD</th><th>CV%</th><th>WCE%</th><th>Group</th></tr>
+<tr><th>Treatment</th><th>Mean</th><th>SD</th><th>CV%</th><th>${projectConfig.primaryMetric.key}${projectConfig.primaryMetric.unit || ''}</th><th>Group</th></tr>
 ${(analysisResults.grouping || []).map(g => {
       const ts = treatmentStats.find(x => x.name === g.name);
-      return `<tr><td>${g.name}</td><td>${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td><td>${ts ? ts.sd.toFixed(2) : '-'}</td><td>${ts ? ts.cv.toFixed(1) : '-'}%</td><td>${ts ? ts.wce.toFixed(1) : '-'}%</td><td><strong>${g.grouping}</strong></td></tr>`;
+      return `<tr><td>${g.name}</td><td>${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td><td>${ts ? ts.sd.toFixed(2) : '-'}</td><td>${ts ? ts.cv.toFixed(1) : '-'}%</td><td>${ts ? ts.wce.toFixed(1) : '-'}${projectConfig.primaryMetric.unit || ''}</td><td><strong>${g.grouping}</strong></td></tr>`;
     }).join('')}
 </table>
 <p>Means sharing the same letter are not significantly different (α=0.05).</p>
@@ -586,7 +610,7 @@ LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.pos
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.sd.toFixed(2) : '-'}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.cv.toFixed(1) : '-'}%</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.wce.toFixed(1) : '-'}%</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.wce.toFixed(1) : '-'}${config.primaryMetric.unit || ''}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;font-weight:bold;color:#059669">${g.grouping}</td></tr>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><title>Regulatory Report - ${activeProject.Name}</title>
@@ -597,7 +621,7 @@ LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.pos
 <div>Blocks: <span>${pBlocks.length}</span></div><div>Plots: <span>${pTrials.length}</span></div>
 <div>Start Date: <span>${formatDateTime(activeProject.StartDate) || 'N/A'}</span></div><div>Generated: <span>${formatDateTime(new Date())}</span></div></div>
 <h2>Treatment Means & Statistical Grouping</h2>
-<table><thead><tr><th>Treatment</th><th>Mean</th><th>SD</th><th>CV%</th><th>WCE%</th><th>Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Treatment</th><th>Mean</th><th>SD</th><th>CV%</th><th>${config.primaryMetric.key}%</th><th>Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${rows}</tbody></table>
 <p style="font-size:11px;color:#64748b;margin-top:6px">Means sharing the same letter are not significantly different (${postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05). ${postHocMethod === 'tukey' ? 'HSD' : 'LSD'} (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.postHoc.value.toFixed(2) : 'N/A'}</p>
 <h2>ANOVA Table</h2>
 <table><thead><tr><th>Source</th><th>DF</th><th>SS</th><th>MS</th><th>F</th><th>P</th><th>Sig</th></tr></thead><tbody>
@@ -842,7 +866,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   {projectBlocks.length > 0 ? (
                     <div className="space-y-4">
                       {projectBlocks.map(b => (
-                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => t.BlockID === b.ID)} />
+                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => t.BlockID === b.ID)} activeCategory={activeCategory} />
                       ))}
                     </div>
                   ) : (
@@ -904,12 +928,12 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     {treatmentStats.length > 0 && (
                       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <h3 className="font-bold text-slate-800 mb-1 text-sm flex items-center gap-2"><Sigma className="w-4 h-4 text-blue-500" /> Treatment Statistics (Final Observation)</h3>
-                        <p className="text-xs text-slate-400 mb-3">Mean weed cover ± SD from last observation per replicate. WCE% vs untreated control.</p>
+                        <p className="text-xs text-slate-400 mb-3">Mean {config.primaryMetric.label.toLowerCase()} ± SD from last observation per replicate. {config.primaryMetric.key}% vs untreated control.</p>
                         <div className="overflow-x-auto -mx-5 px-5">
                           <table className="w-full text-sm text-left min-w-[480px]">
                             <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
                               <tr>
-                                {['Treatment','n','Mean','±SD','CV%','WCE%',`Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})`].map(h => (
+                                {['Treatment','n','Mean','±SD','CV%',`${config.primaryMetric.key}%`,`Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})`].map(h => (
                                   <th key={h} className="p-3 text-right first:text-left">{h}</th>
                                 ))}
                               </tr>
@@ -926,7 +950,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                       {ts.cv.toFixed(1)}%
                                     </span>
                                   </td>
-                                  <td className={`p-3 text-right font-bold ${ts.wce >= 80 ? 'text-emerald-600' : ts.wce >= 60 ? 'text-amber-600' : 'text-red-500'}`}>{ts.wce.toFixed(1)}%</td>
+                                  <td className={`p-3 text-right font-bold ${ts.wce >= 80 ? 'text-emerald-600' : ts.wce >= 60 ? 'text-amber-600' : 'text-red-500'}`}>{ts.wce.toFixed(1)}{config.primaryMetric.unit || ''}</td>
                                   <td className="p-3 text-right font-black text-emerald-700 tracking-widest">{ts.grouping}</td>
                                 </tr>
                               ))}
@@ -1332,8 +1356,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
         <form onSubmit={(e) => { e.preventDefault(); saveProtocolSettings(); }} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Target Weed</label>
-              <input value={protocolForm.TargetWeed} onChange={e => setProtocolForm(v => ({ ...v, TargetWeed: e.target.value }))} className={INPUT} placeholder="e.g., Echinochloa crus-galli" />
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Target {config.targetLabel}</label>
+              <input value={protocolForm.TargetWeed} onChange={e => setProtocolForm(v => ({ ...v, TargetWeed: e.target.value }))} className={INPUT} placeholder={`e.g., Target ${config.targetLabel}`} />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Crop</label>
@@ -1343,10 +1367,46 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">Primary Metric</label>
             <select value={protocolForm.Metric} onChange={e => setProtocolForm(v => ({ ...v, Metric: e.target.value }))} className={INPUT}>
-              <option value="Weed Control Efficiency">Weed Control Efficiency (%)</option>
-              <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
-              <option value="Yield">Yield (kg/ha)</option>
-              <option value="Biomass Reduction">Biomass Reduction (%)</option>
+              {activeCategory === 'herbicide' && (
+                <>
+                  <option value="Weed Control Efficiency">Weed Control Efficiency (%)</option>
+                  <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
+                  <option value="Yield">Yield (kg/ha)</option>
+                  <option value="Biomass Reduction">Biomass Reduction (%)</option>
+                </>
+              )}
+              {activeCategory === 'fungicide' && (
+                <>
+                  <option value="Disease Control Efficiency">Disease Control Efficiency (%)</option>
+                  <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
+                  <option value="Yield">Yield (kg/ha)</option>
+                  <option value="Green Leaf Area">Green Leaf Area (%)</option>
+                </>
+              )}
+              {activeCategory === 'pesticide' && (
+                <>
+                  <option value="Pest Reduction Efficiency">Pest Reduction Efficiency (%)</option>
+                  <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
+                  <option value="Yield">Yield (kg/ha)</option>
+                  <option value="Damage Rating">Damage Rating (0-9)</option>
+                </>
+              )}
+              {activeCategory === 'nutrition' && (
+                <>
+                  <option value="Yield Improvement">Yield Improvement (%)</option>
+                  <option value="Chlorophyll Index">Chlorophyll Index (SPAD)</option>
+                  <option value="Biomass Weight">Biomass Weight (g/m²)</option>
+                  <option value="Plant Height">Plant Height (cm)</option>
+                </>
+              )}
+              {activeCategory === 'biostimulant' && (
+                <>
+                  <option value="Growth Enhancement Index">Growth Enhancement Index</option>
+                  <option value="Root Biomass">Root Biomass (g)</option>
+                  <option value="Shoot Biomass">Shoot Biomass (g)</option>
+                  <option value="Chlorophyll Index">Chlorophyll Index (SPAD)</option>
+                </>
+              )}
             </select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1354,10 +1414,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               <label className="block text-sm font-semibold text-slate-700 mb-1">Application Timing</label>
               <select value={protocolForm.ApplicationTiming} onChange={e => setProtocolForm(v => ({ ...v, ApplicationTiming: e.target.value }))} className={INPUT}>
                 <option value="">Select timing...</option>
-                <option value="Pre-emergence">Pre-emergence</option>
-                <option value="Post-emergence early">Post-emergence (early)</option>
-                <option value="Post-emergence late">Post-emergence (late)</option>
-                <option value="Pre-plant">Pre-plant incorporated</option>
+                {config.applicationTimings?.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
               </select>
             </div>
             <div>

@@ -6,7 +6,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
-import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
+import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ShieldAlert, CheckCircle, TrendingDown,
@@ -71,7 +71,7 @@ export default function ResistanceTracker({ onMenuClick }) {
       if (!lastObs) return null;
       if (lastObs.controlPct !== undefined) return parseFloat(lastObs.controlPct);
       const base = obs[0]?.[primaryObsField];
-      if (base > 0) return Math.max(0, ((base - parseFloat(lastObs[primaryObsField] || 0)) / base) * 100);
+      if (base > 0) return calculateEfficacy(activeCategory, parseFloat(lastObs[primaryObsField] || 0), base);
       return null;
     } catch { return null; }
   };

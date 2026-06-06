@@ -479,7 +479,7 @@ ${contextData}`;
                     <div className="bg-slate-50 rounded-lg p-2"><p className="text-slate-400 font-semibold">{config.targetLabel}</p><p className="font-bold text-slate-700 truncate">{trial[config.targetField] || '—'}</p></div>
                     <div className="rounded-lg p-2 col-span-2 flex items-center justify-between" style={{ backgroundColor: config.color.hexLight }}>
                       <p className="font-semibold" style={{ color: config.color.hex }}>Final {config.primaryMetric.key}</p>
-                      <p className="text-2xl font-bold" style={{ color: config.color.hex }}>{finalWce !== null ? `${finalWce}%` : '—'}</p>
+                      <p className="text-2xl font-bold" style={{ color: config.color.hex }}>{finalWce !== null ? `${finalWce}${config.primaryMetric.unit || ''}` : '—'}</p>
                     </div>
                   </div>
                   {trial.Result && (

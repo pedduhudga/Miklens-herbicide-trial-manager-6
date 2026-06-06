@@ -4,7 +4,7 @@ import TopBar from '../components/TopBar.jsx';
 import ChartCard from '../components/ChartCard.jsx';
 import { safeJsonParse } from '../utils/helpers.js';
 import { BarChart3, TrendingUp, Leaf, Activity, ChevronDown, ChevronUp, Download } from 'lucide-react';
-import { getCategoryConfig } from '../utils/categoryConfig.js';
+import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
 
 const CHART_COLORS = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
 
@@ -25,9 +25,9 @@ export default function Analytics({ onMenuClick }) {
   const activeCategory = state.activeCategory || 'herbicide';
   const catConfig = getCategoryConfig(activeCategory);
 
-  const trials = state.trials || [];
-  const projects = state.projects || [];
-  const formulations = state.formulations || [];
+  const trials = useMemo(() => (state.trials || []).filter(t => t.Category === activeCategory || (!t.Category && activeCategory === 'herbicide')), [state.trials, activeCategory]);
+  const projects = useMemo(() => (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide')), [state.projects, activeCategory]);
+  const formulations = useMemo(() => (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide')), [state.formulations, activeCategory]);
 
   // ── Summary stats ──────────────────────────────────────────────
   const summary = useMemo(() => {
@@ -61,28 +61,44 @@ export default function Analytics({ onMenuClick }) {
   // ── Efficacy by formulation (real avg of final obs controlPct) ──
   const efficacyByFormulation = useMemo(() => {
     const map = {};
+    const primaryObsField = getPrimaryObservationField(activeCategory);
     trials.forEach(t => {
       if (!t.FormulationName) return;
       const eff = safeJsonParse(t.EfficacyDataJSON, []);
       if (!eff.length) return;
       const last = eff[eff.length - 1];
-      if (last.controlPct === undefined) return;
+      let val = null;
+      if (last.controlPct !== undefined && last.controlPct !== null) {
+        val = Number(last.controlPct);
+      } else if (last[primaryObsField] !== undefined && last[primaryObsField] !== null) {
+        const baseline = eff[0] ? Number(eff[0][primaryObsField]) : 0;
+        const current = Number(last[primaryObsField]);
+        if (baseline > 0) {
+          if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+            val = ((current - baseline) / baseline) * 100;
+          } else {
+            val = ((baseline - current) / baseline) * 100;
+          }
+        }
+      }
+      if (val === null) return;
       if (!map[t.FormulationName]) map[t.FormulationName] = [];
-      map[t.FormulationName].push(Number(last.controlPct));
+      map[t.FormulationName].push(Number(val));
     });
     return Object.entries(map).map(([name, vals]) => ({
       name,
       avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length),
       count: vals.length,
     })).sort((a, b) => b.avg - a.avg).slice(0, 10);
-  }, [trials]);
+  }, [trials, activeCategory]);
 
   // ── Weed species frequency ──────────────────────────────────────
   const weedSpeciesFreq = useMemo(() => {
     const map = {};
+    const tField = catConfig.targetField || 'WeedSpecies';
     trials.forEach(t => {
-      if (!t.WeedSpecies) return;
-      t.WeedSpecies.split(',').forEach(s => {
+      if (!t[tField]) return;
+      t[tField].split(',').forEach(s => {
         const name = s.trim();
         if (name) map[name] = (map[name] || 0) + 1;
       });
@@ -93,7 +109,7 @@ export default function Analytics({ onMenuClick }) {
       });
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  }, [trials]);
+  }, [trials, catConfig.targetField]);
 
   // ── Environmental correlation data (scatter: env var vs efficacy) ──
   const envCorrData = useMemo(() => {
@@ -104,6 +120,7 @@ export default function Analytics({ onMenuClick }) {
       { key: 'Rain',        label: 'Rain (mm)',        color: '#06b6d4' },
       { key: 'SoilPH',      label: 'Soil pH',          color: '#8b5cf6' },
     ];
+    const primaryObsField = getPrimaryObservationField(activeCategory);
     return configs.map(({ key, label, color }) => {
       const points = trials.map(t => {
         const envVal = parseFloat(t[key]);
@@ -115,7 +132,19 @@ export default function Analytics({ onMenuClick }) {
         let efficacy = null;
         if (eff.length > 0) {
           const last = eff[eff.length - 1];
-          if (last.controlPct !== undefined) efficacy = Number(last.controlPct);
+          if (last.controlPct !== undefined && last.controlPct !== null) {
+            efficacy = Number(last.controlPct);
+          } else if (eff[0] && last[primaryObsField] !== undefined && last[primaryObsField] !== null) {
+            const baseline = Number(eff[0][primaryObsField]);
+            const current = Number(last[primaryObsField]);
+            if (baseline > 0) {
+              if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+                efficacy = ((current - baseline) / baseline) * 100;
+              } else {
+                efficacy = ((baseline - current) / baseline) * 100;
+              }
+            }
+          }
         }
         if (efficacy === null) {
           efficacy = t.Result === 'Excellent' ? 95 : t.Result === 'Good' ? 80 : t.Result === 'Fair' ? 60 : t.Result === 'Poor' ? 30 : null;
@@ -124,7 +153,7 @@ export default function Analytics({ onMenuClick }) {
       }).filter(Boolean);
       return { key, label, color, points };
     });
-  }, [trials]);
+  }, [trials, activeCategory]);
 
   // ── Performance radar (top 3 formulations) ──────────────────────
   const radarChartConfig = useMemo(() => {

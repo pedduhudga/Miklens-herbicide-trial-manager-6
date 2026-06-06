@@ -4,6 +4,7 @@ import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { addFormulation, deleteFormulation, updateFormulation } from '../services/dataLayer.js';
 import { safeJsonParse } from '../utils/helpers.js';
+import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { Plus, X } from 'lucide-react';
 
 export default function Formulations({ onMenuClick }) {
@@ -16,10 +17,19 @@ export default function Formulations({ onMenuClick }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [ingredients, setIngredients] = useState([{ name: '', quantity: '', unit: 'ml' }]);
+  const [dynamicFields, setDynamicFields] = useState({});
 
   const CURRENCY_SYMBOL = '₹';
 
   const handleOpenModal = (form = null, duplicate = false) => {
+    const activeCategory = state.activeCategory || 'herbicide';
+    const activeConfig = getCategoryConfig(activeCategory);
+    const initialDyn = {};
+    activeConfig.formulationFields?.forEach(f => {
+      initialDyn[f.key] = form ? (form[f.key] || '') : '';
+    });
+    setDynamicFields(initialDyn);
+
     if (form) {
       setEditingForm(duplicate ? null : form);
       setName(duplicate ? `${form.Name} (Copy)` : form.Name);
@@ -127,6 +137,7 @@ export default function Formulations({ onMenuClick }) {
       EstimatedCost: calculateEstimatedCost(),
       // Keep original CreatedAt when editing; set fresh ISO string for new/duplicate
       CreatedAt: editingForm ? editingForm.CreatedAt : nowISO,
+      ...dynamicFields,
     };
 
     let newForms = [...(state.formulations || [])];
@@ -238,6 +249,19 @@ export default function Formulations({ onMenuClick }) {
                         <li key={i}>{ing.name} ({ing.quantity} {ing.unit})</li>
                       ))}
                     </ul>
+                    {/* Category-specific formulation fields */}
+                    {(() => {
+                      const catConfig = getCategoryConfig(form.Category || 'herbicide');
+                      return catConfig.formulationFields?.map(f => {
+                        const val = form[f.key];
+                        if (!val) return null;
+                        return (
+                          <p className="mt-1 text-xs text-slate-500" key={f.key}>
+                            <strong>{f.label}:</strong> {val}
+                          </p>
+                        );
+                      });
+                    })()}
                     {form.Notes && (
                       <p className="mt-2"><strong>Notes:</strong> {form.Notes}</p>
                     )}
@@ -290,6 +314,33 @@ export default function Formulations({ onMenuClick }) {
               placeholder="e.g., Trial Mix A"
             />
           </div>
+
+          {(() => {
+            const catConfig = getCategoryConfig(activeCategory);
+            return catConfig.formulationFields?.map(field => (
+              <div key={field.key}>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">{field.label}</label>
+                {field.type === 'select' ? (
+                  <select
+                    value={dynamicFields[field.key] || ''}
+                    onChange={e => setDynamicFields(p => ({ ...p, [field.key]: e.target.value }))}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-sm"
+                  >
+                    <option value="">-- Choose {field.label} --</option>
+                    {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type={field.type}
+                    value={dynamicFields[field.key] || ''}
+                    onChange={e => setDynamicFields(p => ({ ...p, [field.key]: e.target.value }))}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                    placeholder={field.placeholder || ''}
+                  />
+                )}
+              </div>
+            ));
+          })()}
 
           <div>
             <div className="flex justify-between items-center mb-2">

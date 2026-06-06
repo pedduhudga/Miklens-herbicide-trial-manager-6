@@ -15,7 +15,7 @@ import {
   FileCode, MonitorPlay, Archive, Pencil, ScanLine, Crop, Clock
 } from 'lucide-react';
 import { safeJsonParse } from '../utils/helpers.js';
-import { getCategoryConfig } from '../utils/categoryConfig.js';
+import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 import { calculateDAA, toDateKey, formatPhotoDate, toDatetimeLocal, formatDate, formatDateTime } from '../utils/dateUtils.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
 import CameraCapture from '../components/CameraCapture.jsx';
@@ -610,85 +610,128 @@ export default function Trials({ onMenuClick }) {
   }, [state.settings]);
 
   const openObsModal = (idx = null) => {
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const initialForm = {
+      daa: '',
+      date: new Date().toISOString().split('T')[0],
+      notes: '',
+      weedDetails: [],
+      weatherTemp: '',
+      weatherHumidity: '',
+      weatherWind: '',
+      weatherRain: ''
+    };
+
+    catConfig.observationFields?.forEach(f => {
+      initialForm[f.key] = '';
+    });
+
     if (idx !== null) {
       const obs = validateEfficacyData(safeJsonParse(activeTrial?.EfficacyDataJSON, []))[idx];
-      setObsForm({ daa: obs.daa ?? '', date: obs.date || '', weedCover: obs.weedCover ?? '', notes: obs.notes || '', weedDetails: obs.weedDetails || [], weatherTemp: obs.weatherTemp || '', weatherHumidity: obs.weatherHumidity || '', weatherWind: obs.weatherWind || '', weatherRain: obs.weatherRain || '' });
+      const filledForm = { ...initialForm, ...obs };
+      filledForm.daa = obs.daa ?? '';
+      filledForm.date = obs.date || '';
+      setObsForm(filledForm);
     } else {
       const today = new Date().toISOString().split('T')[0];
       const autoDaa = activeTrial?.Date ? calculateDAA(today, activeTrial.Date) : '';
-      setObsForm({ daa: autoDaa, date: today, weedCover: '', notes: '', weedDetails: [], weatherTemp: '', weatherHumidity: '', weatherWind: '', weatherRain: '' });
+      const newForm = { ...initialForm, date: today, daa: autoDaa };
+      setObsForm(newForm);
     }
     setCoverDetectResult(null);
     setEditingObsIdx(idx);
     setIsObsModalOpen(true);
   };
 
+  const calculateResultRating = (efficacyData, isControl = false, categoryId = 'herbicide') => {
+    if (isControl) return 'Control';
+    if (!efficacyData || efficacyData.length === 0) return 'Unrated';
+    const sorted = [...efficacyData].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+    if (sorted.length < 2) return 'Unrated';
+
+    const primaryObsField = getPrimaryObservationField(categoryId);
+    const baseline = sorted[0];
+    const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+    const latest = sorted[sorted.length - 1];
+    const val = parseFloat(latest?.[primaryObsField] ?? 0) || 0;
+    const efficacy = calculateEfficacy(categoryId, val, baseVal);
+
+    if (categoryId === 'nutrition' || categoryId === 'biostimulant') {
+      if (efficacy >= 15) return 'Excellent';
+      if (efficacy >= 8) return 'Good';
+      if (efficacy >= 3) return 'Fair';
+      return 'Poor';
+    } else {
+      if (efficacy >= 85) return 'Excellent';
+      if (efficacy >= 70) return 'Good';
+      if (efficacy >= 50) return 'Fair';
+      return 'Poor';
+    }
+  };
+
   const handleSaveObs = async (e) => {
     e.preventDefault();
     if (!activeTrial) return;
     const efficacyData = validateEfficacyData(safeJsonParse(activeTrial.EfficacyDataJSON, []));
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+
     const newObs = {
-      daa: Number(obsForm.daa), date: obsForm.date,
-      weedCover: Number(obsForm.weedCover), notes: obsForm.notes,
-      weatherTemp: obsForm.weatherTemp, weatherHumidity: obsForm.weatherHumidity,
-      weatherWind: obsForm.weatherWind, weatherRain: obsForm.weatherRain,
-      weedDetails: obsForm.weedDetails.length > 0 ? obsForm.weedDetails
-        : [{ species: 'Total', cover: Number(obsForm.weedCover), status: '', notes: obsForm.notes }],
+      daa: Number(obsForm.daa),
+      date: obsForm.date,
+      notes: obsForm.notes,
+      weatherTemp: obsForm.weatherTemp,
+      weatherHumidity: obsForm.weatherHumidity,
+      weatherWind: obsForm.weatherWind,
+      weatherRain: obsForm.weatherRain,
+      weedDetails: obsForm.weedDetails || []
     };
+
+    catConfig.observationFields?.forEach(f => {
+      newObs[f.key] = Number(obsForm[f.key]);
+    });
+
+    if (primaryObsField !== 'weedCover') {
+      newObs.weedCover = newObs[primaryObsField];
+    }
+
+    if (newObs.weedDetails.length === 0) {
+      newObs.weedDetails = [{ species: 'Total', cover: newObs[primaryObsField] || 0, status: '', notes: obsForm.notes }];
+    }
+
     if (editingObsIdx !== null) efficacyData[editingObsIdx] = newObs;
     else efficacyData.push(newObs);
     efficacyData.sort((a, b) => a.daa - b.daa);
-    const updated = { ...activeTrial, EfficacyDataJSON: JSON.stringify(efficacyData) };
+
+    const newResult = calculateResultRating(efficacyData, activeTrial.IsControl || false, activeCategory);
+
+    const updated = {
+      ...activeTrial,
+      EfficacyDataJSON: JSON.stringify(efficacyData),
+      Result: newResult
+    };
+
     updateState({ trials: getAppState().trials.map(t => t.ID === updated.ID ? updated : t) });
     setActiveTrial(updated);
     setIsObsModalOpen(false);
     try {
-      await updateTrial({ ID: updated.ID, EfficacyDataJSON: updated.EfficacyDataJSON }, getAppState);
+      await updateTrial({ ID: updated.ID, EfficacyDataJSON: updated.EfficacyDataJSON, Result: updated.Result }, getAppState);
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Observation saved', type: 'success' } }));
     } catch (err) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to save observation', type: 'error' } }));
     }
   };
 
-  const calculateResultRating = (efficacyData, isControl = false) => {
-    if (isControl) return 'Control';
-    if (!efficacyData || efficacyData.length === 0) return 'Unrated';
-    const sorted = [...efficacyData].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
-    if (sorted.length < 2) return 'Unrated';
-
-    const baseline = sorted[0];
-    const baseCover = parseFloat(baseline?.weedCover ?? 100) || 100;
-    
-    // Find the duration of effective suppression (cover <= 30% of baseline cover)
-    let maxSuppressionDaa = parseFloat(baseline?.daa || 0);
-    for (let i = 0; i < sorted.length; i++) {
-      const obs = sorted[i];
-      const cover = parseFloat(obs.weedCover ?? 0) || 0;
-      if (cover <= 0.3 * baseCover) {
-        maxSuppressionDaa = parseFloat(obs.daa || 0);
-      } else if (i > 0) {
-        break;
-      }
-    }
-    
-    const duration = maxSuppressionDaa - parseFloat(baseline?.daa || 0);
-    
-    if (duration <= 7) return 'Poor';
-    if (duration <= 17) return 'Fair';
-    if (duration <= 27) return 'Good';
-    return 'Excellent';
-  };
-
   const getObservedWeedsList = (efficacyData) => {
     const species = new Set();
+    const targetLabel = catConfig.targetLabel;
     efficacyData.forEach(obs => {
       (obs.weedDetails || []).forEach(wd => {
-        if (wd.species && wd.species !== 'No weeds detected') {
+        if (wd.species && wd.species !== `No ${targetLabel.toLowerCase()}s detected` && wd.species !== 'No weeds detected') {
           species.add(wd.species);
         }
       });
     });
-    return species.size > 0 ? Array.from(species).join(', ') : 'No weeds detected';
+    return species.size > 0 ? Array.from(species).join(', ') : `No ${targetLabel.toLowerCase()}s detected`;
   };
 
   const handleDeleteObs = async (idx) => {
@@ -744,13 +787,22 @@ export default function Trials({ onMenuClick }) {
     }
     const sorted = [...efficacy].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
     const baseline = sorted[0];
-    const baseCover = parseFloat(baseline?.weedCover ?? 100) || 100;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
     const wceRows = sorted.map(obs => {
-      const cover = parseFloat(obs.weedCover ?? 0) || 0;
-      const wce = obs.daa === baseline?.daa ? null : (baseCover > 0 ? Math.max(0, Math.min(100, (1 - cover / baseCover) * 100)) : 0);
-      const rating = wce === null ? 'Baseline' : wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
-      const sp = (obs.weedDetails || []).map(w => w.species).filter(Boolean).join(', ') || (detailTrial.WeedSpecies || 'Mixed');
-      return { species: sp, initialCover: baseCover.toFixed(1), finalCover: cover.toFixed(1), wce: wce !== null ? parseFloat(wce.toFixed(1)) : null, controlRating: rating, daa: obs.daa };
+      const val = parseFloat(obs[primaryObsField] ?? 0) || 0;
+      const wce = obs.daa === baseline?.daa ? null : calculateEfficacy(activeCategory, val, baseVal);
+      let rating = 'Baseline';
+      if (wce !== null) {
+        if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+          rating = wce >= 15 ? 'Excellent' : wce >= 8 ? 'Good' : wce >= 3 ? 'Fair' : 'Poor';
+        } else {
+          rating = wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
+        }
+      }
+      const targetField = catConfig.targetField || 'WeedSpecies';
+      const sp = (obs.weedDetails || []).map(w => w.species).filter(Boolean).join(', ') || (detailTrial[targetField] || 'Mixed');
+      return { species: sp, initialCover: baseVal.toFixed(1), finalCover: val.toFixed(1), wce: wce !== null ? parseFloat(wce.toFixed(1)) : null, controlRating: rating, daa: obs.daa };
     });
     const wces = wceRows.map(r => r.wce).filter(v => v !== null);
     const meanWce = wces.length ? wces.reduce((s, v) => s + v, 0) / wces.length : 0;
@@ -1313,11 +1365,14 @@ export default function Trials({ onMenuClick }) {
     const sorted = [...efficacyData].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
     const baseline = sorted[0];
     const latest = sorted[sorted.length - 1];
-    const baseCover = parseFloat(baseline?.weedCover ?? 100) || 100;
-    const finalCover = parseFloat(latest?.weedCover ?? 0) || 0;
-    const wce = baseCover > 0 ? Math.max(0, Math.min(100, (1 - finalCover / baseCover) * 100)) : 0;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+    const finalVal = parseFloat(latest?.[primaryObsField] ?? 0) || 0;
+    const wce = calculateEfficacy(activeCategory, finalVal, baseVal);
+    const metricLabel = catConfig.primaryMetric.label;
+    const metricKey = catConfig.primaryMetric.key;
 
-    // Collect all unique weed species across all observations
+    // Collect all unique weed species/targets across all observations
     const allSpecies = new Set();
     const speciesControlStatus = {};
     sorted.forEach(obs => {
@@ -1334,30 +1389,51 @@ export default function Trials({ onMenuClick }) {
 
     // Build summary text
     const daysTracked = latest.daa - baseline.daa;
-    const controlRating = wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
+    let controlRating = 'Poor';
+    if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+      controlRating = wce >= 15 ? 'Excellent' : wce >= 8 ? 'Good' : wce >= 3 ? 'Fair' : 'Poor';
+    } else {
+      controlRating = wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
+    }
 
-    let summaryText = `**Weed Control Summary**\\n`;
-    summaryText += `Treatment: ${trial.FormulationName || 'Unknown'}\\n`;
-    summaryText += `Duration: ${daysTracked} days (DAA ${baseline.daa} to ${latest.daa})\\n`;
-    summaryText += `Initial Cover: ${baseCover.toFixed(1)}% → Final Cover: ${finalCover.toFixed(1)}%\\n`;
-    summaryText += `Weed Control Efficiency (WCE): ${wce.toFixed(1)}% - ${controlRating} Control\\n\\n`;
+    let summaryText = `**${catConfig.name} Trial Summary**\n`;
+    summaryText += `Treatment: ${trial.FormulationName || 'Unknown'}\n`;
+    summaryText += `Duration: ${daysTracked} days (DAA ${baseline.daa} to ${latest.daa})\n`;
+    summaryText += `Initial ${metricLabel}: ${baseVal.toFixed(1)}${catConfig.primaryMetric.unit || ''} → Final: ${finalVal.toFixed(1)}${catConfig.primaryMetric.unit || ''}\n`;
+    summaryText += `${metricLabel} (${metricKey}): ${wce.toFixed(1)}% - ${controlRating} Rating\n\n`;
 
-    summaryText += `**Species Observed:** ${Array.from(allSpecies).join(', ') || 'None identified'}\\n`;
-    summaryText += `**Control Status by Species:**\\n`;
+    summaryText += `**Targets Observed:** ${Array.from(allSpecies).join(', ') || 'None identified'}\n`;
+    summaryText += `**Status by Target:**\n`;
     Object.entries(speciesControlStatus).forEach(([sp, data]) => {
-      const spWCE = data.initial > 0 ? ((1 - data.final / data.initial) * 100).toFixed(0) : 0;
-      summaryText += `- ${sp}: ${data.initial}% → ${data.final}% (WCE: ${spWCE}%, Status: ${data.status || 'Unknown'})\\n`;
+      const spEfficacy = data.initial > 0
+        ? (activeCategory === 'nutrition' || activeCategory === 'biostimulant'
+           ? ((data.final / data.initial - 1) * 100).toFixed(0)
+           : ((1 - data.final / data.initial) * 100).toFixed(0))
+        : 0;
+      summaryText += `- ${sp}: ${data.initial}% → ${data.final}% (${metricKey}: ${spEfficacy}%, Status: ${data.status || 'Unknown'})\n`;
     });
 
-    summaryText += `\\n**Conclusion:** `;
-    if (wce >= 85) {
-      summaryText += `The treatment demonstrated excellent weed control efficacy with sustained suppression throughout the trial period.`;
-    } else if (wce >= 70) {
-      summaryText += `The treatment provided good weed control with significant reduction in weed pressure. Continued monitoring recommended.`;
-    } else if (wce >= 50) {
-      summaryText += `Moderate control observed. Consider reapplication or tank-mix options for improved efficacy.`;
+    summaryText += `\n**Conclusion:** `;
+    if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+      if (wce >= 15) {
+        summaryText += `The treatment demonstrated excellent growth and yield enhancement with sustained improvement throughout the trial period.`;
+      } else if (wce >= 8) {
+        summaryText += `The treatment provided good growth enhancement with significant improvement over control.`;
+      } else if (wce >= 3) {
+        summaryText += `Moderate improvement observed. Consider refining rate or timing for optimization.`;
+      } else {
+        summaryText += `Limited improvement observed. Review application details or soil factors.`;
+      }
     } else {
-      summaryText += `Limited control observed. Review application timing, rate, or consider alternative chemistry.`;
+      if (wce >= 85) {
+        summaryText += `The treatment demonstrated excellent control efficacy with sustained suppression throughout the trial period.`;
+      } else if (wce >= 70) {
+        summaryText += `The treatment provided good control with significant reduction in pressure. Continued monitoring recommended.`;
+      } else if (wce >= 50) {
+        summaryText += `Moderate control observed. Consider reapplication or tank-mix options for improved efficacy.`;
+      } else {
+        summaryText += `Limited control observed. Review application timing, rate, or consider alternative chemistry.`;
+      }
     }
 
     // Update trial with AI-generated conclusion
@@ -3984,38 +4060,57 @@ If none are present, write "None".`;
             </div>
           </div>
 
-          {/* Weed Cover + AI Detection */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase">{activeCategory === 'herbicide' ? 'Total Weed Cover %' : catConfig.primaryMetric.label}</label>
-              <div className="flex items-center gap-2">
-                <input ref={obsPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const reader = new FileReader();
-                  reader.onload = async ev => {
-                    const result = await detectWeedCoverAI(ev.target.result);
-                    if (result?.cover !== undefined) setObsForm(prev => ({ ...prev, weedCover: result.cover }));
-                  };
-                  reader.readAsDataURL(f);
-                  e.target.value = '';
-                }} />
-                <button type="button" onClick={() => obsPhotoRef.current?.click()}
-                  disabled={detectingCover}
-                  className="flex items-center gap-1 text-xs px-2 py-1 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 font-semibold disabled:opacity-50">
-                  {detectingCover ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
-                  {detectingCover ? `Detect from Photo` : `Detect from Photo`}
-                </button>
-              </div>
-            </div>
-            <input type="number" required min="0" max="100" step="0.1" value={obsForm.weedCover} onChange={e => setObsForm({...obsForm, weedCover: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-            {coverDetectResult && (
-              <div className="mt-1.5 flex items-center gap-3 text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5">
-                <span className="text-violet-700 font-semibold">Detected: {coverDetectResult.cover}%</span>
-                <span className="text-slate-500">🟢 {coverDetectResult.greenPct}% green · 🟡 {coverDetectResult.brownPct}% brown</span>
-                <span className="text-slate-400">via {coverDetectResult.source}</span>
-              </div>
-            )}
+          {/* Dynamic Observation Fields */}
+          <div className="grid grid-cols-1 gap-4">
+            {catConfig.observationFields?.map(field => {
+              if (field.key === 'weedDetails') return null;
+              const isPrimary = field.key === getPrimaryObservationField(activeCategory);
+              return (
+                <div key={field.key} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase">{field.label}</label>
+                    {isPrimary && (
+                      <div className="flex items-center gap-2">
+                        <input ref={obsPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          const reader = new FileReader();
+                          reader.onload = async ev => {
+                            const result = await detectWeedCoverAI(ev.target.result);
+                            if (result?.cover !== undefined) setObsForm(prev => ({ ...prev, [field.key]: result.cover }));
+                          };
+                          reader.readAsDataURL(f);
+                          e.target.value = '';
+                        }} />
+                        <button type="button" onClick={() => obsPhotoRef.current?.click()}
+                          disabled={detectingCover}
+                          className="flex items-center gap-1 text-xs px-2 py-1 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 font-semibold disabled:opacity-50">
+                          {detectingCover ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
+                          {detectingCover ? `Detect from Photo` : `Detect from Photo`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    required
+                    min={field.min !== undefined ? field.min : undefined}
+                    max={field.max !== undefined ? field.max : undefined}
+                    step="0.1"
+                    value={obsForm[field.key] ?? ''}
+                    onChange={e => setObsForm({ ...obsForm, [field.key]: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                  {isPrimary && coverDetectResult && (
+                    <div className="mt-1.5 flex items-center gap-3 text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5">
+                      <span className="text-violet-700 font-semibold">Detected: {coverDetectResult.cover}%</span>
+                      <span className="text-slate-500">🟢 {coverDetectResult.greenPct}% green · 🟡 {coverDetectResult.brownPct}% brown</span>
+                      <span className="text-slate-400">via {coverDetectResult.source}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Per-species weed details */}

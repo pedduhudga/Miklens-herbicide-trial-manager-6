@@ -24,7 +24,7 @@ import { getAPIKeys, analyzePhoto } from '../services/multiProviderAI.js';
 import { calculateDAA, toDatetimeLocal, formatDate, formatDateTime, formatPhotoDate } from '../utils/dateUtils.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
-import { getCategoryConfig } from '../utils/categoryConfig.js';
+import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 import {
   generateComprehensivePdf,
   generateScientificReport,
@@ -215,9 +215,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
     if (!activeSubTrial) return { sorted: [], baseCover: 100 };
     const sorted = validateEfficacyData(safeJsonParse(activeSubTrial.EfficacyDataJSON, [])).sort((a, b) => a.daa - b.daa);
     const baseline = sorted[0];
-    const baseCover = baseline ? parseFloat(baseline.weedCover ?? 100) : 100;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const baseCover = baseline ? parseFloat(baseline[primaryObsField] ?? 100) : 100;
     return { sorted, baseCover };
-  }, [activeSubTrial]);
+  }, [activeSubTrial, activeCategory]);
 
   const daaCoverage = useMemo(() => {
     if (!activeSubTrial) return { allDAAs: [], obsDAAs: [], photoDAAs: [], hasGaps: false };
@@ -1285,6 +1286,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
       
       const mimeType = visitForm.photoUrl.split(';')[0].split(':')[1] || 'image/jpeg';
       const base64 = visitForm.photoUrl.split(',')[1];
+      const targetLabel = config.targetLabel;
+      const promptText = `${config.aiPhotoPrompt}\n\nOutput a JSON array only containing observations for each target detected. Each object in the array should have: 1) species (the name of the target/species detected), 2) cover (numeric value for severity/cover/count 0-100), 3) status (response description, e.g. Controlled, Symptomatic, Deficient, Healthy). Output format: [{"species":"Target Name","cover":20,"status":"Symptomatic"}]`;
       
       const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${keys[0]}`, {
         method: 'POST',
@@ -1292,7 +1295,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: 'Identify all weed species in this field photo. For each species, provide: 1) Scientific name, 2) Common name, 3) Estimated cover percentage (0-100), 4) Status/Response (e.g. Unaffected, Slight Injury, Moderate Injury, Severe Injury, Dead/Desiccated). Output as a JSON array only, like: [{"species":"Common Name (Scientific)","cover":20,"status":"Severe Injury","bbch":"15"}]' },
+              { text: promptText },
               { inlineData: { mimeType, data: base64 } }
             ]
           }]
@@ -1306,12 +1309,13 @@ export default function LargeScaleTrials({ onMenuClick }) {
       if (match) {
         const weeds = JSON.parse(match[0]);
         const totalCover = weeds.reduce((acc, w) => acc + (w.cover || 0), 0);
+        const primaryObsField = getPrimaryObservationField(activeCategory);
         setVisitForm(prev => ({
           ...prev,
-          weedCover: Math.min(100, totalCover),
+          [primaryObsField]: Math.min(100, totalCover),
           weedDetails: weeds
         }));
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI Weed Analysis Successful!', type: 'success' } }));
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI ${config.targetLabel} Analysis Successful!`, type: 'success' } }));
       } else {
         throw new Error('Failed to parse JSON response');
       }
@@ -1347,18 +1351,31 @@ export default function LargeScaleTrials({ onMenuClick }) {
     }
 
     const efficacyData = validateEfficacyData(safeJsonParse(activeSubTrial.EfficacyDataJSON, []));
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+
     const newVisit = {
       daa: Number(visitForm.daa),
       date: visitForm.date,
-      weedCover: Number(visitForm.weedCover || 0),
       notes: visitForm.notes,
       weatherTemp: visitForm.weatherTemp,
       weatherHumidity: visitForm.weatherHumidity,
       weatherWind: visitForm.weatherWind,
       weatherRain: visitForm.weatherRain,
       photoUrl: drivePhotoUrl,
-      weedDetails: visitForm.weedDetails.length > 0 ? visitForm.weedDetails : [{ species: 'Total Weeds', cover: Number(visitForm.weedCover || 0), status: 'Active' }]
+      weedDetails: visitForm.weedDetails || []
     };
+
+    config.observationFields?.forEach(f => {
+      newVisit[f.key] = Number(visitForm[f.key] || 0);
+    });
+
+    if (primaryObsField !== 'weedCover') {
+      newVisit.weedCover = newVisit[primaryObsField];
+    }
+
+    if (newVisit.weedDetails.length === 0) {
+      newVisit.weedDetails = [{ species: `Total ${config.targetLabel}s`, cover: newVisit[primaryObsField] || 0, status: 'Active' }];
+    }
 
     if (editingVisitIdx !== null) {
       efficacyData[editingVisitIdx] = newVisit;
@@ -1381,13 +1398,21 @@ export default function LargeScaleTrials({ onMenuClick }) {
     // Determine Efficacy Outcome Result
     let resultRating = activeSubTrial.Result || 'Pending';
     if (efficacyData.length > 1) {
-      const base = efficacyData[0].weedCover || 100;
-      const last = efficacyData[efficacyData.length - 1].weedCover || 0;
-      const reduction = base > 0 ? ((base - last) / base) * 100 : 0;
-      if (reduction >= 90) resultRating = 'Excellent';
-      else if (reduction >= 70) resultRating = 'Good';
-      else if (reduction >= 40) resultRating = 'Fair';
-      else resultRating = 'Poor';
+      const base = efficacyData[0][primaryObsField] || 100;
+      const last = efficacyData[efficacyData.length - 1][primaryObsField] || 0;
+      const reduction = calculateEfficacy(activeCategory, last, base);
+      
+      if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+        if (reduction >= 15) resultRating = 'Excellent';
+        else if (reduction >= 8) resultRating = 'Good';
+        else if (reduction >= 3) resultRating = 'Fair';
+        else resultRating = 'Poor';
+      } else {
+        if (reduction >= 90) resultRating = 'Excellent';
+        else if (reduction >= 70) resultRating = 'Good';
+        else if (reduction >= 40) resultRating = 'Fair';
+        else resultRating = 'Poor';
+      }
     }
 
     const payload = {
@@ -3013,27 +3038,33 @@ export default function LargeScaleTrials({ onMenuClick }) {
             </div>
           </div>
 
+          {/* Dynamic Observation Fields */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">{config.primaryMetric.label} ({config.primaryMetric.unit || '%'})</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                required
-                placeholder="e.g. 35"
-                value={visitForm.weedCover}
-                onChange={e => setVisitForm(p => ({ ...p, weedCover: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none"
-              />
-            </div>
-
+            {config.observationFields?.map(field => {
+              if (field.key === 'weedDetails') return null;
+              return (
+                <div key={field.key}>
+                  <label className="block text-slate-600 font-bold mb-1">{field.label}</label>
+                  <input
+                    type="number"
+                    required
+                    min={field.min !== undefined ? field.min : undefined}
+                    max={field.max !== undefined ? field.max : undefined}
+                    step="0.1"
+                    placeholder="e.g. 10"
+                    value={visitForm[field.key] ?? ''}
+                    onChange={e => setVisitForm(p => ({ ...p, [field.key]: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none"
+                  />
+                </div>
+              );
+            })}
             <div>
               <label className="block text-slate-600 font-bold mb-1">Visit Weather Parameters</label>
               <button
                 type="button"
                 onClick={fetchVisitWeather}
-                className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg font-bold"
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 border rounded-lg font-bold"
               >
                 Sync Weather API
               </button>
