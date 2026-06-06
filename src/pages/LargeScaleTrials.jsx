@@ -1968,7 +1968,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           })}
                         </div>
                       ) : (
-                        <div className="text-center py-8 text-slate-400 italic">No photos added yet. Snap or upload to perform AI Weed Identification.</div>
+                        <div className="text-center py-8 text-slate-400 italic">No photos added yet. Snap or upload to perform AI {activeCategory === 'herbicide' ? 'Weed' : config.targetLabel} Identification.</div>
                       )}
                     </div>
                   )}
@@ -2377,8 +2377,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   {/* Tab: Curves */}
                   {dashboardTab === 'charts' && (
                     <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                      <h3 className="font-bold text-slate-800 text-base mb-2">Weed Cover Trajectories</h3>
-                      <p className="text-xs text-slate-400 mb-6">Compare weed cover reduction rates (%) across different sub-trial zones side-by-side.</p>
+                      <h3 className="font-bold text-slate-800 text-base mb-2">{activeCategory === 'herbicide' ? 'Weed Cover Trajectories' : `${config.primaryMetric.label} Trajectories`}</h3>
+                      <p className="text-xs text-slate-400 mb-6">Compare {activeCategory === 'herbicide' ? 'weed cover reduction' : config.primaryMetric.label.toLowerCase()} rates (%) across different sub-trial zones side-by-side.</p>
 
                       {chartData.daas.length > 0 && chartData.datasets.length > 0 ? (
                         <div className="h-72 flex flex-col justify-between">
@@ -3119,7 +3119,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   disabled={loading}
                   className="absolute bottom-2 left-2 right-2 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-md"
                 >
-                  <Sparkles className="w-4 h-4" /> {loading ? 'Analyzing...' : 'Run AI Weed Identification'}
+                  <Sparkles className="w-4 h-4" /> {loading ? 'Analyzing...' : (activeCategory === 'herbicide' ? 'Run AI Weed Identification' : `Run AI ${config.targetLabel} Identification`)}
                 </button>
               </div>
             )}
@@ -3128,7 +3128,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
           {/* Weed Details list */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-slate-600 font-bold">Weed Observations list</label>
+              <label className="text-slate-600 font-bold">{activeCategory === 'herbicide' ? 'Weed Observations list' : `${config.targetLabel} Observations list`}</label>
               <button
                 type="button"
                 onClick={() => {
@@ -3139,7 +3139,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                 }}
                 className="text-[10px] text-emerald-700 font-bold flex items-center gap-0.5"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Weed
+                <Plus className="w-3.5 h-3.5" /> Add {activeCategory === 'herbicide' ? 'Weed' : config.targetLabel}
               </button>
             </div>
 
@@ -3148,7 +3148,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                 <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border">
                   <input
                     type="text"
-                    placeholder="Weed species (Scientific/Common)"
+                    placeholder={activeCategory === 'herbicide' ? 'Weed species (Scientific/Common)' : `${config.targetLabel} (Scientific/Common)`}
                     value={weed.species}
                     onChange={e => {
                       const updated = [...visitForm.weedDetails];

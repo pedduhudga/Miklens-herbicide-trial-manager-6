@@ -3252,9 +3252,9 @@ If none are present, write "None".`;
                       {/* Weed ID */}
                       {(weedIdLoading || weedIdResult) && (
                         <div>
-                          <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1"><Leaf className="w-3.5 h-3.5 text-emerald-600" />AI Weed Identification</p>
+                          <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1"><Leaf className="w-3.5 h-3.5 text-emerald-600" />{activeCategory === 'herbicide' ? 'AI Weed Identification' : `AI ${catConfig.targetLabel} Identification`}</p>
                           {weedIdLoading ? (
-                            <div className="flex items-center gap-2 text-xs text-slate-500"><RefreshCw className="w-3.5 h-3.5 animate-spin" />Identifying weeds...</div>
+                            <div className="flex items-center gap-2 text-xs text-slate-500"><RefreshCw className="w-3.5 h-3.5 animate-spin" />Identifying {activeCategory === 'herbicide' ? 'weeds' : catConfig.targetLabel.toLowerCase()}...</div>
                           ) : weedIdResult && (
                             <div className="space-y-1.5">
                               {weedIdResult.map((w, i) => (
@@ -3275,7 +3275,7 @@ If none are present, write "None".`;
                                 const species = weedIdResult.map(w => w.name).join(', ');
                                 window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Species copied to clipboard', type: 'success' } }));
                                 navigator.clipboard?.writeText(species);
-                              }} className="text-xs text-emerald-700 underline">Copy species to clipboard</button>
+                              }} className="text-xs text-emerald-700 underline">Copy to clipboard</button>
                             </div>
                           )}
                         </div>
@@ -3283,13 +3283,13 @@ If none are present, write "None".`;
                       {/* Cover Detection */}
                       {(detectingCover || coverDetectResult) && (
                         <div>
-                          <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1"><ScanLine className="w-3.5 h-3.5 text-violet-600" />Weed Cover Detection</p>
+                          <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1"><ScanLine className="w-3.5 h-3.5 text-violet-600" />{activeCategory === 'herbicide' ? 'Weed Cover Detection' : `${catConfig.primaryMetric.label} Detection`}</p>
                           {detectingCover ? (
                             <div className="flex items-center gap-2 text-xs text-slate-500"><RefreshCw className="w-3.5 h-3.5 animate-spin" />Analyzing image...</div>
                           ) : coverDetectResult && (
                             <div className="grid grid-cols-3 gap-2">
                               <div className="bg-white border rounded-lg p-2 text-center">
-                                <p className="text-[10px] text-slate-500 font-semibold">Total Cover</p>
+                                <p className="text-[10px] text-slate-500 font-semibold">Total {activeCategory === 'herbicide' ? 'Cover' : catConfig.primaryMetric.key}</p>
                                 <p className="text-base font-bold text-slate-800">{coverDetectResult.cover}%</p>
                               </div>
                               <div className="bg-emerald-50 border rounded-lg p-2 text-center">
@@ -3313,7 +3313,7 @@ If none are present, write "None".`;
 
                   {/* Quick weed ID input */}
                   <div className="border-2 border-dashed border-slate-200 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1"><Leaf className="w-3.5 h-3.5" />Identify Weed from New Photo</p>
+                    <p className="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1"><Leaf className="w-3.5 h-3.5" />Identify {activeCategory === 'herbicide' ? 'Weed' : catConfig.targetLabel} from New Photo</p>
                     <input ref={weedIdInputRef} type="file" accept="image/*" className="hidden" onChange={e => {
                       const f = e.target.files?.[0];
                       if (!f) return;
@@ -3323,7 +3323,7 @@ If none are present, write "None".`;
                       e.target.value = '';
                     }} />
                     <button onClick={() => weedIdInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                      <Leaf className="w-3.5 h-3.5" /> Upload & Identify Weeds
+                      <Leaf className="w-3.5 h-3.5" /> Upload & Identify {activeCategory === 'herbicide' ? 'Weeds' : `${catConfig.targetLabel}s`}
                     </button>
                   </div>
                 </div>
@@ -3332,11 +3332,11 @@ If none are present, write "None".`;
               {/* Chart Tab */}
               {detailTab === 'chart' && (chartDataComputed ? (
                 <div>
-                  <h3 className="font-semibold text-slate-700 mb-3">Weed Cover &amp; WCE% Timeline</h3>
+                  <h3 className="font-semibold text-slate-700 mb-3">{activeCategory === 'herbicide' ? 'Weed Cover & WCE% Timeline' : `${catConfig.primaryMetric.label} & Efficacy Timeline`}</h3>
                   <div className="bg-white border rounded-xl p-3 overflow-x-auto">
                     <div className="flex gap-4 text-xs mb-2">
-                      <span className="flex items-center gap-1"><span className="inline-block w-3 h-1 bg-emerald-500 rounded" />Weed Cover %</span>
-                      {chartDataComputed.wcePts && <span className="flex items-center gap-1"><span className="inline-block w-3 h-1 bg-indigo-400 rounded" style={{borderTop:'2px dashed #818cf8'}} />WCE %</span>}
+                      <span className="flex items-center gap-1"><span className="inline-block w-3 h-1 bg-emerald-500 rounded" />{activeCategory === 'herbicide' ? 'Weed Cover %' : `${catConfig.primaryMetric.label} (${catConfig.primaryMetric.unit || '%'})`}</span>
+                      {chartDataComputed.wcePts && <span className="flex items-center gap-1"><span className="inline-block w-3 h-1 bg-indigo-400 rounded" style={{borderTop:'2px dashed #818cf8'}} />{activeCategory === 'herbicide' ? 'WCE %' : `${catConfig.primaryMetric.key} %`}</span>}
                     </div>
                     <svg width={chartDataComputed.W} height={chartDataComputed.H} className="w-full" viewBox={`0 0 ${chartDataComputed.W} ${chartDataComputed.H}`}>
                       {[0,25,50,75,100].filter(v => v <= chartDataComputed.maxCover + 5).map(v => (
@@ -3360,9 +3360,9 @@ If none are present, write "None".`;
                   </div>
                   <div className="mt-3 grid grid-cols-4 gap-2">
                     {[
-                      ['First Cover',`${chartDataComputed.chartData[0]?.weedCover ?? '—'}%`,'bg-blue-50 text-blue-700'],
-                      ['Last Cover',`${chartDataComputed.chartData[chartDataComputed.chartData.length-1]?.weedCover ?? '—'}%`,'bg-emerald-50 text-emerald-700'],
-                      ['Final WCE', chartDataComputed.lastWce !== null ? `${chartDataComputed.lastWce}%` : '—','bg-indigo-50 text-indigo-700'],
+                      [activeCategory === 'herbicide' ? 'First Cover' : `Initial ${catConfig.primaryMetric.key}`, `${chartDataComputed.chartData[0]?.weedCover ?? '—'}%`,'bg-blue-50 text-blue-700'],
+                      [activeCategory === 'herbicide' ? 'Last Cover' : `Final ${catConfig.primaryMetric.key}`, `${chartDataComputed.chartData[chartDataComputed.chartData.length-1]?.weedCover ?? '—'}%`,'bg-emerald-50 text-emerald-700'],
+                      [`Final ${activeCategory === 'herbicide' ? 'WCE' : catConfig.primaryMetric.key}`, chartDataComputed.lastWce !== null ? `${chartDataComputed.lastWce}%` : '—','bg-indigo-50 text-indigo-700'],
                       ['Observations',chartDataComputed.chartData.length,'bg-slate-50 text-slate-700']
                     ].map(([l,v,cls]) => (
                       <div key={l} className={`rounded-lg p-2 text-center ${cls}`}><p className="text-xs font-bold opacity-70">{l}</p><p className="text-lg font-bold">{v}</p></div>
@@ -3711,11 +3711,11 @@ If none are present, write "None".`;
                     </button>
                     <button onClick={() => handleExportPdfWeedsIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-rose-600 shrink-0" />
-                      <div><p className="text-xs font-semibold text-slate-800">PDF (Weeds + Ing.)</p><p className="text-[10px] text-slate-500">Weed ID + ingredients</p></div>
+                      <div><p className="text-xs font-semibold text-slate-800">{activeCategory === 'herbicide' ? 'PDF (Weeds + Ing.)' : `PDF (${catConfig.targetLabel}s + Ing.)`}</p><p className="text-[10px] text-slate-500">{activeCategory === 'herbicide' ? 'Weed ID + ingredients' : `${catConfig.targetLabel} ID + ingredients`}</p></div>
                     </button>
                     <button onClick={() => handleExportPdfWeeds(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-rose-500 shrink-0" />
-                      <div><p className="text-xs font-semibold text-slate-800">PDF (Weeds)</p><p className="text-[10px] text-slate-500">Weed ID section only</p></div>
+                      <div><p className="text-xs font-semibold text-slate-800">{activeCategory === 'herbicide' ? 'PDF (Weeds)' : `PDF (${catConfig.targetLabel}s)`}</p><p className="text-[10px] text-slate-500">{activeCategory === 'herbicide' ? 'Weed ID section only' : `${catConfig.targetLabel} ID section only`}</p></div>
                     </button>
                     <button onClick={() => handleExportFullNoIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-red-700 shrink-0" />
@@ -4301,7 +4301,7 @@ If none are present, write "None".`;
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
                 <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Grid className="w-4 h-4 text-blue-600" /> Grid Weed Cover Tool
+                  <Grid className="w-4 h-4 text-blue-600" /> Grid {activeCategory === 'herbicide' ? 'Weed Cover' : catConfig.primaryMetric.label} Tool
                 </h2>
                 <button onClick={() => setIsGridOpen(false)} className="text-slate-400 hover:text-slate-600">
                   <X className="w-5 h-5" />
@@ -4310,7 +4310,7 @@ If none are present, write "None".`;
               <div className="p-5 flex-1">
                 {!imgUrl && (
                   <p className="text-sm text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-4">
-                    No photo found for this trial. Upload a photo first, then use the Grid Tool to measure weed cover.
+                    No photo found for this trial. Upload a photo first, then use the Grid Tool to measure {activeCategory === 'herbicide' ? 'weed cover' : catConfig.primaryMetric.label.toLowerCase()}.
                   </p>
                 )}
                 <GridWeedCoverTool
