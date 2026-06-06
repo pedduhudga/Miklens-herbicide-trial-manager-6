@@ -157,10 +157,17 @@ function buildPrompt(context) {
   if (context.category && context.category !== 'herbicide') {
     try {
       const catConfig = getCategoryConfig(context.category);
+      const metricsPlaceholder = {};
+      catConfig.observationFields.forEach(f => {
+        if (f.key !== 'weedDetails') {
+          metricsPlaceholder[f.key] = `Estimated ${f.label} value (number or float)`;
+        }
+      });
+
       return `${catConfig.aiPhotoPrompt}
 
 PLOT INFORMATION:
-- Treatment: ${context.treatment || 'Unknown'}
+- Treatment/Product: ${context.treatment || 'Unknown'}
 - Days After Application (DAA): ${context.daa ?? 0}
 - Replication: ${context.rep || 1}
 - Category: ${catConfig.name}
@@ -168,23 +175,23 @@ ${historyNote}
 
 ADDITIONAL ANALYSIS FEATURES: ${catConfig.aiFeatures.join(', ')}
 
-RULES:
-- Be scientifically precise and use proper terminology.
-- Do NOT include recommendations or next steps.
-- Only report what is OBSERVED in the photo.
-- Include counts (leaf count, fruit count, insect count) when visible.
+RULES FOR SCIENTIFIC ASSESSMENT:
+1. Estimate values only for fields that are visible or relevant to the crop plot in the photo.
+2. Be scientifically precise. Do NOT include recommendations, next steps, or monitoring suggestions.
+3. Identify specific pathogens, pests, or nutrient symptoms visible and list them under target details.
 
-OUTPUT FORMAT - JSON ONLY (no extra text):
+OUTPUT FORMAT - JSON ONLY (no extra text, no markdown wrapper around the JSON):
 {
-  "observations": [{"item": "description", "value": 0, "unit": "", "notes": ""}],
-  "primaryMetric": ${JSON.stringify(catConfig.primaryMetric.key)},
-  "primaryValue": 0,
-  "overallAssessment": "Brief scientific assessment",
-  "confidence": "HIGH",
-  "notes": "Additional observations"
+  "metrics": ${JSON.stringify(metricsPlaceholder, null, 2)},
+  "targets": [
+    {"name": "Common name (Scientific name or chemical symptom)", "value": 0, "status": "Healthy/Controlled/Symptomatic/etc.", "notes": "Brief observation details"}
+  ],
+  "overallAssessment": "Factual scientific assessment of the plot",
+  "confidence": "HIGH/MEDIUM/LOW",
+  "notes": "Any other notable field observations"
 }`;
     } catch (e) {
-      // Fallback to herbicide prompt if import fails
+      // Fallback to herbicide prompt if config fails
     }
   }
 
@@ -523,6 +530,7 @@ export async function analyzePhotosBatch(items, onProgress, onResult) {
       treatment: item.treatment,
       daa: item.daa,
       rep: item.rep,
+      category: item.category,
     }, (msg) => {
       if (onProgress) onProgress({ current: i + 1, total: items.length, trialId: item.trialId, message: msg });
     });

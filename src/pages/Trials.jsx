@@ -1016,7 +1016,8 @@ export default function Trials({ onMenuClick }) {
       const result = await analyzePhoto(dataUrl, {
         treatment: targetTrial.FormulationName,
         daa,
-        rep: targetTrial.Replication || 1
+        rep: targetTrial.Replication || 1,
+        category: targetTrial.Category || activeCategory
       }, (msg) => {
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type: 'info' } }));
       });
@@ -1130,71 +1131,117 @@ export default function Trials({ onMenuClick }) {
   // ── AI PHOTO ANALYSIS ─────────────────────────────────────────────
   const createObservationFromAI = async (trial, daa, aiData, obsDate = null, photoUrl = null) => {
     const latestTrial = getAppState().trials.find(t => t.ID === trial.ID) || trial;
+    const trialCat = latestTrial.Category || activeCategory;
+    const catConfig = getCategoryConfig(trialCat);
     const efficacyData = validateEfficacyData(safeJsonParse(latestTrial.EfficacyDataJSON, []));
 
-    // Normalize weed data with enhanced fields
-    const normalizedWeeds = (aiData.weeds || []).map(w => ({
-      species: w.species || 'Unknown',
-      cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || 0),
+    // Normalize target details list
+    const isHerbicide = trialCat === 'herbicide';
+    const aiTargetsList = isHerbicide ? (aiData.weeds || []) : (aiData.targets || []);
+    
+    const normalizedWeeds = aiTargetsList.map(w => ({
+      species: w.species || w.name || 'Unknown',
+      cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
       status: String(w.status || '').trim(),
       growthStage: String(w.growthStage || '').trim(),
       notes: String(w.notes || '').trim()
     }));
 
-    // Calculate total cover - use AI's totalWeedCover if provided, else sum
-    const totalWeedCover = typeof aiData.totalWeedCover === 'number'
-      ? aiData.totalWeedCover
-      : normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+    // Calculate primary values
+    const primaryObsField = getPrimaryObservationField(trialCat);
+    let primaryValue = 0;
+    
+    if (isHerbicide) {
+      primaryValue = typeof aiData.totalWeedCover === 'number'
+        ? aiData.totalWeedCover
+        : normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+    } else {
+      if (aiData.metrics && typeof aiData.metrics[primaryObsField] === 'number') {
+        primaryValue = aiData.metrics[primaryObsField];
+      } else if (aiData.metrics && aiData.metrics[primaryObsField] !== undefined) {
+        primaryValue = parseFloat(aiData.metrics[primaryObsField] || 0);
+      } else {
+        primaryValue = normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+      }
+    }
 
-    // Build observation notes — factual only, no recommendations or projections
     const aiNotes = [];
-    if (aiData.efficacyAssessment) aiNotes.push(aiData.efficacyAssessment);
+    if (aiData.efficacyAssessment || aiData.overallAssessment) aiNotes.push(aiData.efficacyAssessment || aiData.overallAssessment);
     if (aiData.notes) aiNotes.push(aiData.notes);
 
     const newObs = {
       date: obsDate || toDatetimeLocal(new Date()),
       daa: Number(daa),
-      weedCover: totalWeedCover,
-      weedDetails: normalizedWeeds.length > 0 ? normalizedWeeds : [{ species: 'No weeds detected', cover: 0, status: '', notes: aiData.notes || 'AI-analyzed' }],
+      weedCover: primaryValue, // mirrored for backwards compatibility
+      weedDetails: normalizedWeeds.length > 0 ? normalizedWeeds : [{ species: isHerbicide ? 'No weeds detected' : 'No targets detected', cover: 0, status: '', notes: aiData.notes || 'AI-analyzed' }],
       notes: aiNotes.join(' | ') || `AI-analyzed on ${formatDateTime(new Date())}`,
       aiConfidence: aiData.confidence || 'MEDIUM',
-      aiEfficacyAssessment: aiData.efficacyAssessment || '',
+      aiEfficacyAssessment: aiData.efficacyAssessment || aiData.overallAssessment || '',
       competitionLevel: aiData.competitionLevel || '',
       status: 'Analyzed',
       source: 'AI',
       photoUrl: photoUrl || ''
     };
 
-    // Check if observation for this DAA already exists - update if so
+    // Save all dynamic metrics fields directly into the observation
+    if (aiData.metrics && typeof aiData.metrics === 'object') {
+      Object.entries(aiData.metrics).forEach(([k, v]) => {
+        const num = parseFloat(v);
+        if (!isNaN(num)) {
+          newObs[k] = num;
+        }
+      });
+    }
+
     const existingIdx = efficacyData.findIndex(o => o.daa === Number(daa));
     if (existingIdx >= 0) {
-      efficacyData[existingIdx] = newObs;
+      efficacyData[existingIdx] = { ...efficacyData[existingIdx], ...newObs };
     } else {
       efficacyData.push(newObs);
     }
     efficacyData.sort((a, b) => a.daa - b.daa);
 
-    // Calculate Result rating based on remaining living weed cover
+    // Calculate Result rating dynamically based on remaining severity/cover
     let resultRating = 'Unrated';
     if (efficacyData.length > 0) {
       const latestObs = [...efficacyData].sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
-      const remainingCover = latestObs.weedCover || 0;
-      if (remainingCover <= 10) {
-        resultRating = 'Excellent';
-      } else if (remainingCover <= 25) {
-        resultRating = 'Good';
-      } else if (remainingCover <= 50) {
-        resultRating = 'Fair';
+      const val = latestObs[primaryObsField] || latestObs.weedCover || 0;
+      
+      if (trialCat === 'nutrition' || trialCat === 'biostimulant') {
+        const firstObs = [...efficacyData].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0))[0];
+        const baseVal = firstObs[primaryObsField] || firstObs.weedCover || 1;
+        const pctImprovement = ((val / baseVal) - 1) * 100;
+        if (pctImprovement >= 15) {
+          resultRating = 'Excellent';
+        } else if (pctImprovement >= 8) {
+          resultRating = 'Good';
+        } else if (pctImprovement >= 3) {
+          resultRating = 'Fair';
+        } else {
+          resultRating = 'Poor';
+        }
       } else {
-        resultRating = 'Poor';
+        if (val <= 10) {
+          resultRating = 'Excellent';
+        } else if (val <= 25) {
+          resultRating = 'Good';
+        } else if (val <= 50) {
+          resultRating = 'Fair';
+        } else {
+          resultRating = 'Poor';
+        }
       }
     }
+
+    const targetField = catConfig.targetField || 'WeedSpecies';
+    const targetsString = normalizedWeeds.length > 0 ? normalizedWeeds.map(w => w.species).join(', ') : 'None detected';
 
     const updated = {
       ...latestTrial,
       EfficacyDataJSON: JSON.stringify(efficacyData),
       Result: resultRating,
-      WeedSpecies: normalizedWeeds.length > 0 ? normalizedWeeds.map(w => w.species).join(', ') : 'No weeds detected',
+      [targetField]: targetsString,
+      ...(isHerbicide ? { WeedSpecies: targetsString } : {}),
       ...(Number(daa) === 0 ? {
         ApplicationTiming: latestTrial.ApplicationTiming || aiData.applicationTiming || '',
         WeedGrowthStage: latestTrial.WeedGrowthStage || aiData.overallWeedGrowthStage || ''
@@ -1204,17 +1251,20 @@ export default function Trials({ onMenuClick }) {
     updateState({ trials: getAppState().trials.map(t => t.ID === updated.ID ? updated : t) });
     if (activeTrial?.ID === latestTrial.ID) setActiveTrial(updated);
 
+    const patch = {
+      ID: latestTrial.ID,
+      EfficacyDataJSON: updated.EfficacyDataJSON,
+      Result: updated.Result,
+      [targetField]: updated[targetField],
+      ...(isHerbicide ? { WeedSpecies: updated.WeedSpecies } : {}),
+      ...(Number(daa) === 0 ? {
+        ApplicationTiming: updated.ApplicationTiming,
+        WeedGrowthStage: updated.WeedGrowthStage
+      } : {})
+    };
+
     try {
-      await updateTrial({
-        ID: latestTrial.ID,
-        EfficacyDataJSON: updated.EfficacyDataJSON,
-        Result: updated.Result,
-        WeedSpecies: updated.WeedSpecies,
-        ...(Number(daa) === 0 ? {
-          ApplicationTiming: updated.ApplicationTiming,
-          WeedGrowthStage: updated.WeedGrowthStage
-        } : {})
-      }, getAppState);
+      await updateTrial(patch, getAppState);
     } catch (e) {
       console.error('Failed to save AI observation:', e);
     }
@@ -1260,7 +1310,8 @@ export default function Trials({ onMenuClick }) {
           daa,
           rep: trial.Replication || 1,
           trialDate: trial.Date,
-          photoDate: photo.date
+          photoDate: photo.date,
+          category: trial.Category || activeCategory,
         });
       });
     });
@@ -1335,7 +1386,8 @@ export default function Trials({ onMenuClick }) {
       const result = await analyzePhoto(photoSrc, {
         treatment: activeTrial.FormulationName,
         daa,
-        rep: activeTrial.Replication || 1
+        rep: activeTrial.Replication || 1,
+        category: activeTrial.Category || activeCategory
       }, (msg) => window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type: 'info' } })));
 
       if (result.success) {
