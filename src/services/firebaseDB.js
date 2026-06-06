@@ -329,14 +329,23 @@ export async function fbGetAllData(userId, isAdmin = false, category = 'herbicid
   const projectsCol = getCategoryCollection(category, 'projects');
   const blocksCol = getCategoryCollection(category, 'blocks');
 
+  const wrapPromise = async (name, promise) => {
+    try {
+      return await promise;
+    } catch (e) {
+      console.error(`[Firestore Load Error] Failed for ${name}:`, e);
+      throw new Error(`"${name}" (${e.message})`);
+    }
+  };
+
   const [trials, formulations, ingredients, organisations, projects, blocks] =
     await Promise.all([
-      fbGetAll(trialsCol, ownerId),
-      fbGetAll(formulationsCol, ownerId),
-      fbGetAll(ingredientsCol, ownerId),
-      fbGetOrganisations(ownerId),
-      fbGetAll(projectsCol, ownerId),
-      fbGetAll(blocksCol, ownerId)
+      wrapPromise(trialsCol, fbGetAll(trialsCol, ownerId)),
+      wrapPromise(formulationsCol, fbGetAll(formulationsCol, ownerId)),
+      wrapPromise(ingredientsCol, fbGetAll(ingredientsCol, ownerId)),
+      wrapPromise('organisations', fbGetOrganisations(ownerId)),
+      wrapPromise(projectsCol, fbGetAll(projectsCol, ownerId)),
+      wrapPromise(blocksCol, fbGetAll(blocksCol, ownerId))
     ]);
   return { trials, formulations, ingredients, organisations, projects, blocks };
 }
