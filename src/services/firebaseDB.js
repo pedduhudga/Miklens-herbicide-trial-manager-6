@@ -46,9 +46,7 @@ function snapsToArray(snapshot) {
 export async function fbGetAll(collectionName, userId = null) {
   const db = getFirebaseDB();
   let q = collection(db, collectionName);
-  if (userId) {
-    q = query(collection(db, collectionName), where("CreatedBy", "==", userId));
-  }
+  // Disabled filtering by user ID so all data is visible to all users
   const snap = await getDocs(q);
   return snapsToArray(snap);
 }
@@ -265,7 +263,7 @@ export async function fbAddAnalysisLog(data, userId) {
 export async function fbGetSprayLogs(userId, projectId = null, trialId = null) {
   const db = getFirebaseDB();
   let conditions = [];
-  if (userId) conditions.push(where("CreatedBy", "==", userId));
+  // Disabled user-specific filtering to make all spray logs visible
   if (projectId) conditions.push(where("ProjectID", "==", projectId));
   if (trialId) conditions.push(where("TrialID", "==", trialId));
   const q = conditions.length
