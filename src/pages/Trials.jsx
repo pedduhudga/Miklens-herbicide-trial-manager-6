@@ -2586,36 +2586,75 @@ If none are present, write "None".`;
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Date *</label>
               <input type="datetime-local" required value={formData.Date} onChange={e => setFormData({...formData, Date: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Dosage / Treatment</label>
-              <input type="text" value={formData.Dosage} onChange={e => setFormData({...formData, Dosage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 1500 ml/ha" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Target Weed Species</label>
-              <input type="text" value={formData.WeedSpecies} onChange={e => setFormData({...formData, WeedSpecies: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Comma separated" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Yield (t/ha)</label>
-              <input type="number" step="0.01" min="0" value={formData.YieldValue} onChange={e => setFormData({...formData, YieldValue: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 3.5" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Result</label>
-              <select value={formData.Result} onChange={e => setFormData({...formData, Result: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
-                <option value="">— Select Result —</option>
-                {['Excellent','Good','Fair','Poor','Control'].map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Timing</label>
-              <select value={formData.ApplicationTiming} onChange={e => setFormData({...formData, ApplicationTiming: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
-                <option value="">— Select Timing —</option>
-                {['PRE', 'E-POST', 'POST', 'L-POST'].map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weed Growth Stage</label>
-              <input type="text" value={formData.WeedGrowthStage} onChange={e => setFormData({...formData, WeedGrowthStage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 2-4 leaf stage, tillering" />
-            </div>
+            {activeCategory === 'herbicide' ? (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Dosage / Treatment</label>
+                  <input type="text" value={formData.Dosage} onChange={e => setFormData({...formData, Dosage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 1500 ml/ha" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Target Weed Species</label>
+                  <input type="text" value={formData.WeedSpecies} onChange={e => setFormData({...formData, WeedSpecies: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Comma separated" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Yield (t/ha)</label>
+                  <input type="number" step="0.01" min="0" value={formData.YieldValue} onChange={e => setFormData({...formData, YieldValue: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 3.5" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Result</label>
+                  <select value={formData.Result} onChange={e => setFormData({...formData, Result: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="">— Select Result —</option>
+                    {['Excellent','Good','Fair','Poor','Control'].map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Timing</label>
+                  <select value={formData.ApplicationTiming} onChange={e => setFormData({...formData, ApplicationTiming: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="">— Select Timing —</option>
+                    {['PRE', 'E-POST', 'POST', 'L-POST'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weed Growth Stage</label>
+                  <input type="text" value={formData.WeedGrowthStage} onChange={e => setFormData({...formData, WeedGrowthStage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 2-4 leaf stage, tillering" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Dosage / Treatment</label>
+                  <input type="text" value={formData.Dosage} onChange={e => setFormData({...formData, Dosage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="e.g. 1500 ml/ha" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Result</label>
+                  <select value={formData.Result} onChange={e => setFormData({...formData, Result: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    <option value="">— Select Result —</option>
+                    {catConfig.resultRatings.map(r => <option key={r} value={r}>{r}</option>)}
+                    <option value="Control">Control</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Timing</label>
+                  <select value={formData.ApplicationTiming} onChange={e => setFormData({...formData, ApplicationTiming: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    <option value="">— Select Timing —</option>
+                    {catConfig.applicationTimings.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                {catConfig.specificFields.map(field => (
+                  <div key={field.key}>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">{field.label}</label>
+                    {field.type === 'select' ? (
+                      <select value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                        <option value="">— Select {field.label} —</option>
+                        {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    ) : (
+                      <input type={field.type} step={field.type === 'number' ? 'any' : undefined} value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder={field.placeholder || ''} />
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
           </div>
 
           {/* Weather */}
@@ -2838,23 +2877,57 @@ If none are present, write "None".`;
               {detailTab === 'info' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
-                    {[
-                      ['Investigator', detailTrial.InvestigatorName, User],
-                      ['Dosage', detailTrial.Dosage, FlaskConical],
-                      ['Weed Species', detailTrial.WeedSpecies, Activity],
-                      ['Project', projects.find(p => p.ID === detailTrial.ProjectID)?.Name || '—', FolderPlus],
-                      ['Replication', detailTrial.Replication || '—', Hash],
-                      ['Plot #', detailTrial.PlotNumber || '—', Hash],
-                      ['App Timing', detailTrial.ApplicationTiming || '—', Clock],
-                      ['Growth Stage', detailTrial.WeedGrowthStage || '—', Leaf],
-                      ['Control Days', (() => { if (detailTrial.FinalControlDuration) return `${detailTrial.FinalControlDuration}d (finalized)`; if (!detailTrial.Date) return '—'; const d = Math.max(0, Math.round((new Date() - new Date(detailTrial.Date)) / 86400000)); return `${d}d (running)`; })(), Clock],
-                      ...(detailTrial.YieldValue ? [['Yield (t/ha)', detailTrial.YieldValue, Leaf]] : []),
-                    ].map(([label, val, Icon]) => (
-                      <div key={label} className="bg-slate-50 rounded-lg p-3">
-                        <div className="flex items-center gap-1.5 mb-1"><Icon className="w-3.5 h-3.5 text-slate-400" /><span className="text-xs font-bold text-slate-500 uppercase">{label}</span></div>
-                        <p className="text-sm font-semibold text-slate-800">{val || '—'}</p>
-                      </div>
-                    ))}
+                    {(() => {
+                      const infoFields = [
+                        ['Investigator', detailTrial.InvestigatorName, User],
+                        ['Dosage', detailTrial.Dosage, FlaskConical],
+                      ];
+                      
+                      if (activeCategory === 'herbicide') {
+                        infoFields.push(['Weed Species', detailTrial.WeedSpecies, Activity]);
+                      } else {
+                        infoFields.push([catConfig.targetLabel, detailTrial[catConfig.targetField] || detailTrial.WeedSpecies || '—', Activity]);
+                      }
+
+                      infoFields.push(
+                        ['Project', projects.find(p => p.ID === detailTrial.ProjectID)?.Name || '—', FolderPlus],
+                        ['Replication', detailTrial.Replication || '—', Hash],
+                        ['Plot #', detailTrial.PlotNumber || '—', Hash]
+                      );
+
+                      if (activeCategory === 'herbicide') {
+                        infoFields.push(
+                          ['App Timing', detailTrial.ApplicationTiming || '—', Clock],
+                          ['Growth Stage', detailTrial.WeedGrowthStage || '—', Leaf]
+                        );
+                      } else {
+                        const timingOpt = catConfig.applicationTimings.find(t => t.value === detailTrial.ApplicationTiming);
+                        infoFields.push(
+                          ['App Timing', timingOpt ? timingOpt.label : (detailTrial.ApplicationTiming || '—'), Clock]
+                        );
+                        catConfig.specificFields.forEach(f => {
+                          if (f.key !== catConfig.targetField && f.key !== 'YieldValue') {
+                            infoFields.push([f.label, detailTrial[f.key] || '—', Leaf]);
+                          }
+                        });
+                      }
+
+                      infoFields.push(
+                        ['Control Days', (() => { if (detailTrial.FinalControlDuration) return `${detailTrial.FinalControlDuration}d (finalized)`; if (!detailTrial.Date) return '—'; const d = Math.max(0, Math.round((new Date() - new Date(detailTrial.Date)) / 86400000)); return `${d}d (running)`; })(), Clock]
+                      );
+
+                      if (detailTrial.YieldValue) {
+                        const yieldLabel = activeCategory === 'herbicide' ? 'Yield (t/ha)' : (catConfig.specificFields.find(f => f.key === 'YieldValue')?.label || 'Yield');
+                        infoFields.push([yieldLabel, detailTrial.YieldValue, Leaf]);
+                      }
+
+                      return infoFields.map(([label, val, Icon]) => (
+                        <div key={label} className="bg-slate-50 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 mb-1"><Icon className="w-3.5 h-3.5 text-slate-400" /><span className="text-xs font-bold text-slate-500 uppercase">{label}</span></div>
+                          <p className="text-sm font-semibold text-slate-800">{val || '—'}</p>
+                        </div>
+                      ));
+                    })()}
                   </div>
                   {detailTrial.Notes && (
                     <div className="bg-slate-50 rounded-lg p-3">
@@ -3914,7 +3987,7 @@ If none are present, write "None".`;
           {/* Weed Cover + AI Detection */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase">Total Weed Cover %</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase">{activeCategory === 'herbicide' ? 'Total Weed Cover %' : catConfig.primaryMetric.label}</label>
               <div className="flex items-center gap-2">
                 <input ref={obsPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => {
                   const f = e.target.files?.[0];
@@ -3931,7 +4004,7 @@ If none are present, write "None".`;
                   disabled={detectingCover}
                   className="flex items-center gap-1 text-xs px-2 py-1 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 font-semibold disabled:opacity-50">
                   {detectingCover ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
-                  {detectingCover ? 'Detecting…' : 'Detect from Photo'}
+                  {detectingCover ? `Detect from Photo` : `Detect from Photo`}
                 </button>
               </div>
             </div>
@@ -3948,26 +4021,26 @@ If none are present, write "None".`;
           {/* Per-species weed details */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Leaf className="w-3.5 h-3.5" />Weed Species Breakdown</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Leaf className="w-3.5 h-3.5" />{activeCategory === 'herbicide' ? 'Weed Species Breakdown' : `${catConfig.targetLabel} Breakdown`}</label>
               <button type="button" onClick={() => setObsForm(prev => ({ ...prev, weedDetails: [...prev.weedDetails, { species: '', cover: '', status: '', notes: '' }] }))}
                 className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded font-semibold hover:bg-emerald-100 flex items-center gap-1">
-                <Plus className="w-3 h-3" /> Add Species
+                <Plus className="w-3 h-3" /> Add {activeCategory === 'herbicide' ? 'Species' : catConfig.targetLabel}
               </button>
             </div>
             {obsForm.weedDetails.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">No species added — total cover only will be saved.</p>
+              <p className="text-xs text-slate-400 italic">No {activeCategory === 'herbicide' ? 'species' : catConfig.targetLabel.toLowerCase()} added — total {activeCategory === 'herbicide' ? 'cover' : catConfig.primaryMetric.label.toLowerCase()} only will be saved.</p>
             ) : (
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {obsForm.weedDetails.map((wd, wi) => (
                   <div key={wi} className="grid grid-cols-12 gap-1.5 items-center bg-slate-50 rounded-lg p-2">
                     <input value={wd.species} onChange={e => { const d=[...obsForm.weedDetails]; d[wi]={...d[wi],species:e.target.value}; setObsForm(p=>({...p,weedDetails:d})); }}
-                      placeholder="Species name" className="col-span-5 px-2 py-1.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                      placeholder={activeCategory === 'herbicide' ? 'Species name' : `${catConfig.targetLabel} name`} className="col-span-5 px-2 py-1.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-emerald-400" />
                     <input type="number" min="0" max="100" value={wd.cover} onChange={e => { const d=[...obsForm.weedDetails]; d[wi]={...d[wi],cover:e.target.value}; setObsForm(p=>({...p,weedDetails:d})); }}
                       placeholder="%" className="col-span-2 px-2 py-1.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-emerald-400" />
                     <select value={wd.status} onChange={e => { const d=[...obsForm.weedDetails]; d[wi]={...d[wi],status:e.target.value}; setObsForm(p=>({...p,weedDetails:d})); }}
                       className="col-span-3 px-1 py-1.5 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400">
                       <option value="">Status</option>
-                      {['Controlled','Burndown','Re-emerged','Resistant','Unaffected','Emerged','Not detected','Suppressed','Top-kill','Regrowth','Eliminated'].map(s=><option key={s} value={s}>{s}</option>)}
+                      {['Controlled','Burndown','Re-emerged','Resistant','Unaffected','Emerged','Not detected','Suppressed','Top-kill','Regrowth','Eliminated','Healthy','Symptomatic','Deficient','Stressed','Vigorous','Recovered'].map(s=><option key={s} value={s}>{s}</option>)}
                     </select>
                     <button type="button" onClick={() => { const d=[...obsForm.weedDetails]; d.splice(wi,1); setObsForm(p=>({...p,weedDetails:d})); }}
                       className="col-span-2 flex justify-center text-slate-400 hover:text-red-500 p-1">

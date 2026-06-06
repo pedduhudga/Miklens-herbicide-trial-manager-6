@@ -1665,24 +1665,48 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   {detailTab === 'info' && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {[
-                          ['Investigator', activeSubTrial.InvestigatorName, Info],
-                          ['Dosage', activeSubTrial.Dosage, SlidersHorizontal],
-                          ['Weeds targeted', activeSubTrial.WeedSpecies, Leaf],
-                          ['Replication', activeSubTrial.Replication, Hash],
-                          ['Plot #', activeSubTrial.PlotNumber, Hash],
-                          ['App Timing', activeSubTrial.ApplicationTiming, Clock],
-                          ['Growth Stage', activeSubTrial.WeedGrowthStage, Leaf],
-                          ['Soil Texture', activeSubTrial.SoilTexture, Compass]
-                        ].map(([label, val, Icon]) => (
-                          <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Icon className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="text-[9px] font-bold text-slate-400 uppercase">{label}</span>
+                        {(() => {
+                          const subInfoFields = [
+                            ['Investigator', activeSubTrial.InvestigatorName, Info],
+                            ['Dosage', activeSubTrial.Dosage, SlidersHorizontal],
+                          ];
+                          if (activeCategory === 'herbicide') {
+                            subInfoFields.push(['Weeds targeted', activeSubTrial.WeedSpecies, Leaf]);
+                          } else {
+                            subInfoFields.push([config.targetLabel, activeSubTrial[config.targetField] || activeSubTrial.WeedSpecies || '—', Leaf]);
+                          }
+                          subInfoFields.push(
+                            ['Replication', activeSubTrial.Replication, Hash],
+                            ['Plot #', activeSubTrial.PlotNumber, Hash]
+                          );
+                          if (activeCategory === 'herbicide') {
+                            subInfoFields.push(
+                              ['App Timing', activeSubTrial.ApplicationTiming, Clock],
+                              ['Growth Stage', activeSubTrial.WeedGrowthStage, Leaf]
+                            );
+                          } else {
+                            const timingOpt = config.applicationTimings.find(t => t.value === activeSubTrial.ApplicationTiming);
+                            subInfoFields.push(
+                              ['App Timing', timingOpt ? timingOpt.label : (activeSubTrial.ApplicationTiming || '—'), Clock]
+                            );
+                            config.specificFields.forEach(f => {
+                              if (f.key !== config.targetField && f.key !== 'YieldValue') {
+                                subInfoFields.push([f.label, activeSubTrial[f.key] || '—', Leaf]);
+                              }
+                            });
+                          }
+                          subInfoFields.push(['Soil Texture', activeSubTrial.SoilTexture, Compass]);
+
+                          return subInfoFields.map(([label, val, Icon]) => (
+                            <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <Icon className="w-3.5 h-3.5 text-slate-400" />
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">{label}</span>
+                              </div>
+                              <p className="font-bold text-slate-800">{val || '—'}</p>
                             </div>
-                            <p className="font-bold text-slate-800">{val || '—'}</p>
-                          </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
 
                       {activeSubTrial.Notes && (
@@ -2719,10 +2743,12 @@ export default function LargeScaleTrials({ onMenuClick }) {
                 onChange={e => setSubTrialForm(p => ({ ...p, ApplicationTiming: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-lg focus:outline-none bg-white text-xs"
               >
-                <option value="PRE">PRE</option>
-                <option value="E-POST">E-POST</option>
-                <option value="POST">POST</option>
-                <option value="L-POST">L-POST</option>
+                <option value="">-- Choose Timing --</option>
+                {activeCategory === 'herbicide' ? (
+                  ['PRE', 'E-POST', 'POST', 'L-POST'].map(t => <option key={t} value={t}>{t}</option>)
+                ) : (
+                  config.applicationTimings.map(t => <option key={t.value} value={t.value}>{t.label}</option>)
+                )}
               </select>
             </div>
           </div>
@@ -2888,17 +2914,43 @@ export default function LargeScaleTrials({ onMenuClick }) {
               <input
                 type="text"
                 placeholder={`e.g. Target ${config.targetLabel}`}
-                value={subTrialForm.WeedSpecies}
+                value={subTrialForm.WeedSpecies || ''}
                 onChange={e => setSubTrialForm(p => ({ ...p, WeedSpecies: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-lg focus:outline-none"
               />
             </div>
+            {activeCategory !== 'herbicide' && config.specificFields.map(field => {
+              if (field.key === config.targetField) return null;
+              return (
+                <div key={field.key}>
+                  <label className="block text-slate-600 font-bold mb-1">{field.label}</label>
+                  {field.type === 'select' ? (
+                    <select
+                      value={subTrialForm[field.key] || ''}
+                      onChange={e => setSubTrialForm(p => ({ ...p, [field.key]: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none bg-white text-xs"
+                    >
+                      <option value="">-- Choose {field.label} --</option>
+                      {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type}
+                      placeholder={field.placeholder || ''}
+                      value={subTrialForm[field.key] || ''}
+                      onChange={e => setSubTrialForm(p => ({ ...p, [field.key]: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none"
+                    />
+                  )}
+                </div>
+              );
+            })}
             <div>
               <label className="block text-slate-600 font-bold mb-1">Spot Location Description</label>
               <input
                 type="text"
                 placeholder="e.g. East Boundary Fence"
-                value={subTrialForm.Location}
+                value={subTrialForm.Location || ''}
                 onChange={e => setSubTrialForm(p => ({ ...p, Location: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-lg focus:outline-none"
               />
