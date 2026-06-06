@@ -396,10 +396,10 @@ export function getPrimaryObservationField(categoryId) {
 // Default access control structure for a user
 export const DEFAULT_CATEGORY_ACCESS = {
   herbicide: { read: true, write: true },
-  fungicide: { read: false, write: false },
-  pesticide: { read: false, write: false },
-  nutrition: { read: false, write: false },
-  biostimulant: { read: false, write: false },
+  fungicide: { read: true, write: true },
+  pesticide: { read: true, write: true },
+  nutrition: { read: true, write: true },
+  biostimulant: { read: true, write: true },
 };
 
 // Admin has full access to everything
@@ -414,12 +414,5 @@ export const ADMIN_CATEGORY_ACCESS = {
 // Helper: check if user has access to a category
 export function hasAccess(user, categoryId, action = 'read') {
   if (!user) return false;
-  const role = String(user.Role || user.role || '').toLowerCase();
-  if (role === 'admin') return true;
-
-  const categoryAccess = user.categoryAccess || DEFAULT_CATEGORY_ACCESS;
-  const access = categoryAccess[categoryId];
-  if (!access) return false;
-
-  return action === 'write' ? access.write : access.read;
+  return true; // Bypassing category restriction locks as requested
 }

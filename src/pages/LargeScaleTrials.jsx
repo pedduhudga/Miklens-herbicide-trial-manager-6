@@ -24,6 +24,7 @@ import { getAPIKeys, analyzePhoto } from '../services/multiProviderAI.js';
 import { calculateDAA, toDatetimeLocal, formatDate, formatDateTime, formatPhotoDate } from '../utils/dateUtils.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
+import { getCategoryConfig } from '../utils/categoryConfig.js';
 import {
   generateComprehensivePdf,
   generateScientificReport,
@@ -92,6 +93,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
 
   const activeCategory = state.activeCategory || 'herbicide';
+  const config = getCategoryConfig(activeCategory);
 
   // Master projects filter
   const masterProjects = useMemo(() => {
