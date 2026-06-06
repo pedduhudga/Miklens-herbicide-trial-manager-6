@@ -56,13 +56,13 @@ export function isFirebaseReady() {
  * Firestore collection names — legacy (backward-compatible, map to herbicide).
  */
 export const COLLECTIONS = {
-  // Legacy names → point to herbicide collections
-  trials: 'herbicide_trials',
-  formulations: 'herbicide_formulations',
-  ingredients: 'herbicide_ingredients',
+  // Legacy names → point to original collections to preserve existing data
+  trials: 'trials',
+  formulations: 'formulations',
+  ingredients: 'ingredients',
   organisations: 'organisations',
-  projects: 'herbicide_projects',
-  blocks: 'herbicide_blocks',
+  projects: 'projects',
+  blocks: 'blocks',
   users: 'users',
   settings: 'settings',
   analysisLog: 'analysisLog',
@@ -86,5 +86,10 @@ export function getCategoryCollection(categoryId, collectionType) {
   // Category-specific collections
   const validCategories = ['herbicide', 'fungicide', 'pesticide', 'nutrition', 'biostimulant'];
   const cat = validCategories.includes(categoryId) ? categoryId : 'herbicide';
+  
+  // Use legacy non-prefixed collection names for Herbicide category to keep existing user data
+  if (cat === 'herbicide') {
+    return collectionType;
+  }
   return `${cat}_${collectionType}`;
 }
