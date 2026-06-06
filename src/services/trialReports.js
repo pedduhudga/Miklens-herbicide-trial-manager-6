@@ -6,11 +6,44 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import pptxgen from 'pptxgenjs';
 import { formatPhotoDate, formatDate, formatDateTime } from '../utils/dateUtils.js';
+import { getCategoryConfig, calculateEfficacy, getPrimaryObservationField } from '../utils/categoryConfig.js';
 
 // ── COLORS ────────────────────────────────────────────────────────────────────
 const TEAL    = [13, 148, 136];
 const DARK    = [44, 62, 80];
 const AMBER50 = [255, 251, 235];
+
+// ── REPORT CONFIG UTILS ───────────────────────────────────────────────────────
+function getReportConfig(trial) {
+  const cat = trial?.Category || 'herbicide';
+  const config = getCategoryConfig(cat);
+  
+  // Custom colors for reports based on category configuration
+  let primaryColor = TEAL;
+  if (cat === 'fungicide') primaryColor = [79, 70, 229]; // Indigo
+  else if (cat === 'pesticide') primaryColor = [220, 38, 38]; // Red
+  else if (cat === 'nutrition') primaryColor = [217, 119, 6]; // Amber/Orange
+  else if (cat === 'biostimulant') primaryColor = [13, 148, 136]; // Teal
+  
+  const targetLabel = config.targetLabel || 'Weed Species';
+  const targetValue = trial ? (trial[config.targetField] || trial.WeedSpecies || 'N/A') : 'N/A';
+  const primaryMetricLabel = config.primaryMetric?.label || 'Weed Control Efficiency';
+  const primaryMetricKey = config.primaryMetric?.key || 'WCE';
+  const primaryMetricUnit = config.primaryMetric?.unit || '%';
+  const primaryField = getPrimaryObservationField(cat);
+  
+  return {
+    cat,
+    config,
+    primaryColor,
+    targetLabel,
+    targetValue,
+    primaryMetricLabel,
+    primaryMetricKey,
+    primaryMetricUnit,
+    primaryField,
+  };
+}
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
 function toast(msg, type = 'success') {
@@ -23,7 +56,8 @@ function safeJsonParse(val, fallback = []) {
 }
 function validateEfficacy(data) {
   if (!Array.isArray(data)) return [];
-  return data.filter(o => o && (o.daa !== undefined || o.weedCover !== undefined));
+  // For other categories, we check for presence of daa or non-undefined target observation properties
+  return data.filter(o => o && (o.daa !== undefined || o.weedCover !== undefined || o.diseaseSeverity !== undefined || o.pestCount !== undefined || o.plantHeight !== undefined));
 }
 function fmtDate(d) {
   if (!d) return 'N/A';
@@ -88,48 +122,107 @@ function addImgSafe(doc, data, x, y, w, h) {
 function createDoc() {
   return new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
 }
-function calcWCE(efficacy) {
+function calcWCE(efficacy, categoryId = 'herbicide', trial = null) {
+  const config = getCategoryConfig(categoryId);
+  const primaryField = getPrimaryObservationField(categoryId);
+  const isPositiveMetric = (categoryId === 'nutrition' || categoryId === 'biostimulant');
   const sp = {};
+  
+  const targetName = trial ? (trial[config.targetField] || trial.WeedSpecies || 'Total') : 'Total';
+
   efficacy.forEach(obs => {
-    (obs.weedDetails || [{ species: 'Total', cover: obs.weedCover ?? 0 }]).forEach(wd => {
-      const k = (wd.species || 'Total').trim();
+    if (categoryId === 'herbicide' && obs.weedDetails && obs.weedDetails.length > 0) {
+      obs.weedDetails.forEach(wd => {
+        const k = (wd.species || 'Total').trim();
+        if (!sp[k]) sp[k] = [];
+        sp[k].push({ daa: obs.daa, value: wd.cover ?? obs.weedCover ?? 0 });
+      });
+    } else {
+      const k = targetName;
       if (!sp[k]) sp[k] = [];
-      sp[k].push({ daa: obs.daa, cover: wd.cover ?? obs.weedCover ?? 0 });
-    });
+      const val = obs[primaryField] ?? obs.weedCover ?? 0;
+      sp[k].push({ daa: obs.daa, value: val });
+    }
   });
+
   return Object.entries(sp).map(([species, pts]) => {
     const sorted = pts.sort((a, b) => a.daa - b.daa);
-    const first = sorted[0]?.cover ?? 0;
-    const last  = sorted[sorted.length - 1]?.cover ?? 0;
-    const wce   = first > 0 ? Math.max(0, ((first - last) / first) * 100) : 0;
-    return { species, initialCover: first, finalCover: last, wce };
+    const first = sorted[0]?.value ?? 0;
+    const last  = sorted[sorted.length - 1]?.value ?? 0;
+    
+    let val = 0;
+    if (isPositiveMetric) {
+      val = first > 0 ? ((last - first) / first) * 100 : 0;
+    } else {
+      val = first > 0 ? ((first - last) / first) * 100 : 0;
+    }
+    return {
+      species: species,
+      initialCover: first,
+      finalCover: last,
+      wce: Math.max(0, val)
+    };
   });
 }
 function coverSummary(efficacy, trial) {
+  const categoryId = trial?.Category || 'herbicide';
+  const config = getCategoryConfig(categoryId);
+  const primaryField = getPrimaryObservationField(categoryId);
+  const metricLabel = config.primaryMetric?.label || 'Efficacy';
+  const metricUnit = config.primaryMetric?.unit || '%';
+  const isPositiveMetric = (categoryId === 'nutrition' || categoryId === 'biostimulant');
+
   const s = [...efficacy].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
   if (s.length < 2) return trial.Conclusion || 'Insufficient observations for trajectory analysis.';
-  const first = s[0].weedCover ?? 0;
-  const last  = s[s.length - 1].weedCover ?? 0;
-  const min   = Math.min(...s.map(o => o.weedCover ?? 100));
-  const minD  = s.find(o => (o.weedCover ?? 100) === min)?.daa ?? 0;
-  const dur   = (s[s.length - 1].daa ?? 0) - (s[0].daa ?? 0);
-  return `Aggregate weed cover declined from ${first}% at baseline to a minimum of ${min}% at DAA ${minD}, and measured ${last}% at DAA ${s[s.length - 1].daa ?? 0}. The ${dur}-day observation window indicates ${last <= min + 5 ? 'sustained suppression' : 'early knockdown with partial regrowth'} following application.`;
+  
+  const first = s[0][primaryField] ?? s[0].weedCover ?? 0;
+  const last  = s[s.length - 1][primaryField] ?? s[s.length - 1].weedCover ?? 0;
+  const valList = s.map(o => o[primaryField] ?? o.weedCover ?? 0);
+  
+  if (isPositiveMetric) {
+    const max = Math.max(...valList);
+    const maxD = s.find(o => (o[primaryField] ?? o.weedCover ?? 0) === max)?.daa ?? 0;
+    const dur = (s[s.length - 1].daa ?? 0) - (s[0].daa ?? 0);
+    return `Aggregate growth/metric measured ${first}${metricUnit} at baseline to a maximum of ${max}${metricUnit} at DAA ${maxD}, and measured ${last}${metricUnit} at DAA ${s[s.length - 1].daa ?? 0}. The ${dur}-day observation window indicates ${last >= max - 5 ? 'sustained enhancement' : 'early growth stimulus with stabilization'} following application.`;
+  } else {
+    const min = Math.min(...valList.length ? valList : [100]);
+    const minD = s.find(o => (o[primaryField] ?? o.weedCover ?? 100) === min)?.daa ?? 0;
+    const dur = (s[s.length - 1].daa ?? 0) - (s[0].daa ?? 0);
+    return `Aggregate disease/pest severity declined from ${first}${metricUnit} at baseline to a minimum of ${min}${metricUnit} at DAA ${minD}, and measured ${last}${metricUnit} at DAA ${s[s.length - 1].daa ?? 0}. The ${dur}-day observation window indicates ${last <= min + 5 ? 'sustained suppression' : 'early knockdown with partial recovery'} following application.`;
+  }
 }
 function methodologySentence(trial, trialDate) {
   const p = [];
+  const categoryId = trial?.Category || 'herbicide';
+  const config = getCategoryConfig(categoryId);
+  const targetValue = trial[config.targetField] || trial.WeedSpecies;
+
   if (trial.FormulationName) p.push(trial.FormulationName);
   if (trial.Dosage) p.push(`at ${trial.Dosage}`);
   if (trialDate) p.push(`was applied on ${trialDate}`);
   if (trial.Location) p.push(`at ${trial.Location}`);
-  if (trial.WeedSpecies) p.push(`targeting ${trial.WeedSpecies}`);
+  if (targetValue) p.push(`targeting ${targetValue}`);
   return p.join(' ') + (p.length ? '.' : '');
 }
-function timelineRows(efficacy) {
+function timelineRows(efficacy, categoryId = 'herbicide', trial = null) {
+  const config = getCategoryConfig(categoryId);
+  const primaryField = getPrimaryObservationField(categoryId);
+  const targetValue = trial ? (trial[config.targetField] || trial.WeedSpecies || 'Total') : 'Total';
+
   return efficacy.map(o => {
-    const c = o.weedCover ?? 0;
-    const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
-    const species = (o.weedDetails || []).map(w => w.species).filter(Boolean).join(', ') || 'Total';
-    return [String(o.daa ?? '—'), species, status, o.notes || '—'];
+    if (categoryId === 'herbicide') {
+      const c = o.weedCover ?? 0;
+      const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
+      const species = (o.weedDetails || []).map(w => w.species).filter(Boolean).join(', ') || 'Total';
+      return [String(o.daa ?? '—'), species, status, o.notes || '—'];
+    } else {
+      const val = o[primaryField] ?? o.weedCover ?? 0;
+      const rating = val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor';
+      const isPositive = (categoryId === 'nutrition' || categoryId === 'biostimulant');
+      const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
+      const status = isPositive ? ratingPositive : rating;
+      return [String(o.daa ?? '—'), targetValue, `${val}${config.primaryMetric?.unit || ''}`, status, o.notes || '—'];
+    }
   });
 }
 function pdfAddFooter(doc, label) {
@@ -143,21 +236,21 @@ function pdfAddFooter(doc, label) {
   }
   doc.setTextColor(0, 0, 0);
 }
-function pdfHeader(doc, title, subtitle) {
+function pdfHeader(doc, title, subtitle, color = TEAL) {
   const pw = doc.internal.pageSize.getWidth();
-  doc.setFillColor(...TEAL); doc.rect(0, 0, pw, 40, 'F');
+  doc.setFillColor(...color); doc.rect(0, 0, pw, 40, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22); doc.setFont(undefined, 'bold');
   doc.text(title, pw / 2, 22, { align: 'center' });
   if (subtitle) { doc.setFontSize(12); doc.setFont(undefined, 'normal'); doc.text(subtitle, pw / 2, 32, { align: 'center' }); }
   doc.setTextColor(0, 0, 0);
 }
-function secHeading(doc, text, y, ph, fs = 14) {
+function secHeading(doc, text, y, ph, fs = 14, color = TEAL) {
   if (y + 16 > ph - 20) { doc.addPage(); y = 20; }
   const pw = doc.internal.pageSize.getWidth();
-  doc.setFontSize(fs); doc.setFont(undefined, 'bold'); doc.setTextColor(...TEAL);
+  doc.setFontSize(fs); doc.setFont(undefined, 'bold'); doc.setTextColor(...color);
   doc.text(text, 14, y);
-  doc.setDrawColor(...TEAL); doc.setLineWidth(0.4);
+  doc.setDrawColor(...color); doc.setLineWidth(0.4);
   doc.line(14, y + 2, pw - 14, y + 2);
   doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal'); doc.setFontSize(10);
   return y + 10;
@@ -262,7 +355,10 @@ async function addWeedIdSection(doc, weedPhotos, trial, y, ph) {
 export async function generateComprehensivePdf(trial, options = {}) {
   const { withIngredients = true, withWeeds = true, withTimeline = true,
           showPhotoDates = true, formulations = [] } = options;
-  toast('Generating Comprehensive PDF…', 'info');
+  const repConfig = getReportConfig(trial);
+  const categoryId = repConfig.cat;
+  
+  toast(`Generating Comprehensive ${repConfig.config.name} PDF…`, 'info');
   const doc      = createDoc();
   const pw       = doc.internal.pageSize.getWidth();
   const ph       = doc.internal.pageSize.getHeight();
@@ -272,8 +368,11 @@ export async function generateComprehensivePdf(trial, options = {}) {
   const soil     = safeJsonParse(trial.SoilDataJSON, null);
   const trialDate = fmtDate(trial.Date);
 
-  pdfHeader(doc, 'Herbicide Trial Report', trial.FormulationName);
+  pdfHeader(doc, `${repConfig.config.name} Trial Report`, trial.FormulationName);
   let y = 50;
+
+  // Set category colors dynamically
+  const primaryColor = repConfig.primaryColor;
 
   // 2-column metadata
   doc.setFontSize(10);
@@ -288,10 +387,10 @@ export async function generateComprehensivePdf(trial, options = {}) {
   meta2.forEach(([l, r]) => { doc.text(l, lx, y); if (r) doc.text(r, rx, y); y += 6; });
   y += 2;
 
-  if (trial.WeedSpecies?.trim()) {
-    doc.setFont(undefined, 'bold'); doc.text('Target Weed Species:', lx, y); y += 5;
+  if (repConfig.targetValue?.trim() && repConfig.targetValue !== 'N/A') {
+    doc.setFont(undefined, 'bold'); doc.text(`Target ${repConfig.targetLabel}:`, lx, y); y += 5;
     doc.setFont(undefined, 'normal');
-    const wl = doc.splitTextToSize(trial.WeedSpecies, pw - 28);
+    const wl = doc.splitTextToSize(repConfig.targetValue, pw - 28);
     doc.text(wl, lx, y); y += wl.length * 5 + 5;
   }
 
@@ -334,26 +433,26 @@ export async function generateComprehensivePdf(trial, options = {}) {
     doc.setFontSize(9); doc.text(cls, 14, y, { maxWidth: pw - 28 });
     y += cls.length * 5 + 8; doc.setFontSize(10);
   }
-  const wce = calcWCE(efficacy);
+  const wce = calcWCE(efficacy, categoryId, trial);
   if (wce.length) {
     if (y + 30 > ph - 20) { doc.addPage(); y = 20; }
     autoTable(doc, {
       startY: y,
-      head: [['Species', 'Initial Cover (%)', 'Final Cover (%)', 'WCE (%)']],
+      head: [[repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} (${repConfig.primaryMetricUnit})`]],
       body: wce.map(w => [w.species, w.initialCover.toFixed(1), w.finalCover.toFixed(1), w.wce.toFixed(1)]),
-      headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 9 }
+      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 9 }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 10;
   }
 
   // Timeline
   if (withTimeline && efficacy.length) {
-    y = secHeading(doc, '4. Weed Status Timeline', y, ph);
+    y = secHeading(doc, `4. ${repConfig.config.name} Status Timeline`, y, ph);
     autoTable(doc, {
       startY: y,
-      head: [['DA-A', 'Species', 'Status', 'Notes']],
-      body: timelineRows(efficacy),
-      headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 8 }
+      head: [['DA-A', repConfig.targetLabel, repConfig.primaryMetricLabel, 'Status', 'Notes']],
+      body: timelineRows(efficacy, categoryId, trial),
+      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 12;
   }
@@ -371,7 +470,7 @@ export async function generateComprehensivePdf(trial, options = {}) {
         startY: y,
         head: [['Ingredient', 'Quantity', 'Unit']],
         body: ings.map(i => [i.name, i.quantity, i.unit]),
-        headStyles: { fillColor: TEAL }, theme: 'striped'
+        headStyles: { fillColor: primaryColor }, theme: 'striped'
       });
       y = (doc.lastAutoTable?.finalY ?? y) + 10;
     }
@@ -383,15 +482,15 @@ export async function generateComprehensivePdf(trial, options = {}) {
     y = await addPhotoGrid(doc, photos, y, ph, 50, showPhotoDates);
   }
 
-  // Weed ID
-  if (withWeeds) y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
+  // Weed ID (only for herbicide)
+  if (withWeeds && categoryId === 'herbicide') y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
 
   // Executive Brief
   doc.addPage(); y = 20;
   y = secHeading(doc, 'One-Page Executive Brief', y, ph, 16);
   const brief = [
     ['Treatment', trial.FormulationName || '—'],
-    ['Objective', `Assess post-application weed suppression of ${trial.FormulationName || 'treatment'} at ${trial.Location || 'test site'}.`],
+    ['Objective', `Assess post-application efficacy and performance of ${trial.FormulationName || 'treatment'} targeting ${repConfig.targetValue} at ${trial.Location || 'test site'}.`],
     ['Key Finding', summary],
     ['Recommendation', (trial.Result === 'Excellent' || trial.Result === 'Good') ? 'Recommend for continued evaluation at expanded sites.' : 'Further evaluation required under varied conditions.'],
     ['Risk & Context', trial.Temperature ? `Applied under ${trial.Temperature}°C, ${trial.Humidity || '—'}% RH, ${trial.Windspeed || '0'} km/h wind.` : 'Weather conditions not recorded.'],
@@ -415,7 +514,10 @@ export async function generateComprehensivePdf(trial, options = {}) {
 // ═════════════════════════════════════════════════════════════════════════════
 export async function generateScientificReport(trial, options = {}) {
   const { withIngredients = false, aiSummary = '', showPhotoDates = true, formulations = [] } = options;
-  toast('Generating Scientific Report…', 'info');
+  const repConfig = getReportConfig(trial);
+  const categoryId = repConfig.cat;
+
+  toast(`Generating Scientific ${repConfig.config.name} Report…`, 'info');
   const doc      = createDoc();
   const pw       = doc.internal.pageSize.getWidth();
   const ph       = doc.internal.pageSize.getHeight();
@@ -426,11 +528,13 @@ export async function generateScientificReport(trial, options = {}) {
   const summary    = coverSummary(efficacy, trial);
   const methodology = methodologySentence(trial, trialDate);
 
+  const primaryColor = repConfig.primaryColor;
+
   // Header
-  doc.setFillColor(...TEAL); doc.rect(0, 0, pw, 45, 'F');
+  doc.setFillColor(...primaryColor); doc.rect(0, 0, pw, 45, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24); doc.setFont(undefined, 'bold');
-  doc.text('SCIENTIFIC TRIAL REPORT', pw / 2, 22, { align: 'center' });
+  doc.setFontSize(20); doc.setFont(undefined, 'bold');
+  doc.text(`SCIENTIFIC ${repConfig.config.name.toUpperCase()} TRIAL REPORT`, pw / 2, 22, { align: 'center' });
   doc.setFontSize(13); doc.setFont(undefined, 'normal');
   doc.text(`Trial Protocol: ${trial.FormulationName}`, pw / 2, 34, { align: 'center' });
   doc.setTextColor(0, 0, 0);
@@ -441,7 +545,7 @@ export async function generateScientificReport(trial, options = {}) {
     ['Investigator', trial.InvestigatorName || 'N/A', 'Date', trialDate],
     ['Location', trial.Location || 'N/A', 'Dosage', trial.Dosage || 'N/A'],
     ['Status', (trial.IsCompleted === true || trial.IsCompleted === 'true') ? 'Finalized' : 'Ongoing', 'Result', trial.Result || 'Pending'],
-    ['Weed Species', trial.WeedSpecies || 'N/A', 'Replication', trial.Replication || 'N/A'],
+    [repConfig.targetLabel, repConfig.targetValue, 'Replication', trial.Replication || 'N/A'],
   ];
   autoTable(doc, {
     startY: y, body: metaRows, theme: 'plain',
@@ -496,13 +600,13 @@ export async function generateScientificReport(trial, options = {}) {
 
   // Efficacy
   y = secHeading(doc, '3. Efficacy Analysis', y, ph);
-  const wce = calcWCE(efficacy);
+  const wce = calcWCE(efficacy, categoryId, trial);
   if (wce.length) {
     autoTable(doc, {
       startY: y,
-      head: [['Species', 'Initial Cover (%)', 'Final Cover (%)', 'WCE (%)']],
+      head: [[repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} (${repConfig.primaryMetricUnit})`]],
       body: wce.map(w => [w.species, w.initialCover.toFixed(1), w.finalCover.toFixed(1), w.wce.toFixed(1)]),
-      headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 9 }
+      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 9 }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 10;
   } else {
@@ -513,12 +617,12 @@ export async function generateScientificReport(trial, options = {}) {
 
   // Timeline
   if (efficacy.length) {
-    y = secHeading(doc, '4. Weed Status Timeline', y, ph);
+    y = secHeading(doc, `4. ${repConfig.config.name} Status Timeline`, y, ph);
     autoTable(doc, {
       startY: y,
-      head: [['DA-A', 'Species', 'Status', 'Notes']],
-      body: timelineRows(efficacy),
-      headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 8 }
+      head: [['DA-A', repConfig.targetLabel, repConfig.primaryMetricLabel, 'Status', 'Notes']],
+      body: timelineRows(efficacy, categoryId, trial),
+      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 12;
   }
@@ -531,7 +635,7 @@ export async function generateScientificReport(trial, options = {}) {
     const ings = safeJsonParse(form?.IngredientsJSON, []);
     if (ings.length) {
       y = secHeading(doc, 'Formulation Ingredients', y, ph);
-      autoTable(doc, { startY: y, head: [['Ingredient', 'Quantity', 'Unit']], body: ings.map(i => [i.name, i.quantity, i.unit]), headStyles: { fillColor: TEAL }, theme: 'striped' });
+      autoTable(doc, { startY: y, head: [['Ingredient', 'Quantity', 'Unit']], body: ings.map(i => [i.name, i.quantity, i.unit]), headStyles: { fillColor: primaryColor }, theme: 'striped' });
       y = (doc.lastAutoTable?.finalY ?? y) + 10;
     }
   }
@@ -542,9 +646,10 @@ export async function generateScientificReport(trial, options = {}) {
     y = await addPhotoGrid(doc, photos, y, ph, 50, showPhotoDates);
   }
 
-  // Weed ID
-  y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
-
+  // Weed ID (only for herbicide)
+  if (categoryId === 'herbicide') {
+    y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
+  }
   pdfAddFooter(doc, trial.FormulationName || 'Trial');
   doc.save(`Scientific_Report_${safeName(trial.FormulationName)}_${trial.Date || 'nodate'}.pdf`);
   toast('Scientific Report downloaded!', 'success');
@@ -554,27 +659,31 @@ export async function generateScientificReport(trial, options = {}) {
 //  EXPORT 3 — generatePpt  (PowerPoint slide deck)
 // ═════════════════════════════════════════════════════════════════════════════
 export async function generatePpt(trial) {
-  toast('Generating PowerPoint…', 'info');
+  const repConfig = getReportConfig(trial);
+  const categoryId = repConfig.cat;
+  const primaryHex = repConfig.config.color?.hex?.replace('#', '') || '0D9488';
+  
+  toast(`Generating ${repConfig.config.name} PowerPoint…`, 'info');
   const pptx     = new pptxgen();
   const efficacy = validateEfficacy(safeJsonParse(trial.EfficacyDataJSON, []));
   const photos   = safeJsonParse(trial.PhotoURLs, []);
-  const wce      = calcWCE(efficacy);
+  const wce      = calcWCE(efficacy, categoryId, trial);
   pptx.layout = 'LAYOUT_16x9';
 
   // Slide 1 – Title
   const s1 = pptx.addSlide();
-  s1.background = { color: '0D9488' };
-  s1.addText('HERBICIDE TRIAL REPORT', { x: 0.5, y: 1.5, w: 9, h: 1.2, fontSize: 36, bold: true, color: 'FFFFFF', align: 'center' });
+  s1.background = { color: primaryHex };
+  s1.addText(`${repConfig.config.name.toUpperCase()} TRIAL REPORT`, { x: 0.5, y: 1.5, w: 9, h: 1.2, fontSize: 36, bold: true, color: 'FFFFFF', align: 'center' });
   s1.addText(trial.FormulationName || '—', { x: 0.5, y: 2.8, w: 9, h: 0.7, fontSize: 22, color: 'FFFFFF', align: 'center' });
   s1.addText(`${fmtDate(trial.Date)} | ${trial.Location || '—'} | ${trial.InvestigatorName || '—'}`, { x: 0.5, y: 3.6, w: 9, h: 0.5, fontSize: 14, color: 'E0F2F1', align: 'center' });
 
   // Slide 2 – Trial Details
   const s2 = pptx.addSlide();
-  s2.addText('Trial Details', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 24, bold: true, color: '0D9488' });
+  s2.addText('Trial Details', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 24, bold: true, color: primaryHex });
   s2.addTable([
     [{ text: 'Investigator', options: { bold: true } }, trial.InvestigatorName || '—', { text: 'Date', options: { bold: true } }, fmtDate(trial.Date)],
     [{ text: 'Location', options: { bold: true } }, trial.Location || '—', { text: 'Dosage', options: { bold: true } }, trial.Dosage || '—'],
-    [{ text: 'Weed Species', options: { bold: true } }, trial.WeedSpecies || '—', { text: 'Result', options: { bold: true } }, trial.Result || 'Pending'],
+    [{ text: repConfig.targetLabel, options: { bold: true } }, repConfig.targetValue || '—', { text: 'Result', options: { bold: true } }, trial.Result || 'Pending'],
     [{ text: 'Temperature', options: { bold: true } }, trial.Temperature ? `${trial.Temperature}°C` : '—', { text: 'Humidity', options: { bold: true } }, trial.Humidity ? `${trial.Humidity}%` : '—'],
     [{ text: 'Wind', options: { bold: true } }, trial.Windspeed ? `${trial.Windspeed} km/h` : '—', { text: 'Rain', options: { bold: true } }, trial.Rain ? `${trial.Rain} mm` : '—'],
     [{ text: 'Replication', options: { bold: true } }, trial.Replication || '—', { text: 'Status', options: { bold: true } }, (trial.IsCompleted === true || trial.IsCompleted === 'true') ? 'Finalized' : 'Ongoing'],
@@ -583,11 +692,11 @@ export async function generatePpt(trial) {
   // Slide 3 – WCE
   if (wce.length) {
     const s3 = pptx.addSlide();
-    s3.addText('Efficacy Analysis – WCE per Species', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: '0D9488' });
-    const hdr = [{ text: 'Species', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-                 { text: 'Initial Cover (%)', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-                 { text: 'Final Cover (%)', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-                 { text: 'WCE (%)', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } }];
+    s3.addText(`Efficacy Analysis – ${repConfig.primaryMetricKey} per ${repConfig.targetLabel}`, { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: primaryHex });
+    const hdr = [{ text: repConfig.targetLabel, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+                 { text: `Initial ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+                 { text: `Final ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+                 { text: `${repConfig.primaryMetricKey} (%)`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } }];
     s3.addTable([hdr, ...wce.map(w => [w.species, w.initialCover.toFixed(1), w.finalCover.toFixed(1), w.wce.toFixed(1)])],
       { x: 0.4, y: 1.0, w: 9.2, fontSize: 13, colW: [3, 2, 2, 2.2], border: { pt: 0.5, color: 'CBD5E1' } });
   }
@@ -595,22 +704,31 @@ export async function generatePpt(trial) {
   // Slide 4 – Timeline
   if (efficacy.length) {
     const s4 = pptx.addSlide();
-    s4.addText('Weed Status Timeline', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: '0D9488' });
-    const hdr = [{ text: 'DAA', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-                 { text: 'Cover (%)', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-                 { text: 'Status', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-                 { text: 'Notes', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } }];
-    const rows = efficacy.sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0)).map(o => {
-      const c = o.weedCover ?? 0;
-      return [String(o.daa ?? '—'), String(c), c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor', o.notes || '—'];
-    });
-    s4.addTable([hdr, ...rows], { x: 0.4, y: 1.0, w: 9.2, fontSize: 12, colW: [1.2, 2, 2, 4], border: { pt: 0.5, color: 'CBD5E1' } });
+    s4.addText(`${repConfig.config.name} Status Timeline`, { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: primaryHex });
+    const isHerbicide = (categoryId === 'herbicide');
+    const hdr = isHerbicide 
+      ? [
+          { text: 'DAA', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: 'Species', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: 'Status', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: 'Notes', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } }
+        ]
+      : [
+          { text: 'DAA', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: repConfig.targetLabel, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: repConfig.primaryMetricLabel, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: 'Status', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+          { text: 'Notes', options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } }
+        ];
+    const colW = isHerbicide ? [1.5, 3.5, 2, 2.2] : [1, 2.5, 2, 1.5, 2.2];
+    const rows = timelineRows(efficacy, categoryId, trial);
+    s4.addTable([hdr, ...rows], { x: 0.4, y: 1.0, w: 9.2, fontSize: 12, colW, border: { pt: 0.5, color: 'CBD5E1' } });
   }
 
   // Slide 5 – Photos (up to 4)
   if (photos.length) {
     const s5 = pptx.addSlide();
-    s5.addText('Field Photo Log', { x: 0.4, y: 0.2, w: 9, h: 0.6, fontSize: 22, bold: true, color: '0D9488' });
+    s5.addText('Field Photo Log', { x: 0.4, y: 0.2, w: 9, h: 0.6, fontSize: 22, bold: true, color: primaryHex });
     const pos = [[0.3, 0.9, 4.2, 3.0], [5.1, 0.9, 4.2, 3.0], [0.3, 4.1, 4.2, 3.0], [5.1, 4.1, 4.2, 3.0]];
     for (let i = 0; i < Math.min(photos.length, 4); i++) {
       const src = photoSrc(photos[i]); if (!src) continue;
@@ -625,12 +743,12 @@ export async function generatePpt(trial) {
 
   // Slide 6 – Conclusion
   const s6 = pptx.addSlide();
-  s6.addText('Conclusion & Notes', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: '0D9488' });
+  s6.addText('Conclusion & Notes', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: primaryHex });
   if (trial.Conclusion) s6.addText([{ text: 'Conclusion\n', options: { bold: true } }, { text: trial.Conclusion }], { x: 0.4, y: 1.0, w: 9.2, h: 2.5, fontSize: 13, color: '1E293B' });
   if (trial.Notes) s6.addText([{ text: 'Notes\n', options: { bold: true } }, { text: trial.Notes }], { x: 0.4, y: 3.8, w: 9.2, h: 2.0, fontSize: 12, color: '475569' });
 
   await pptx.writeFile({ fileName: `Trial_PPT_${safeName(trial.FormulationName)}_${trial.Date || 'nodate'}.pptx` });
-  toast('PowerPoint downloaded!', 'success');
+  toast(`${repConfig.config.name} PowerPoint downloaded!`, 'success');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -640,34 +758,65 @@ export function exportToCSV(trial) {
   exportMultipleTrialsToCSV([trial]);
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
 export function exportMultipleTrialsToCSV(trials) {
   if (!trials || !trials.length) return;
 
-  const header = ['Trial ID', 'Formulation', 'Investigator', 'Date', 'Location', 'Dosage',
-                  'Weed Species', 'Result', 'DAA', 'Obs Date', 'Total Cover %',
-                  'Species', 'Species Cover %', 'Status', 'Notes'];
+  const firstTrial = trials[0];
+  const repConfig = getReportConfig(firstTrial);
+  const categoryId = repConfig.cat;
+
+  const header = categoryId === 'herbicide'
+    ? ['Trial ID', 'Formulation', 'Investigator', 'Date', 'Location', 'Dosage',
+       'Weed Species', 'Result', 'DAA', 'Obs Date', 'Total Cover %',
+       'Species', 'Species Cover %', 'Status', 'Notes']
+    : ['Trial ID', 'Formulation', 'Investigator', 'Date', 'Location', 'Dosage',
+       repConfig.targetLabel, 'Result', 'DAA', 'Obs Date', `${repConfig.primaryMetricLabel} (${repConfig.primaryMetricUnit})`, 'Status', 'Notes'];
+
   const rows = [];
 
   trials.forEach(trial => {
+    const trialConfig = getReportConfig(trial);
     const efficacy = validateEfficacy(safeJsonParse(trial.EfficacyDataJSON, []));
+    
     if (efficacy.length) {
       efficacy.forEach(obs => {
-        const details = obs.weedDetails?.length ? obs.weedDetails : [{ species: 'Total', cover: obs.weedCover ?? '' }];
-        details.forEach((wd, di) => {
+        if (trialConfig.cat === 'herbicide') {
+          const details = obs.weedDetails?.length ? obs.weedDetails : [{ species: 'Total', cover: obs.weedCover ?? '' }];
+          details.forEach((wd, di) => {
+            rows.push([
+              di === 0 ? trial.ID : '', di === 0 ? trial.FormulationName : '',
+              di === 0 ? trial.InvestigatorName : '', di === 0 ? trial.Date : '',
+              di === 0 ? trial.Location : '', di === 0 ? trial.Dosage : '',
+              di === 0 ? trial.WeedSpecies : '', di === 0 ? trial.Result : '',
+              obs.daa ?? '', obs.date || '', obs.weedCover ?? '',
+              wd.species || 'Total', wd.cover ?? '', wd.status || '', obs.notes || ''
+            ]);
+          });
+        } else {
+          const val = obs[trialConfig.primaryField] ?? obs.weedCover ?? '';
+          const rating = val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor';
+          const isPositive = (trialConfig.cat === 'nutrition' || trialConfig.cat === 'biostimulant');
+          const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
+          const status = isPositive ? ratingPositive : rating;
+
           rows.push([
-            di === 0 ? trial.ID : '', di === 0 ? trial.FormulationName : '',
-            di === 0 ? trial.InvestigatorName : '', di === 0 ? trial.Date : '',
-            di === 0 ? trial.Location : '', di === 0 ? trial.Dosage : '',
-            di === 0 ? trial.WeedSpecies : '', di === 0 ? trial.Result : '',
-            obs.daa ?? '', obs.date || '', obs.weedCover ?? '',
-            wd.species || 'Total', wd.cover ?? '', wd.status || '', obs.notes || ''
+            trial.ID, trial.FormulationName, trial.InvestigatorName, trial.Date,
+            trial.Location, trial.Dosage, trialConfig.targetValue, trial.Result,
+            obs.daa ?? '', obs.date || '', val, status, obs.notes || ''
           ]);
-        });
+        }
       });
     } else {
-      rows.push([trial.ID, trial.FormulationName, trial.InvestigatorName, trial.Date,
-                 trial.Location, trial.Dosage, trial.WeedSpecies, trial.Result,
-                 '', '', '', '', '', '', '']);
+      if (trialConfig.cat === 'herbicide') {
+        rows.push([trial.ID, trial.FormulationName, trial.InvestigatorName, trial.Date,
+                   trial.Location, trial.Dosage, trial.WeedSpecies, trial.Result,
+                   '', '', '', '', '', '', '']);
+      } else {
+        rows.push([trial.ID, trial.FormulationName, trial.InvestigatorName, trial.Date,
+                   trial.Location, trial.Dosage, trialConfig.targetValue, trial.Result,
+                   '', '', '', '', '']);
+      }
     }
   });
 
@@ -689,15 +838,21 @@ export function exportMultipleTrialsToCSV(trials) {
 //  EXPORT 5 — exportAllTrialsCSV  (all trials summary)
 // ═════════════════════════════════════════════════════════════════════════════
 export function exportAllTrialsCSV(trials, projects = []) {
+  if (!trials || !trials.length) return;
+  const firstTrial = trials[0];
+  const repConfig = getReportConfig(firstTrial);
+  const targetLabel = trials.length === 1 ? repConfig.targetLabel : 'Target / Weed Species';
+
   const header = ['Trial ID', 'Formulation', 'Investigator', 'Date', 'Location', 'Dosage',
-                  'Weed Species', 'Result', 'Status', 'Project', 'Replication',
+                  targetLabel, 'Result', 'Status', 'Project', 'Replication',
                   'Plot #', 'Temp (°C)', 'Humidity (%)', 'Wind (km/h)', 'Rain (mm)',
                   'Observations', 'Photos'];
   const rows = trials.map(t => {
     const proj = projects.find(p => p.ID === t.ProjectID);
+    const tConfig = getReportConfig(t);
     return [
       t.ID, t.FormulationName, t.InvestigatorName, t.Date, t.Location, t.Dosage,
-      t.WeedSpecies, t.Result,
+      tConfig.targetValue, t.Result,
       (t.IsCompleted === true || t.IsCompleted === 'true') ? 'Finalized' : 'Ongoing',
       proj?.Name || '', t.Replication || '', t.PlotNumber || '',
       t.Temperature || '', t.Humidity || '', t.Windspeed || '', t.Rain || '',
@@ -724,13 +879,16 @@ export function exportJson(trial) {
 //  EXPORT 7 — exportFieldReportTxt  (plain text field report)
 // ═════════════════════════════════════════════════════════════════════════════
 export function exportFieldReportTxt(trial, projectName = '') {
+  const repConfig = getReportConfig(trial);
+  const categoryId = repConfig.cat;
+  
   const efficacy = validateEfficacy(safeJsonParse(trial.EfficacyDataJSON, []));
-  const wce = calcWCE(efficacy);
+  const wce = calcWCE(efficacy, categoryId, trial);
   const soil = safeJsonParse(trial.SoilDataJSON, null);
   const sep  = '─'.repeat(60);
   const lines = [
     '═'.repeat(60),
-    '  HERBICIDE TRIAL — FIELD REPORT',
+    `  ${repConfig.config.name.toUpperCase()} TRIAL — FIELD REPORT`,
     '═'.repeat(60),
     `Trial ID:       ${trial.ID || '—'}`,
     `Formulation:    ${trial.FormulationName || '—'}`,
@@ -738,7 +896,7 @@ export function exportFieldReportTxt(trial, projectName = '') {
     `Date:           ${fmtDate(trial.Date)}`,
     `Location:       ${trial.Location || '—'}`,
     `Dosage:         ${trial.Dosage || '—'}`,
-    `Weed Species:   ${trial.WeedSpecies || '—'}`,
+    `${(repConfig.targetLabel + ':').padEnd(16)}${repConfig.targetValue}`,
     `Result:         ${trial.Result || 'Pending'}`,
     `Status:         ${(trial.IsCompleted === true || trial.IsCompleted === 'true') ? 'Finalized' : 'Ongoing'}`,
     projectName ? `Project:        ${projectName}` : null,
@@ -758,15 +916,18 @@ export function exportFieldReportTxt(trial, projectName = '') {
   if (efficacy.length) {
     lines.push(sep, 'EFFICACY OBSERVATIONS', sep);
     efficacy.forEach(o => {
-      lines.push(`DAA ${o.daa ?? '—'} | Cover: ${o.weedCover ?? '—'}% | ${o.notes || '—'}`);
-      (o.weedDetails || []).forEach(wd => {
-        if (wd.species && wd.species !== 'Total') lines.push(`  └ ${wd.species}: ${wd.cover ?? '—'}% — ${wd.status || ''}`);
-      });
+      const val = o[repConfig.primaryField] ?? o.weedCover ?? '—';
+      lines.push(`DAA ${o.daa ?? '—'} | ${repConfig.primaryMetricLabel}: ${val}${repConfig.primaryMetricUnit} | ${o.notes || '—'}`);
+      if (categoryId === 'herbicide') {
+        (o.weedDetails || []).forEach(wd => {
+          if (wd.species && wd.species !== 'Total') lines.push(`  └ ${wd.species}: ${wd.cover ?? '—'}% — ${wd.status || ''}`);
+        });
+      }
     });
   }
   if (wce.length) {
-    lines.push(sep, 'WEED CONTROL EFFICIENCY (WCE)', sep);
-    wce.forEach(w => lines.push(`  ${w.species}: ${w.wce.toFixed(1)}% (${w.initialCover.toFixed(1)}% → ${w.finalCover.toFixed(1)}%)`));
+    lines.push(sep, `${repConfig.primaryMetricLabel.toUpperCase()} (${repConfig.primaryMetricKey})`, sep);
+    wce.forEach(w => lines.push(`  ${w.species}: ${w.wce.toFixed(1)}% (${w.initialCover.toFixed(1)} → ${w.finalCover.toFixed(1)})`));
   }
   if (trial.Conclusion) lines.push(sep, 'CONCLUSION', sep, trial.Conclusion);
   if (trial.Notes)      lines.push(sep, 'NOTES', sep, trial.Notes);
@@ -774,18 +935,25 @@ export function exportFieldReportTxt(trial, projectName = '') {
 
   const text = lines.filter(l => l !== null).join('\n');
   dlBlob(new Blob([text], { type: 'text/plain' }),
-    `Field_Report_${safeName(trial.FormulationName)}_${trial.Date || 'nodate'}.txt`);
-  toast('Field report downloaded', 'success');
+    `${repConfig.config.name}_Field_Report_${safeName(trial.FormulationName)}_${trial.Date || 'nodate'}.txt`);
+  toast(`${repConfig.config.name} Field report downloaded`, 'success');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+
 //  EXPORT 8 — exportHtmlReport  (standalone printable HTML, same as legacy)
 // ═════════════════════════════════════════════════════════════════════════════
 export function exportHtmlReport(trial, projectName = '') {
+  const repConfig = getReportConfig(trial);
+  const categoryId = repConfig.cat;
+  const primaryHex = repConfig.config.color?.hex || '#0d9488';
+
+  toast(`Generating HTML report…`, 'info');
+
   const efficacy = validateEfficacy(safeJsonParse(trial.EfficacyDataJSON, []));
   const photos   = safeJsonParse(trial.PhotoURLs, []);
   const weedPhotos = safeJsonParse(trial.WeedPhotosJSON, []);
-  const wce      = calcWCE(efficacy);
+  const wce      = calcWCE(efficacy, categoryId, trial);
   const soil     = safeJsonParse(trial.SoilDataJSON, null);
   const isFinalized = trial.IsCompleted === true || trial.IsCompleted === 'true';
 
@@ -816,20 +984,34 @@ export function exportHtmlReport(trial, projectName = '') {
   }).join('');
 
   const obsRows = efficacy.map(o => {
-    const c = o.weedCover ?? 0;
-    const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
-    const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
-    return `<tr>
-      <td>${o.daa ?? '—'}</td><td>${o.date || '—'}</td><td>${c}%</td>
-      <td style="color:${sc};font-weight:600;">${status}</td>
-      <td>${(o.weedDetails || []).map(w => `${w.species}: ${w.cover ?? '—'}%`).join(', ') || '—'}</td>
-      <td>${o.notes || '—'}</td>
-    </tr>`;
+    if (categoryId === 'herbicide') {
+      const c = o.weedCover ?? 0;
+      const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
+      const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
+      return `<tr>
+        <td>${o.daa ?? '—'}</td><td>${o.date || '—'}</td><td>${c}%</td>
+        <td style="color:${sc};font-weight:600;">${status}</td>
+        <td>${(o.weedDetails || []).map(w => `${w.species}: ${w.cover ?? '—'}%`).join(', ') || '—'}</td>
+        <td>${o.notes || '—'}</td>
+      </tr>`;
+    } else {
+      const val = o[repConfig.primaryField] ?? o.weedCover ?? 0;
+      const rating = val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor';
+      const isPositive = (categoryId === 'nutrition' || categoryId === 'biostimulant');
+      const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
+      const status = isPositive ? ratingPositive : rating;
+      const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
+      return `<tr>
+        <td>${o.daa ?? '—'}</td><td>${o.date || '—'}</td><td>${val}${repConfig.primaryMetricUnit}</td>
+        <td style="color:${sc};font-weight:600;">${status}</td>
+        <td>${o.notes || '—'}</td>
+      </tr>`;
+    }
   }).join('');
 
   const wceRows = wce.map(w => `<tr>
-    <td>${w.species}</td><td>${w.initialCover.toFixed(1)}%</td>
-    <td>${w.finalCover.toFixed(1)}%</td>
+    <td>${w.species}</td><td>${w.initialCover.toFixed(1)}${repConfig.primaryMetricUnit}</td>
+    <td>${w.finalCover.toFixed(1)}${repConfig.primaryMetricUnit}</td>
     <td style="font-weight:700;color:${w.wce >= 80 ? '#10b981' : w.wce >= 60 ? '#3b82f6' : w.wce >= 40 ? '#f59e0b' : '#ef4444'};">${w.wce.toFixed(1)}%</td>
   </tr>`).join('');
 
@@ -848,17 +1030,17 @@ export function exportHtmlReport(trial, projectName = '') {
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; color: #1e293b; background: #f8fafc; }
-    .cover { background: linear-gradient(135deg, #0d9488, #0f766e); color: #fff; padding: 48px 40px; }
+    .cover { background: linear-gradient(135deg, ${primaryHex}, ${primaryHex}dd); color: #fff; padding: 48px 40px; }
     .cover h1 { font-size: 32px; margin: 0 0 8px; }
     .cover p { font-size: 16px; margin: 4px 0; opacity: 0.9; }
     .badge { display: inline-block; padding: 4px 14px; border-radius: 999px; font-weight: 700; font-size: 14px; color: #fff; background: ${badgeColor}; margin-top: 12px; }
     .content { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
     .section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-    .section h2 { font-size: 16px; color: #0d9488; margin: 0 0 14px; border-bottom: 2px solid #0d9488; padding-bottom: 6px; }
+    .section h2 { font-size: 16px; color: ${primaryHex}; margin: 0 0 14px; border-bottom: 2px solid ${primaryHex}; padding-bottom: 6px; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
     .meta-item { font-size: 13px; } .meta-item strong { color: #475569; display: block; font-size: 11px; text-transform: uppercase; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { background: #0d9488; color: #fff; padding: 8px 10px; text-align: left; }
+    th { background: ${primaryHex}; color: #fff; padding: 8px 10px; text-align: left; }
     td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
     tr:nth-child(even) td { background: #f8fafc; }
     .weather { background: #f1f5f9; border-radius: 8px; padding: 12px; display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; }
@@ -872,7 +1054,7 @@ export function exportHtmlReport(trial, projectName = '') {
 </head>
 <body>
   <div class="cover">
-    <h1>${trial.FormulationName || 'Herbicide Trial Report'}</h1>
+    <h1>${trial.FormulationName || `${repConfig.config.name} Trial Report`}</h1>
     <p>Investigator: ${trial.InvestigatorName || '—'} &nbsp;|&nbsp; Date: ${fmtDate(trial.Date)} &nbsp;|&nbsp; Location: ${trial.Location || '—'}</p>
     ${projectName ? `<p>Project: ${projectName}</p>` : ''}
     <div class="badge">${trial.Result || 'Pending'}</div>
@@ -888,7 +1070,7 @@ export function exportHtmlReport(trial, projectName = '') {
         <div class="meta-item"><strong>Application Date</strong>${fmtDate(trial.Date)}</div>
         <div class="meta-item"><strong>Location</strong>${trial.Location || '—'}</div>
         <div class="meta-item"><strong>Dosage</strong>${trial.Dosage || '—'}</div>
-        <div class="meta-item"><strong>Target Weed Species</strong>${trial.WeedSpecies || '—'}</div>
+        <div class="meta-item"><strong>Target ${repConfig.targetLabel}</strong>${repConfig.targetValue || '—'}</div>
         <div class="meta-item"><strong>Result</strong>${trial.Result || 'Pending'}</div>
         <div class="meta-item"><strong>Replication</strong>${trial.Replication || '—'}</div>
         <div class="meta-item"><strong>Plot #</strong>${trial.PlotNumber || '—'}</div>
@@ -911,14 +1093,21 @@ export function exportHtmlReport(trial, projectName = '') {
     ${efficacy.length ? `
     <div class="section">
       <h2>Efficacy Observations</h2>
-      <table><thead><tr><th>DAA</th><th>Date</th><th>Cover %</th><th>Status</th><th>Species Detail</th><th>Notes</th></tr></thead>
-      <tbody>${obsRows}</tbody></table>
+      <table>
+        <thead>
+          ${categoryId === 'herbicide' 
+            ? '<tr><th>DAA</th><th>Date</th><th>Cover %</th><th>Status</th><th>Species Detail</th><th>Notes</th></tr>'
+            : `<tr><th>DAA</th><th>Date</th><th>${repConfig.primaryMetricLabel}</th><th>Status</th><th>Notes</th></tr>`
+          }
+        </thead>
+        <tbody>${obsRows}</tbody>
+      </table>
     </div>` : ''}
 
     ${wce.length ? `
     <div class="section">
-      <h2>Weed Control Efficiency (WCE)</h2>
-      <table><thead><tr><th>Species</th><th>Initial Cover</th><th>Final Cover</th><th>WCE %</th></tr></thead>
+      <h2>${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey})</h2>
+      <table><thead><tr><th>${repConfig.targetLabel}</th><th>Initial ${repConfig.primaryMetricLabel}</th><th>Final ${repConfig.primaryMetricLabel}</th><th>${repConfig.primaryMetricKey} %</th></tr></thead>
       <tbody>${wceRows}</tbody></table>
     </div>` : ''}
 
@@ -926,34 +1115,41 @@ export function exportHtmlReport(trial, projectName = '') {
     ${trial.Notes      ? `<div class="section"><h2>Notes</h2><p style="margin:0;line-height:1.7;">${trial.Notes}</p></div>` : ''}
 
     ${photos.length ? `<div class="section"><h2>Field Photos (${photos.length})</h2><div>${photoHtml}</div></div>` : ''}
-    ${weedPhotos.length ? `<div class="section"><h2>Weed Identification Record</h2>${weedPhotoHtml}</div>` : ''}
+    ${categoryId === 'herbicide' && weedPhotos.length ? `<div class="section"><h2>Weed Identification Record</h2>${weedPhotoHtml}</div>` : ''}
 
-    <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:24px;">Generated ${new Date().toLocaleString()} — Herbicide Trial Manager</p>
+    <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:24px;">Generated ${new Date().toLocaleString()} — ${repConfig.config.name} Trial Manager</p>
   </div>
-  <script>window.onload = () => { const b = document.createElement('button'); b.textContent = '🖨️ Print / Save PDF'; b.className = 'no-print'; b.style = 'position:fixed;bottom:20px;right:20px;background:#0d9488;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:9999;'; b.onclick = () => window.print(); document.body.appendChild(b); };<\/script>
+  <script>window.onload = () => { const b = document.createElement('button'); b.textContent = '🖨️ Print / Save PDF'; b.className = 'no-print'; b.style = 'position:fixed;bottom:20px;right:20px;background:${primaryHex};color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:9999;'; b.onclick = () => window.print(); document.body.appendChild(b); };<\/script>
 </body>
 </html>`;
 
   dlBlob(new Blob([html], { type: 'text/html' }),
     `Trial_HTML_${safeName(trial.FormulationName)}_${trial.Date || 'nodate'}.html`);
-  toast('HTML report downloaded', 'success');
+  toast(`${repConfig.config.name} HTML report downloaded`, 'success');
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+
 //  EXPORT 9 — shareTrial  (Web Share API or clipboard)
 // ═════════════════════════════════════════════════════════════════════════════
 export function shareTrial(trial) {
+  const categoryId = trial.Category || 'herbicide';
+  const repConfig = getReportConfig(trial);
+  
   const efficacy = validateEfficacy(safeJsonParse(trial.EfficacyDataJSON, []));
-  const wce = calcWCE(efficacy);
-  const wceText = wce.length
-    ? '\nWCE: ' + wce.map(w => `${w.species} ${w.wce.toFixed(1)}%`).join(', ')
-    : '';
-  const text = `Herbicide Trial: ${trial.FormulationName}
+  const wce = calcWCE(efficacy, categoryId, trial);
+  const metricLabel = repConfig.primaryMetricKey;
+  
+  let metricText = '';
+  if (wce.length) {
+    metricText = `\n${metricLabel}: ` + wce.map(w => `${w.species} ${w.wce.toFixed(1)}%`).join(', ');
+  }
+  
+  const text = `${repConfig.config.name} Trial: ${trial.FormulationName}
 Date: ${fmtDate(trial.Date)}
 Location: ${trial.Location || '—'}
 Dosage: ${trial.Dosage || '—'}
-Target Weeds: ${trial.WeedSpecies || '—'}
-Result: ${trial.Result || 'Pending'}${wceText}
+Target ${repConfig.targetLabel}: ${repConfig.targetValue || '—'}
+Result: ${trial.Result || 'Pending'}${metricText}
 ${trial.Conclusion ? '\nConclusion: ' + trial.Conclusion : ''}`.trim();
 
   if (navigator.share) {
@@ -965,17 +1161,21 @@ ${trial.Conclusion ? '\nConclusion: ' + trial.Conclusion : ''}`.trim();
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+
 //  EXPORT 10 — exportTrialDocx  (Word .docx — matches legacy DOC No Ing. / DOC w/ Ing.)
 // ═════════════════════════════════════════════════════════════════════════════
 export async function exportTrialDocx(trial, options = {}) {
   const { withIngredients = false, withWeeds = true, formulations = [] } = options;
   toast('Generating Word document…', 'info');
 
+  const categoryId = trial.Category || 'herbicide';
+  const repConfig = getReportConfig(trial);
+  const primaryHex = repConfig.config.colorTheme?.primaryHex || '#0d9488';
+
   const efficacy  = validateEfficacy(safeJsonParse(trial.EfficacyDataJSON, []));
   const photos    = safeJsonParse(trial.PhotoURLs, []);
   const weedPhotos = safeJsonParse(trial.WeedPhotosJSON, []);
-  const wce       = calcWCE(efficacy);
+  const wce       = calcWCE(efficacy, categoryId, trial);
   const soil      = safeJsonParse(trial.SoilDataJSON, null);
   const trialDate = fmtDate(trial.Date);
   const isFinalized = trial.IsCompleted === true || trial.IsCompleted === 'true';
@@ -985,7 +1185,7 @@ export async function exportTrialDocx(trial, options = {}) {
     ['Trial ID', trial.ID || '—', 'Formulation', trial.FormulationName || '—'],
     ['Investigator', trial.InvestigatorName || '—', 'Date', trialDate],
     ['Location', trial.Location || '—', 'Dosage', trial.Dosage || '—'],
-    ['Weed Species', trial.WeedSpecies || '—', 'Result', trial.Result || 'Pending'],
+    [`Target ${repConfig.targetLabel}`, repConfig.targetValue || '—', 'Result', trial.Result || 'Pending'],
     ['Replication', trial.Replication || '—', 'Plot #', trial.PlotNumber || '—'],
     ['Status', isFinalized ? 'Finalized' : 'Ongoing', '', ''],
   ];
@@ -1001,51 +1201,68 @@ export async function exportTrialDocx(trial, options = {}) {
     </table>`;
 
   const weatherHtml = trial.Temperature ? `
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Weather on Application Day</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Weather on Application Day</h2>
     <p style="font-size:11pt;">Temp: <strong>${trial.Temperature}°C</strong> &nbsp;|&nbsp; Humidity: <strong>${trial.Humidity || '—'}%</strong> &nbsp;|&nbsp; Wind: <strong>${trial.Windspeed || '0'} km/h</strong> &nbsp;|&nbsp; Rain: <strong>${trial.Rain || '0'} mm</strong></p>` : '';
 
   const soilHtml = (soil && Object.keys(soil).length > 0) ? `
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Soil Profile (0-30 cm)</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Soil Profile (0-30 cm)</h2>
     <p style="font-size:11pt;">pH: <strong>${soil.ph || '—'}</strong> &nbsp; Clay: <strong>${soil.clay || '—'}%</strong> &nbsp; Sand: <strong>${soil.sand || '—'}%</strong> &nbsp; OC: <strong>${soil.organicCarbon || '—'}</strong> &nbsp; Texture: <strong>${soil.texture || '—'}</strong></p>` : '';
 
   const obsRows = efficacy.map(o => {
-    const c = o.weedCover ?? 0;
-    const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
-    const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
-    return `<tr>
-      <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.daa ?? '—'}</td>
-      <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.date || '—'}</td>
-      <td style="border:1px solid #e2e8f0;padding:5px 8px;">${c}%</td>
-      <td style="border:1px solid #e2e8f0;padding:5px 8px;color:${sc};font-weight:bold;">${status}</td>
-      <td style="border:1px solid #e2e8f0;padding:5px 8px;">${(o.weedDetails || []).map(w => `${w.species}: ${w.cover ?? '—'}%`).join(', ') || '—'}</td>
-      <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.notes || '—'}</td>
-    </tr>`;
+    if (categoryId === 'herbicide') {
+      const c = o.weedCover ?? 0;
+      const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
+      const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
+      return `<tr>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.daa ?? '—'}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.date || '—'}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${c}%</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;color:${sc};font-weight:bold;">${status}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${(o.weedDetails || []).map(w => `${w.species}: ${w.cover ?? '—'}%`).join(', ') || '—'}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.notes || '—'}</td>
+      </tr>`;
+    } else {
+      const val = o[repConfig.primaryField] ?? o.weedCover ?? 0;
+      const rating = val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor';
+      const isPositive = (categoryId === 'nutrition' || categoryId === 'biostimulant');
+      const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
+      const status = isPositive ? ratingPositive : rating;
+      const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
+      return `<tr>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.daa ?? '—'}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.date || '—'}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${val}${repConfig.primaryMetricUnit}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;color:${sc};font-weight:bold;">${status}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.notes || '—'}</td>
+      </tr>`;
+    }
   }).join('');
 
   const efficacyHtml = efficacy.length ? `
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Efficacy Observations</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Efficacy Observations</h2>
     <table style="width:100%;border-collapse:collapse;font-size:10pt;">
-      <thead><tr style="background:#0d9488;color:#fff;">
-        <th style="padding:6px 8px;text-align:left;">DAA</th><th style="padding:6px 8px;text-align:left;">Date</th>
-        <th style="padding:6px 8px;text-align:left;">Cover %</th><th style="padding:6px 8px;text-align:left;">Status</th>
-        <th style="padding:6px 8px;text-align:left;">Species Detail</th><th style="padding:6px 8px;text-align:left;">Notes</th>
+      <thead><tr style="background:${primaryHex};color:#fff;">
+        ${categoryId === 'herbicide'
+          ? '<th style="padding:6px 8px;text-align:left;">DAA</th><th style="padding:6px 8px;text-align:left;">Date</th><th style="padding:6px 8px;text-align:left;">Cover %</th><th style="padding:6px 8px;text-align:left;">Status</th><th style="padding:6px 8px;text-align:left;">Species Detail</th><th style="padding:6px 8px;text-align:left;">Notes</th>'
+          : `<th style="padding:6px 8px;text-align:left;">DAA</th><th style="padding:6px 8px;text-align:left;">Date</th><th style="padding:6px 8px;text-align:left;">${repConfig.primaryMetricLabel}</th><th style="padding:6px 8px;text-align:left;">Status</th><th style="padding:6px 8px;text-align:left;">Notes</th>`
+        }
       </tr></thead>
       <tbody>${obsRows}</tbody>
     </table>` : '';
 
   const wceRows = wce.map(w => `<tr>
     <td style="border:1px solid #e2e8f0;padding:5px 8px;">${w.species}</td>
-    <td style="border:1px solid #e2e8f0;padding:5px 8px;">${w.initialCover.toFixed(1)}%</td>
-    <td style="border:1px solid #e2e8f0;padding:5px 8px;">${w.finalCover.toFixed(1)}%</td>
+    <td style="border:1px solid #e2e8f0;padding:5px 8px;">${w.initialCover.toFixed(1)}${repConfig.primaryMetricUnit}</td>
+    <td style="border:1px solid #e2e8f0;padding:5px 8px;">${w.finalCover.toFixed(1)}${repConfig.primaryMetricUnit}</td>
     <td style="border:1px solid #e2e8f0;padding:5px 8px;font-weight:bold;color:${w.wce >= 80 ? '#10b981' : w.wce >= 60 ? '#3b82f6' : w.wce >= 40 ? '#f59e0b' : '#ef4444'};">${w.wce.toFixed(1)}%</td>
   </tr>`).join('');
 
   const wceHtml = wce.length ? `
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Weed Control Efficiency (WCE)</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey})</h2>
     <table style="width:100%;border-collapse:collapse;font-size:10pt;">
-      <thead><tr style="background:#0d9488;color:#fff;">
-        <th style="padding:6px 8px;text-align:left;">Species</th><th style="padding:6px 8px;text-align:left;">Initial Cover</th>
-        <th style="padding:6px 8px;text-align:left;">Final Cover</th><th style="padding:6px 8px;text-align:left;">WCE %</th>
+      <thead><tr style="background:${primaryHex};color:#fff;">
+        <th style="padding:6px 8px;text-align:left;">${repConfig.targetLabel}</th><th style="padding:6px 8px;text-align:left;">Initial ${repConfig.primaryMetricLabel}</th>
+        <th style="padding:6px 8px;text-align:left;">Final ${repConfig.primaryMetricLabel}</th><th style="padding:6px 8px;text-align:left;">${repConfig.primaryMetricKey} %</th>
       </tr></thead>
       <tbody>${wceRows}</tbody>
     </table>` : '';
@@ -1061,9 +1278,9 @@ export async function exportTrialDocx(trial, options = {}) {
         <td style="border:1px solid #e2e8f0;padding:5px 8px;">${i.unit || '—'}</td>
       </tr>`).join('');
       ingredientsHtml = `
-        <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Formulation Ingredients</h2>
+        <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Formulation Ingredients</h2>
         <table style="width:100%;border-collapse:collapse;font-size:10pt;">
-          <thead><tr style="background:#0d9488;color:#fff;">
+          <thead><tr style="background:${primaryHex};color:#fff;">
             <th style="padding:6px 8px;text-align:left;">Ingredient</th>
             <th style="padding:6px 8px;text-align:left;">Quantity</th>
             <th style="padding:6px 8px;text-align:left;">Unit</th>
@@ -1074,16 +1291,16 @@ export async function exportTrialDocx(trial, options = {}) {
   }
 
   const photoHtml = photos.length ? `
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Field Photos (${photos.length})</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Field Photos (${photos.length})</h2>
     <p style="font-size:10pt;color:#64748b;font-style:italic;">Note: Photos are embedded in the HTML report export. This document lists ${photos.length} photo(s) on record.</p>
     <ul style="font-size:10pt;">
       ${photos.map((p, i) => `<li>${p.label || `Photo ${i + 1}`}${p.date ? ` — ${formatDateTime(p.date)}` : ''}</li>`).join('')}
     </ul>` : '';
 
-  const weedIdHtml = (withWeeds && weedPhotos.length) ? `
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Weed Identification Record</h2>
+  const weedIdHtml = (categoryId === 'herbicide' && withWeeds && weedPhotos.length) ? `
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Weed Identification Record</h2>
     <table style="width:100%;border-collapse:collapse;font-size:10pt;">
-      <thead><tr style="background:#0d9488;color:#fff;">
+      <thead><tr style="background:${primaryHex};color:#fff;">
         <th style="padding:6px 8px;text-align:left;">Species</th>
         <th style="padding:6px 8px;text-align:left;">Common Name</th>
         <th style="padding:6px 8px;text-align:left;">Confidence</th>
@@ -1101,24 +1318,24 @@ export async function exportTrialDocx(trial, options = {}) {
     </table>` : '';
 
   const conclusionHtml = [
-    trial.Conclusion ? `<h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Conclusion</h2><p style="font-size:11pt;line-height:1.7;">${trial.Conclusion}</p>` : '',
-    trial.Notes ? `<h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Notes</h2><p style="font-size:11pt;line-height:1.7;">${trial.Notes}</p>` : '',
+    trial.Conclusion ? `<h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Conclusion</h2><p style="font-size:11pt;line-height:1.7;">${trial.Conclusion}</p>` : '',
+    trial.Notes ? `<h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Notes</h2><p style="font-size:11pt;line-height:1.7;">${trial.Notes}</p>` : '',
   ].join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
     <style>
       body { font-family: 'Calibri', Arial, sans-serif; color: #1e293b; margin: 40px; }
-      h1 { font-size: 22pt; color: #0d9488; margin-bottom: 4px; }
+      h1 { font-size: 22pt; color: ${primaryHex}; margin-bottom: 4px; }
       .badge { display: inline-block; background: ${badgeColor}; color: #fff; padding: 3px 12px; border-radius: 12px; font-size: 11pt; font-weight: bold; margin-top: 6px; }
       p { margin: 4px 0; }
     </style>
   </head><body>
-    <h1>${trial.FormulationName || 'Herbicide Trial Report'}</h1>
+    <h1>${trial.FormulationName || `${repConfig.config.name} Trial Report`}</h1>
     <p style="font-size:11pt;color:#475569;">Investigator: ${trial.InvestigatorName || '—'} &nbsp;|&nbsp; Date: ${trialDate} &nbsp;|&nbsp; Location: ${trial.Location || '—'}</p>
     <span class="badge">${trial.Result || 'Pending'}</span>
     ${isFinalized ? '<span class="badge" style="background:#8b5cf6;margin-left:6px;">Finalized</span>' : ''}
 
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Trial Details</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Trial Details</h2>
     ${metaTableHtml}
     ${weatherHtml}
     ${soilHtml}
@@ -1128,7 +1345,7 @@ export async function exportTrialDocx(trial, options = {}) {
     ${conclusionHtml}
     ${photoHtml}
     ${weedIdHtml}
-    <p style="text-align:center;color:#94a3b8;font-size:9pt;margin-top:32px;">Generated ${new Date().toLocaleString()} — Herbicide Trial Manager</p>
+    <p style="text-align:center;color:#94a3b8;font-size:9pt;margin-top:32px;">Generated ${new Date().toLocaleString()} — ${repConfig.config.name} Trial Manager</p>
   </body></html>`;
 
   // Build a minimal Word-compatible RTF blob that Word/LibreOffice opens natively
@@ -1143,11 +1360,11 @@ export async function exportTrialDocx(trial, options = {}) {
   <style>
     @page { size: A4; margin: 2.54cm; }
     body { font-family: Calibri, Arial, sans-serif; font-size: 12pt; color: #1e293b; }
-    h1 { font-size: 18pt; color: #0d9488; }
-    h2 { font-size: 13pt; color: #0d9488; border-bottom: 1pt solid #0d9488; padding-bottom: 3pt; margin-top: 18pt; }
+    h1 { font-size: 18pt; color: ${primaryHex}; }
+    h2 { font-size: 13pt; color: ${primaryHex}; border-bottom: 1pt solid ${primaryHex}; padding-bottom: 3pt; margin-top: 18pt; }
     table { border-collapse: collapse; width: 100%; margin-bottom: 12pt; }
     td, th { border: 1pt solid #cbd5e1; padding: 4pt 7pt; font-size: 10pt; }
-    th { background: #0d9488; color: #fff; font-weight: bold; }
+    th { background: ${primaryHex}; color: #fff; font-weight: bold; }
     .badge { background: ${badgeColor}; color: #fff; padding: 2pt 8pt; font-size: 10pt; font-weight: bold; }
   </style>
 </head>
@@ -1168,11 +1385,16 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
   const { withIngredients = true, withWeeds = true, withTimeline = true,
           showPhotoDates = true, formulations = [], aiSummary = '' } = options;
   toast('Generating Master PDF…', 'info');
+  
+  const categoryId = project.Category || (subTrials[0]?.Category) || 'herbicide';
+  const repConfig = getReportConfig({ Category: categoryId });
+  const primaryColor = repConfig.primaryColor;
+
   const doc = createDoc();
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
 
-  pdfHeader(doc, 'Master Field Study Report', project.Name);
+  pdfHeader(doc, 'Master Field Study Report', project.Name, primaryColor);
   let y = 50;
 
   // Metadata block
@@ -1184,15 +1406,18 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
   doc.text(`Investigator: ${project.Investigator || 'N/A'}`, lx, y);
   doc.text(`Created: ${project.CreatedAt ? formatDate(project.CreatedAt) : 'N/A'}`, rx, y);
   y += 6;
-  if (project.TargetWeeds) {
-    doc.setFont(undefined, 'bold'); doc.text('Target Weeds:', lx, y); y += 5;
+  
+  const targetLabel = repConfig.targetLabel;
+  const targetValue = project[repConfig.config.targetField] || project.TargetWeeds || 'N/A';
+  if (targetValue && targetValue !== 'N/A') {
+    doc.setFont(undefined, 'bold'); doc.text(`Target ${targetLabel}:`, lx, y); y += 5;
     doc.setFont(undefined, 'normal');
-    const tw = doc.splitTextToSize(project.TargetWeeds, pw - 28);
+    const tw = doc.splitTextToSize(targetValue, pw - 28);
     doc.text(tw, lx, y); y += tw.length * 5 + 5;
   }
 
   y += 4;
-  y = secHeading(doc, '1. Sub-Trials Summary', y, ph);
+  y = secHeading(doc, '1. Sub-Trials Summary', y, ph, 14, primaryColor);
 
   // Table showing all sub-trials
   const subTrialRows = subTrials.map(st => {
@@ -1216,7 +1441,7 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
 
   // AI Narrative Summary
   if (aiSummary) {
-    y = secHeading(doc, '2. Master AI Synthesis & Narrative', y, ph);
+    y = secHeading(doc, '2. Master AI Synthesis & Narrative', y, ph, 14, primaryColor);
     const narrativeLines = aiSummary.split('\n');
     for (const rawLine of narrativeLines) {
       const line = rawLine.trim();
@@ -1229,19 +1454,19 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
     doc.setFontSize(10);
   }
 
-  // Consolidated WCE comparison
-  y = secHeading(doc, '3. Comparative Weed Control Efficacy (WCE%)', y, ph);
+  // Consolidated comparative efficacy
+  y = secHeading(doc, `3. Comparative ${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey}%)`, y, ph, 14, primaryColor);
   const wceRows = [];
   subTrials.forEach(st => {
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
-    const wces = calcWCE(eff);
+    const wces = calcWCE(eff, categoryId, st);
     wces.forEach(w => {
       wceRows.push([
         st.FormulationName || 'Untreated Check',
         st.Replication || 'R1',
         w.species,
-        w.initialCover.toFixed(1) + '%',
-        w.finalCover.toFixed(1) + '%',
+        w.initialCover.toFixed(1) + repConfig.primaryMetricUnit,
+        w.finalCover.toFixed(1) + repConfig.primaryMetricUnit,
         w.wce.toFixed(1) + '%'
       ]);
     });
@@ -1250,9 +1475,9 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
   if (wceRows.length) {
     autoTable(doc, {
       startY: y,
-      head: [['Sub-Trial / Spot', 'Rep', 'Weed Species', 'Initial Cover', 'Final Cover', 'WCE %']],
+      head: [['Sub-Trial / Spot', 'Rep', repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} %`]],
       body: wceRows,
-      headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 8 }
+      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 10;
   } else {
@@ -1264,7 +1489,7 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
   for (let i = 0; i < subTrials.length; i++) {
     const st = subTrials[i];
     doc.addPage(); y = 20;
-    y = secHeading(doc, `Sub-Trial: ${st.FormulationName || 'Untreated Check'} (${st.Replication || 'R1'})`, y, ph, 14);
+    y = secHeading(doc, `Sub-Trial: ${st.FormulationName || 'Untreated Check'} (${st.Replication || 'R1'})`, y, ph, 14, primaryColor);
     
     // Details
     doc.setFontSize(9);
@@ -1277,11 +1502,15 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
     // Timeline Table
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
     if (eff.length) {
+      const timelineHeaders = categoryId === 'herbicide'
+        ? ['DAA', 'Weed Species', 'Status', 'Notes']
+        : ['DAA', repConfig.targetLabel, repConfig.primaryMetricLabel, 'Status', 'Notes'];
+
       autoTable(doc, {
         startY: y,
-        head: [['DAA', 'Weed Species', 'Status', 'Notes']],
-        body: timelineRows(eff),
-        headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 8 }
+        head: [timelineHeaders],
+        body: timelineRows(eff, categoryId, st),
+        headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
       });
       y = (doc.lastAutoTable?.finalY ?? y) + 8;
     }
@@ -1301,11 +1530,16 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
 export async function generateMasterScientificReport(project, subTrials, options = {}) {
   const { aiSummary = '' } = options;
   toast('Generating Master Scientific Report…', 'info');
+
+  const categoryId = project.Category || (subTrials[0]?.Category) || 'herbicide';
+  const repConfig = getReportConfig({ Category: categoryId });
+  const primaryColor = repConfig.primaryColor;
+
   const doc = createDoc();
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
 
-  doc.setFillColor(...TEAL); doc.rect(0, 0, pw, 45, 'F');
+  doc.setFillColor(...primaryColor); doc.rect(0, 0, pw, 45, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22); doc.setFont(undefined, 'bold');
   doc.text('SCIENTIFIC STUDY MASTER REPORT', pw / 2, 22, { align: 'center' });
@@ -1328,8 +1562,8 @@ export async function generateMasterScientificReport(project, subTrials, options
   y = (doc.lastAutoTable?.finalY ?? y) + 10;
 
   // Executive summary
-  y = secHeading(doc, 'Executive Summary', y, ph);
-  const narrative = aiSummary || `This master scientific report aggregates findings from ${subTrials.length} Sub-Trial monitoring locations evaluated within the ${project.Name} area. Localized efficacy tracking, weed distribution timelines, and photographic logs were evaluated. Overall control profiles and species-specific responses are compiled below.`;
+  y = secHeading(doc, 'Executive Summary', y, ph, 14, primaryColor);
+  const narrative = aiSummary || `This master scientific report aggregates findings from ${subTrials.length} Sub-Trial monitoring locations evaluated within the ${project.Name} area. Localized efficacy tracking, target species distribution timelines, and photographic logs were evaluated. Overall efficacy profiles and target responses are compiled below.`;
   const narrativeLines = narrative.split('\n');
   for (const rawLine of narrativeLines) {
     const line = rawLine.trim();
@@ -1341,18 +1575,18 @@ export async function generateMasterScientificReport(project, subTrials, options
   y += 8;
 
   // Comparative Efficacy Results Table
-  y = secHeading(doc, '1. Comparative Treatment Efficacy Matrix', y, ph);
+  y = secHeading(doc, '1. Comparative Treatment Efficacy Matrix', y, ph, 14, primaryColor);
   const wceRows = [];
   subTrials.forEach(st => {
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
-    const wces = calcWCE(eff);
+    const wces = calcWCE(eff, categoryId, st);
     wces.forEach(w => {
       wceRows.push([
         st.FormulationName || 'Untreated Check',
         st.Replication || 'R1',
         w.species,
-        w.initialCover.toFixed(1) + '%',
-        w.finalCover.toFixed(1) + '%',
+        w.initialCover.toFixed(1) + repConfig.primaryMetricUnit,
+        w.finalCover.toFixed(1) + repConfig.primaryMetricUnit,
         w.wce.toFixed(1) + '%'
       ]);
     });
@@ -1361,15 +1595,15 @@ export async function generateMasterScientificReport(project, subTrials, options
   if (wceRows.length) {
     autoTable(doc, {
       startY: y,
-      head: [['Sub-Trial / Spot', 'Rep', 'Weed Species', 'Initial Cover', 'Final Cover', 'WCE %']],
+      head: [['Sub-Trial / Spot', 'Rep', repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} %`]],
       body: wceRows,
-      headStyles: { fillColor: TEAL }, theme: 'striped', styles: { fontSize: 9 }
+      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 9 }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 10;
   }
 
   // Timeline per Sub-Trial
-  y = secHeading(doc, '2. Spatial & Temporal Observations', y, ph);
+  y = secHeading(doc, '2. Spatial & Temporal Observations', y, ph, 14, primaryColor);
   for (let i = 0; i < subTrials.length; i++) {
     const st = subTrials[i];
     if (y + 40 > ph - 20) { doc.addPage(); y = 20; }
@@ -1379,10 +1613,14 @@ export async function generateMasterScientificReport(project, subTrials, options
 
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
     if (eff.length) {
+      const timelineHeaders = categoryId === 'herbicide'
+        ? ['DAA', 'Species', 'Status', 'Observation Notes']
+        : ['DAA', repConfig.targetLabel, repConfig.primaryMetricLabel, 'Status', 'Observation Notes'];
+
       autoTable(doc, {
         startY: y,
-        head: [['DAA', 'Species', 'Status', 'Observation Notes']],
-        body: timelineRows(eff),
+        head: [timelineHeaders],
+        body: timelineRows(eff, categoryId, st),
         headStyles: { fillColor: DARK }, theme: 'striped', styles: { fontSize: 8 }
       });
       y = (doc.lastAutoTable?.finalY ?? y) + 8;
@@ -1396,25 +1634,30 @@ export async function generateMasterScientificReport(project, subTrials, options
 
 export async function generateMasterPpt(project, subTrials) {
   toast('Generating Master PowerPoint…', 'info');
+  
+  const categoryId = project.Category || (subTrials[0]?.Category) || 'herbicide';
+  const repConfig = getReportConfig({ Category: categoryId });
+  const themeHex = repConfig.config.colorTheme?.primaryHex?.replace('#', '') || '0D9488';
+  
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
 
   // Slide 1: Title
   const s1 = pptx.addSlide();
-  s1.background = { color: '0D9488' };
+  s1.background = { color: themeHex };
   s1.addText('MASTER FIELD TRIAL REPORT', { x: 0.5, y: 1.5, w: 9, h: 1.2, fontSize: 34, bold: true, color: 'FFFFFF', align: 'center' });
   s1.addText(project.Name, { x: 0.5, y: 2.7, w: 9, h: 0.7, fontSize: 20, color: 'FFFFFF', align: 'center' });
   s1.addText(`Crop: ${project.Crop || '—'} | Location: ${project.Location || '—'} | Investigator: ${project.Investigator || '—'}`, { x: 0.5, y: 3.5, w: 9, h: 0.5, fontSize: 13, color: 'E0F2F1', align: 'center' });
 
   // Slide 2: Sub-Trials List
   const s2 = pptx.addSlide();
-  s2.addText('Summary of Sub-Trials / Spots', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: '0D9488' });
+  s2.addText('Summary of Sub-Trials / Spots', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: themeHex });
   const tableRows = [
-    [{ text: 'Sub-Trial Spot', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-     { text: 'Formulation', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-     { text: 'Dosage', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-     { text: 'Rep / Plot', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-     { text: 'Result', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } }]
+    [{ text: 'Sub-Trial Spot', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+     { text: 'Formulation', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+     { text: 'Dosage', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+     { text: 'Rep / Plot', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+     { text: 'Result', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } }]
   ];
   subTrials.forEach(st => {
     tableRows.push([
@@ -1427,26 +1670,26 @@ export async function generateMasterPpt(project, subTrials) {
   });
   s2.addTable(tableRows, { x: 0.4, y: 1.0, w: 9.2, fontSize: 11, colW: [2.5, 2.5, 1.4, 1.4, 1.4], border: { pt: 0.5, color: 'CBD5E1' } });
 
-  // Slide 3: WCE Comparison
+  // Slide 3: Efficacy Comparison
   const s3 = pptx.addSlide();
-  s3.addText('Weed Control Efficacy (WCE) Comparison', { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: '0D9488' });
+  s3.addText(`${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey}) Comparison`, { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: themeHex });
   const wceHeader = [
-    { text: 'Sub-Trial', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-    { text: 'Weed Species', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-    { text: 'Initial Cover', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-    { text: 'Final Cover', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } },
-    { text: 'WCE %', options: { bold: true, color: 'FFFFFF', fill: { color: '0D9488' } } }
+    { text: 'Sub-Trial', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+    { text: repConfig.targetLabel, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+    { text: `Initial ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+    { text: `Final ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+    { text: `${repConfig.primaryMetricKey} %`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } }
   ];
   const wceRows = [wceHeader];
   subTrials.forEach(st => {
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
-    const wces = calcWCE(eff);
+    const wces = calcWCE(eff, categoryId, st);
     wces.forEach(w => {
       wceRows.push([
         st.FormulationName || 'Untreated Check',
         w.species,
-        w.initialCover.toFixed(1) + '%',
-        w.finalCover.toFixed(1) + '%',
+        w.initialCover.toFixed(1) + repConfig.primaryMetricUnit,
+        w.finalCover.toFixed(1) + repConfig.primaryMetricUnit,
         w.wce.toFixed(1) + '%'
       ]);
     });
@@ -1455,7 +1698,7 @@ export async function generateMasterPpt(project, subTrials) {
 
   // Slide 4: Unified Photos
   const s4 = pptx.addSlide();
-  s4.addText('Field Photographs Summary', { x: 0.4, y: 0.2, w: 9, h: 0.6, fontSize: 22, bold: true, color: '0D9488' });
+  s4.addText('Field Photographs Summary', { x: 0.4, y: 0.2, w: 9, h: 0.6, fontSize: 22, bold: true, color: themeHex });
   const pos = [[0.3, 0.9, 4.2, 3.0], [5.1, 0.9, 4.2, 3.0], [0.3, 4.1, 4.2, 3.0], [5.1, 4.1, 4.2, 3.0]];
   let photoCount = 0;
   for (let i = 0; i < subTrials.length; i++) {
@@ -1482,31 +1725,68 @@ export async function generateMasterPpt(project, subTrials) {
 }
 
 export function exportMasterCSV(project, subTrials) {
-  const header = ['Master Project', 'Sub-Trial ID', 'Formulation', 'Replication', 'Plot #', 'Location', 'Dosage', 'Result', 'DAA', 'Obs Date', 'Weed Species', 'Weed Cover %', 'Weed Status', 'Notes'];
+  const categoryId = project.Category || (subTrials[0]?.Category) || 'herbicide';
+  const repConfig = getReportConfig({ Category: categoryId });
+  const primaryField = repConfig.primaryField;
+
+  const header = [
+    'Master Project', 'Sub-Trial ID', 'Formulation', 'Replication', 'Plot #', 
+    'Location', 'Dosage', 'Result', 'DAA', 'Obs Date', 
+    repConfig.targetLabel, repConfig.primaryMetricLabel, 'Status', 'Notes'
+  ];
   const rows = [];
   subTrials.forEach(st => {
     const efficacy = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
     if (efficacy.length) {
       efficacy.forEach(obs => {
-        const details = obs.weedDetails?.length ? obs.weedDetails : [{ species: 'Total', cover: obs.weedCover ?? '' }];
-        details.forEach((wd, di) => {
+        if (categoryId === 'herbicide') {
+          const details = obs.weedDetails?.length ? obs.weedDetails : [{ species: 'Total', cover: obs.weedCover ?? '' }];
+          details.forEach((wd, di) => {
+            const val = wd.cover ?? obs.weedCover ?? '';
+            const status = val !== '' ? (val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor') : '';
+            rows.push([
+              project.Name,
+              di === 0 ? st.ID : '',
+              di === 0 ? st.FormulationName : '',
+              di === 0 ? st.Replication : '',
+              di === 0 ? st.PlotNumber : '',
+              di === 0 ? st.Location : '',
+              di === 0 ? st.Dosage : '',
+              di === 0 ? st.Result : '',
+              obs.daa ?? '',
+              obs.date || '',
+              wd.species || 'Total',
+              val,
+              status,
+              obs.notes || ''
+            ]);
+          });
+        } else {
+          const val = obs[primaryField] ?? obs.weedCover ?? '';
+          let status = '';
+          if (val !== '') {
+            const rating = val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor';
+            const isPositive = (categoryId === 'nutrition' || categoryId === 'biostimulant');
+            const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
+            status = isPositive ? ratingPositive : rating;
+          }
           rows.push([
             project.Name,
-            di === 0 ? st.ID : '',
-            di === 0 ? st.FormulationName : '',
-            di === 0 ? st.Replication : '',
-            di === 0 ? st.PlotNumber : '',
-            di === 0 ? st.Location : '',
-            di === 0 ? st.Dosage : '',
-            di === 0 ? st.Result : '',
+            st.ID,
+            st.FormulationName,
+            st.Replication,
+            st.PlotNumber,
+            st.Location,
+            st.Dosage,
+            st.Result,
             obs.daa ?? '',
             obs.date || '',
-            wd.species || 'Total',
-            wd.cover ?? '',
-            wd.status || '',
+            repConfig.targetValue || 'Total',
+            val,
+            status,
             obs.notes || ''
           ]);
-        });
+        }
       });
     } else {
       rows.push([project.Name, st.ID, st.FormulationName, st.Replication, st.PlotNumber, st.Location, st.Dosage, st.Result, '', '', '', '', '', '']);
@@ -1519,9 +1799,13 @@ export function exportMasterCSV(project, subTrials) {
 }
 
 export function exportMasterHtml(project, subTrials) {
+  const categoryId = project.Category || (subTrials[0]?.Category) || 'herbicide';
+  const repConfig = getReportConfig({ Category: categoryId });
+  const primaryHex = repConfig.config.colorTheme?.primaryHex || '#0d9488';
+
   const subTrialRowsHtml = subTrials.map(st => {
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
-    const wces = calcWCE(eff);
+    const wces = calcWCE(eff, categoryId, st);
     const wceList = wces.map(w => `${w.species}: ${w.wce.toFixed(0)}%`).join(', ') || 'N/A';
     return `<tr>
       <td style="border:1px solid #cbd5e1;padding:6px;"><b>${st.FormulationName || 'Untreated Check'}</b></td>
@@ -1536,17 +1820,17 @@ export function exportMasterHtml(project, subTrials) {
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
     <style>
       body { font-family: 'Calibri', Arial, sans-serif; color: #1e293b; margin: 40px; }
-      h1 { font-size: 22pt; color: #0d9488; margin-bottom: 4px; }
+      h1 { font-size: 22pt; color: ${primaryHex}; margin-bottom: 4px; }
       p { margin: 4px 0; }
       table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-      th { background-color: #0d9488; color: white; border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+      th { background-color: ${primaryHex}; color: white; border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
       td { border: 1px solid #cbd5e1; padding: 8px; }
     </style>
   </head><body>
     <h1>Master Study Report: ${project.Name}</h1>
     <p style="font-size:11pt;color:#475569;">Crop: ${project.Crop || 'N/A'} &nbsp;|&nbsp; Location: ${project.Location || 'N/A'} &nbsp;|&nbsp; Investigator: ${project.Investigator || 'N/A'}</p>
 
-    <h2 style="color:#0d9488;font-size:14pt;border-bottom:2px solid #0d9488;padding-bottom:4px;margin-top:24px;">Sub-Trials Overview</h2>
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Sub-Trials Overview</h2>
     <table>
       <thead>
         <tr>
@@ -1555,7 +1839,7 @@ export function exportMasterHtml(project, subTrials) {
           <th>Rep</th>
           <th>Location</th>
           <th>Result</th>
-          <th>Weed Efficacy (WCE)</th>
+          <th>${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey})</th>
         </tr>
       </thead>
       <tbody>
@@ -1563,7 +1847,7 @@ export function exportMasterHtml(project, subTrials) {
       </tbody>
     </table>
 
-    <p style="text-align:center;color:#94a3b8;font-size:9pt;margin-top:40px;">Generated ${new Date().toLocaleString()} — Herbicide Trial Manager</p>
+    <p style="text-align:center;color:#94a3b8;font-size:9pt;margin-top:40px;">Generated ${new Date().toLocaleString()} — ${repConfig.config.name} Trial Manager</p>
   </body></html>`;
 
   dlBlob(new Blob([html], { type: 'text/html' }), `Master_Report_${safeName(project.Name)}.html`);
@@ -1571,9 +1855,13 @@ export function exportMasterHtml(project, subTrials) {
 }
 
 export function exportMasterDocx(project, subTrials) {
+  const categoryId = project.Category || (subTrials[0]?.Category) || 'herbicide';
+  const repConfig = getReportConfig({ Category: categoryId });
+  const primaryHex = repConfig.config.colorTheme?.primaryHex || '#0d9488';
+
   const subTrialRowsHtml = subTrials.map(st => {
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
-    const wces = calcWCE(eff);
+    const wces = calcWCE(eff, categoryId, st);
     const wceList = wces.map(w => `${w.species}: ${w.wce.toFixed(0)}%`).join(', ') || 'N/A';
     return `<tr>
       <td style="border:1pt solid #cbd5e1;padding:4pt;"><b>${st.FormulationName || 'Untreated Check'}</b></td>
@@ -1594,11 +1882,11 @@ export function exportMasterDocx(project, subTrials) {
   <style>
     @page { size: A4; margin: 2.54cm; }
     body { font-family: Calibri, Arial, sans-serif; font-size: 12pt; color: #1e293b; }
-    h1 { font-size: 18pt; color: #0d9488; }
-    h2 { font-size: 13pt; color: #0d9488; border-bottom: 1pt solid #0d9488; padding-bottom: 3pt; margin-top: 18pt; }
+    h1 { font-size: 18pt; color: ${primaryHex}; }
+    h2 { font-size: 13pt; color: ${primaryHex}; border-bottom: 1pt solid ${primaryHex}; padding-bottom: 3pt; margin-top: 18pt; }
     table { border-collapse: collapse; width: 100%; margin-bottom: 12pt; }
     td, th { border: 1pt solid #cbd5e1; padding: 4pt 7pt; font-size: 10pt; }
-    th { background: #0d9488; color: #fff; font-weight: bold; }
+    th { background: ${primaryHex}; color: #fff; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -1609,12 +1897,12 @@ export function exportMasterDocx(project, subTrials) {
   <table>
     <thead>
       <tr>
-        <th style="background:#0d9488;color:#fff;">Sub-Trial Spot</th>
-        <th style="background:#0d9488;color:#fff;">Dosage</th>
-        <th style="background:#0d9488;color:#fff;">Rep</th>
-        <th style="background:#0d9488;color:#fff;">Location</th>
-        <th style="background:#0d9488;color:#fff;">Result</th>
-        <th style="background:#0d9488;color:#fff;">Weed Efficacy (WCE)</th>
+        <th style="background:${primaryHex};color:#fff;">Sub-Trial Spot</th>
+        <th style="background:${primaryHex};color:#fff;">Dosage</th>
+        <th style="background:${primaryHex};color:#fff;">Rep</th>
+        <th style="background:${primaryHex};color:#fff;">Location</th>
+        <th style="background:${primaryHex};color:#fff;">Result</th>
+        <th style="background:${primaryHex};color:#fff;">${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey})</th>
       </tr>
     </thead>
     <tbody>
