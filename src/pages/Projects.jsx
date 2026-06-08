@@ -68,7 +68,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
       : <span className="text-[7px] font-extrabold bg-blue-500 text-white px-1 py-0.5 rounded uppercase">Exptl</span>;
 
   const categoryId = trial.Category || activeCategory;
-  const config = getCategoryConfig(categoryId);
+  const projectConfig = getCategoryConfig(categoryId);
   const primaryObsField = getPrimaryObservationField(categoryId);
 
   const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
@@ -88,7 +88,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
       <p className="text-[9px] text-slate-500 truncate">{trial.Dosage || '—'}</p>
       {metricVal !== undefined && metricVal !== null && (
         <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-[8px]">
-          <span className="font-bold text-green-700">{metricVal}{config.primaryMetric.unit || ''} {config.primaryMetric.key}</span>
+          <span className="font-bold text-green-700">{metricVal}{projectConfig.primaryMetric.unit || ''} {projectConfig.primaryMetric.key}</span>
         </div>
       )}
       <div className="mt-1.5 flex justify-end">
@@ -102,7 +102,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
 
 // ── Block card ─────────────────────────────────────────────────────────────
 function BlockCard({ block, trials, activeCategory, onPlotClick }) {
-  const config = getCategoryConfig(activeCategory);
+  const projectConfig = getCategoryConfig(activeCategory);
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
   const hasControl = controls.length > 0;
   const tooMany = controls.length > 1;
@@ -190,6 +190,141 @@ export default function Projects({ onMenuClick }) {
   }, [state.projects, activeCategory]);
 
   const activeProject = activeProjectId ? projects.find(p => String(p.ID) === String(activeProjectId)) : null;
+
+  // ── Design completeness ─────────────────────────────────────────────────
+  const designCheck = useMemo(() => {
+    if (!activeProject) return null;
+    const blocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    const treatmentKeys = [...new Set(trials.map(t => t.FormulationName || t.FormulationID || 'Unknown'))];
+    const expectedCells = blocks.length * treatmentKeys.length;
+
+    const blockTrtCounts = {};
+    blocks.forEach(b => { blockTrtCounts[b.ID] = {}; });
+    const duplicates = [];
+    trials.forEach(t => {
+      if (!t.BlockID) return;
+      const key = t.FormulationName || t.FormulationID || 'Unknown';
+      if (!blockTrtCounts[t.BlockID]) blockTrtCounts[t.BlockID] = {};
+      blockTrtCounts[t.BlockID][key] = (blockTrtCounts[t.BlockID][key] || 0) + 1;
+      if (blockTrtCounts[t.BlockID][key] > 1) duplicates.push({ blockId: t.BlockID, key });
+    });
+
+    const missing = [];
+    let observed = 0;
+    blocks.forEach(b => {
+      treatmentKeys.forEach(k => {
+        const count = blockTrtCounts[b.ID]?.[k] || 0;
+        if (count > 0) observed++;
+        else missing.push({ blockName: b.Name || b.ID, key: k });
+      });
+    });
+    const coveragePct = expectedCells > 0 ? Math.round((observed / expectedCells) * 100) : 0;
+    const isBalanced = missing.length === 0 && duplicates.length === 0;
+
+    // control integrity
+    const blockControlChecks = blocks.map(b => {
+      const bt = trials.filter(t => t.BlockID === b.ID);
+      const count = bt.filter(t => String(t.IsControl).toLowerCase() === 'true').length;
+      return { blockName: b.Name || b.ID, count };
+    });
+    const noControl = blockControlChecks.filter(x => x.count === 0);
+    const multiControl = blockControlChecks.filter(x => x.count > 1);
+
+    return { blocks, trials, treatmentKeys, expectedCells, observed, coveragePct, isBalanced, missing, duplicates, noControl, multiControl };
+  }, [activeProject, state.blocks, state.trials]);
+
+  // ── Per-treatment WCE over time ─────────────────────────────────────────
+  const wceTimelineData = useMemo(() => {
+    if (!activeProject) return { daas: [], series: [] };
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    const daaSet = new Set();
+    trials.forEach(t => safeJsonParse(t.EfficacyDataJSON, []).forEach(e => { if (e.daa > 0) daaSet.add(e.daa); }));
+    const daas = [...daaSet].sort((a, b) => a - b);
+    const treatmentNames = [...new Set(trials.map(t => t.FormulationName).filter(Boolean))];
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+
+    // Find UTC for WCE calc
+    const utcName = treatmentNames.find(n => /control|untreated|check/i.test(n));
+
+    const series = treatmentNames.map(name => {
+      const trtTrials = trials.filter(t => t.FormulationName === name);
+      const values = daas.map(daa => {
+        const covers = trtTrials.map(t => {
+          const eff = safeJsonParse(t.EfficacyDataJSON, []);
+          const obs = eff.find(e => e.daa === daa);
+          return obs ? parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) : null;
+        }).filter(v => v !== null);
+        if (covers.length === 0) return null;
+        const meanCover = covers.reduce((s, v) => s + v, 0) / covers.length;
+
+        if (utcName && utcName !== name) {
+          const utcTrials = trials.filter(t => t.FormulationName === utcName);
+          const utcCovers = utcTrials.map(t => {
+            const eff = safeJsonParse(t.EfficacyDataJSON, []);
+            const obs = eff.find(e => e.daa === daa);
+            return obs ? parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) : null;
+          }).filter(v => v !== null);
+          if (utcCovers.length > 0) {
+            const utcMean = utcCovers.reduce((s, v) => s + v, 0) / utcCovers.length;
+            if (utcMean > 0) {
+              if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+                return parseFloat(((meanCover / utcMean - 1) * 100).toFixed(1));
+              } else {
+                return parseFloat(((1 - meanCover / utcMean) * 100).toFixed(1));
+              }
+            }
+            return 0;
+          }
+        }
+        return parseFloat(meanCover.toFixed(1));
+      });
+      return { name, values };
+    });
+    return { daas: daas.map(d => `DAA ${d}`), series };
+  }, [activeProject, state.trials, activeCategory]);
+
+  // ── Treatment performance chart data ───────────────────────────────────
+  const perfChartData = useMemo(() => {
+    if (!analysisResults?.means) return [];
+    return Object.entries(analysisResults.means)
+      .map(([name, mean]) => ({ label: name.length > 12 ? name.slice(0, 10) + '…' : name, value: isFinite(mean) ? mean : 0 }))
+      .sort((a, b) => b.value - a.value);
+  }, [analysisResults]);
+
+  // ── Per-treatment stats (Mean, SD, CV, WCE) ────────────────────────────
+  const treatmentStats = useMemo(() => {
+    if (!activeProject || !analysisResults?.means) return [];
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    const utcName = Object.keys(analysisResults.means).find(n => /control|untreated|check/i.test(n));
+    const utcMean = utcName ? (analysisResults.means[utcName] ?? 0) : 0;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+
+    return (analysisResults.grouping || []).map(g => {
+      const trtTrials = trials.filter(t => t.FormulationName === g.name);
+      const repValues = trtTrials.map(t => {
+        const eff = safeJsonParse(t.EfficacyDataJSON, []);
+        if (!eff.length) return null;
+        const last = eff.sort((a, b) => b.daa - a.daa)[0];
+        return last ? parseFloat(last[primaryObsField] ?? last.weedCover ?? 0) : null;
+      }).filter(v => v !== null);
+
+      const n = repValues.length;
+      const mean = n > 0 ? repValues.reduce((s, v) => s + v, 0) / n : 0;
+      const variance = n > 1 ? repValues.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (n - 1) : 0;
+      const sd = Math.sqrt(variance);
+      const cv = mean > 0 ? (sd / mean) * 100 : 0;
+      let wce = 0;
+      if (utcMean > 0) {
+        if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+          wce = Math.max(0, (mean / utcMean - 1) * 100);
+        } else {
+          wce = Math.max(0, (1 - mean / utcMean) * 100);
+        }
+      }
+      return { name: g.name, n, mean, sd, cv, wce, grouping: g.grouping, repValues };
+    });
+  }, [activeProject, analysisResults, state.trials, activeCategory]);
 
   // ── Open project dashboard ──────────────────────────────────────────────
   const openProject = (id) => {
@@ -510,141 +645,6 @@ export default function Projects({ onMenuClick }) {
     setPostHocMethod(method);
     runAnalysis(method);
   };
-
-  // ── Design completeness ─────────────────────────────────────────────────
-  const designCheck = useMemo(() => {
-    if (!activeProject) return null;
-    const blocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
-    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
-    const treatmentKeys = [...new Set(trials.map(t => t.FormulationName || t.FormulationID || 'Unknown'))];
-    const expectedCells = blocks.length * treatmentKeys.length;
-
-    const blockTrtCounts = {};
-    blocks.forEach(b => { blockTrtCounts[b.ID] = {}; });
-    const duplicates = [];
-    trials.forEach(t => {
-      if (!t.BlockID) return;
-      const key = t.FormulationName || t.FormulationID || 'Unknown';
-      if (!blockTrtCounts[t.BlockID]) blockTrtCounts[t.BlockID] = {};
-      blockTrtCounts[t.BlockID][key] = (blockTrtCounts[t.BlockID][key] || 0) + 1;
-      if (blockTrtCounts[t.BlockID][key] > 1) duplicates.push({ blockId: t.BlockID, key });
-    });
-
-    const missing = [];
-    let observed = 0;
-    blocks.forEach(b => {
-      treatmentKeys.forEach(k => {
-        const count = blockTrtCounts[b.ID]?.[k] || 0;
-        if (count > 0) observed++;
-        else missing.push({ blockName: b.Name || b.ID, key: k });
-      });
-    });
-    const coveragePct = expectedCells > 0 ? Math.round((observed / expectedCells) * 100) : 0;
-    const isBalanced = missing.length === 0 && duplicates.length === 0;
-
-    // control integrity
-    const blockControlChecks = blocks.map(b => {
-      const bt = trials.filter(t => t.BlockID === b.ID);
-      const count = bt.filter(t => String(t.IsControl).toLowerCase() === 'true').length;
-      return { blockName: b.Name || b.ID, count };
-    });
-    const noControl = blockControlChecks.filter(x => x.count === 0);
-    const multiControl = blockControlChecks.filter(x => x.count > 1);
-
-    return { blocks, trials, treatmentKeys, expectedCells, observed, coveragePct, isBalanced, missing, duplicates, noControl, multiControl };
-  }, [activeProject, state.blocks, state.trials]);
-
-  // ── Per-treatment WCE over time ─────────────────────────────────────────
-  const wceTimelineData = useMemo(() => {
-    if (!activeProject) return { daas: [], series: [] };
-    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
-    const daaSet = new Set();
-    trials.forEach(t => safeJsonParse(t.EfficacyDataJSON, []).forEach(e => { if (e.daa > 0) daaSet.add(e.daa); }));
-    const daas = [...daaSet].sort((a, b) => a - b);
-    const treatmentNames = [...new Set(trials.map(t => t.FormulationName).filter(Boolean))];
-    const primaryObsField = getPrimaryObservationField(activeCategory);
-
-    // Find UTC for WCE calc
-    const utcName = treatmentNames.find(n => /control|untreated|check/i.test(n));
-
-    const series = treatmentNames.map(name => {
-      const trtTrials = trials.filter(t => t.FormulationName === name);
-      const values = daas.map(daa => {
-        const covers = trtTrials.map(t => {
-          const eff = safeJsonParse(t.EfficacyDataJSON, []);
-          const obs = eff.find(e => e.daa === daa);
-          return obs ? parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) : null;
-        }).filter(v => v !== null);
-        if (covers.length === 0) return null;
-        const meanCover = covers.reduce((s, v) => s + v, 0) / covers.length;
-
-        if (utcName && utcName !== name) {
-          const utcTrials = trials.filter(t => t.FormulationName === utcName);
-          const utcCovers = utcTrials.map(t => {
-            const eff = safeJsonParse(t.EfficacyDataJSON, []);
-            const obs = eff.find(e => e.daa === daa);
-            return obs ? parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) : null;
-          }).filter(v => v !== null);
-          if (utcCovers.length > 0) {
-            const utcMean = utcCovers.reduce((s, v) => s + v, 0) / utcCovers.length;
-            if (utcMean > 0) {
-              if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
-                return parseFloat(((meanCover / utcMean - 1) * 100).toFixed(1));
-              } else {
-                return parseFloat(((1 - meanCover / utcMean) * 100).toFixed(1));
-              }
-            }
-            return 0;
-          }
-        }
-        return parseFloat(meanCover.toFixed(1));
-      });
-      return { name, values };
-    });
-    return { daas: daas.map(d => `DAA ${d}`), series };
-  }, [activeProject, state.trials, activeCategory]);
-
-  // ── Treatment performance chart data ───────────────────────────────────
-  const perfChartData = useMemo(() => {
-    if (!analysisResults?.means) return [];
-    return Object.entries(analysisResults.means)
-      .map(([name, mean]) => ({ label: name.length > 12 ? name.slice(0, 10) + '…' : name, value: isFinite(mean) ? mean : 0 }))
-      .sort((a, b) => b.value - a.value);
-  }, [analysisResults]);
-
-  // ── Per-treatment stats (Mean, SD, CV, WCE) ────────────────────────────
-  const treatmentStats = useMemo(() => {
-    if (!activeProject || !analysisResults?.means) return [];
-    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
-    const utcName = Object.keys(analysisResults.means).find(n => /control|untreated|check/i.test(n));
-    const utcMean = utcName ? (analysisResults.means[utcName] ?? 0) : 0;
-    const primaryObsField = getPrimaryObservationField(activeCategory);
-
-    return (analysisResults.grouping || []).map(g => {
-      const trtTrials = trials.filter(t => t.FormulationName === g.name);
-      const repValues = trtTrials.map(t => {
-        const eff = safeJsonParse(t.EfficacyDataJSON, []);
-        if (!eff.length) return null;
-        const last = eff.sort((a, b) => b.daa - a.daa)[0];
-        return last ? parseFloat(last[primaryObsField] ?? last.weedCover ?? 0) : null;
-      }).filter(v => v !== null);
-
-      const n = repValues.length;
-      const mean = n > 0 ? repValues.reduce((s, v) => s + v, 0) / n : 0;
-      const variance = n > 1 ? repValues.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (n - 1) : 0;
-      const sd = Math.sqrt(variance);
-      const cv = mean > 0 ? (sd / mean) * 100 : 0;
-      let wce = 0;
-      if (utcMean > 0) {
-        if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
-          wce = Math.max(0, (mean / utcMean - 1) * 100);
-        } else {
-          wce = Math.max(0, (1 - mean / utcMean) * 100);
-        }
-      }
-      return { name: g.name, n, mean, sd, cv, wce, grouping: g.grouping, repValues };
-    });
-  }, [activeProject, analysisResults, state.trials, activeCategory]);
 
   // ── Significance formatter ─────────────────────────────────────────────
   const sigStars = (p) => {
