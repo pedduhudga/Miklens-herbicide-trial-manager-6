@@ -4,6 +4,7 @@ import TopBar from '../components/TopBar.jsx';
 import { FileBox, Download, LayoutTemplate, GripVertical, Plus, Trash2, ChevronRight } from 'lucide-react';
 import { exportScientificReportAsDOC } from '../utils/exportUtils.js';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
+import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 
 export default function Reports({ onMenuClick }) {
   const { state } = useAppState();
@@ -13,6 +14,7 @@ export default function Reports({ onMenuClick }) {
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedTrialIds, setSelectedTrialIds] = useState([]);
+  const [selectedTrialId, setSelectedTrialId] = useState('');
 
   // Custom Template Builder State
   const [availableBlocks, setAvailableBlocks] = useState([]);
@@ -97,9 +99,33 @@ export default function Reports({ onMenuClick }) {
   const handleProjectSelect = (e) => {
     const projectId = e.target.value;
     setSelectedProjectId(projectId);
+    setSelectedTrialId('');
     // Auto-select trials for this project
     const projectTrials = (state.trials || []).filter(t => t.ProjectID === projectId);
     setSelectedTrialIds(projectTrials.map(t => t.ID));
+  };
+
+  const handleGenerateAdvancedExcel = async () => {
+    if (!selectedTrialId) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a trial first.', type: 'warning' } }));
+      return;
+    }
+    const trial = (state.trials || []).find(t => t.ID === selectedTrialId);
+    if (!trial) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Trial data not found.', type: 'error' } }));
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating Advanced Excel Report...', type: 'info' } }));
+    
+    try {
+      const generator = new AdvancedReportGenerator(trial, activeCategory);
+      await generator.generateCompleteReport();
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Report generated successfully!', type: 'success' } }));
+    } catch (error) {
+      console.error(error);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to generate report: ${error.message}`, type: 'error' } }));
+    }
   };
 
   const handleGenerateCustom = async () => {
@@ -143,7 +169,41 @@ export default function Reports({ onMenuClick }) {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Target Data Selector */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-8 shadow-sm">
+              <h3 className="font-bold text-slate-800 mb-4 text-sm uppercase tracking-wider text-slate-500">Select Target Data</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Project</label>
+                  <select
+                     value={selectedProjectId}
+                     onChange={handleProjectSelect}
+                     className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-sm outline-none focus:border-purple-500"
+                  >
+                     <option value="">-- Select a Project --</option>
+                     {(state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide')).map(p => (
+                        <option key={p.ID} value={p.ID}>{p.Name}</option>
+                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Trial</label>
+                  <select
+                     value={selectedTrialId}
+                     onChange={(e) => setSelectedTrialId(e.target.value)}
+                     className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-sm outline-none focus:border-purple-500"
+                     disabled={!selectedProjectId}
+                  >
+                     <option value="">-- Select a Trial --</option>
+                     {(state.trials || []).filter(t => t.ProjectID === selectedProjectId).map(t => (
+                        <option key={t.ID} value={t.ID}>{t.FormulationName || t.ID} ({t.Date || 'No Date'})</option>
+                     ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full">
                  <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
@@ -166,6 +226,26 @@ export default function Reports({ onMenuClick }) {
                    Generate Cards <Download className="w-4 h-4" />
                  </button>
               </div>
+
+              {activeCategory !== 'herbicide' && (
+                <div 
+                  onClick={handleGenerateAdvancedExcel}
+                  className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full hover:border-amber-400"
+                >
+                   <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                      <FileBox className="w-7 h-7" />
+                   </div>
+                   <h3 className="font-bold text-lg text-slate-800 mb-3">Advanced Excel (11-Sheet)</h3>
+                   <p className="text-sm text-slate-500 mb-6 flex-grow">Generate a complete multi-sheet agricultural Excel workbook matching TOK2322C, including ANOVA, statistics, and embedded charts.</p>
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); handleGenerateAdvancedExcel(); }}
+                     className="w-full py-3 bg-amber-50 text-amber-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-amber-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                     disabled={!selectedTrialId}
+                   >
+                     Export Workbook <Download className="w-4 h-4" />
+                   </button>
+                </div>
+              )}
 
               <div
                 onClick={() => setShowBuilder(true)}

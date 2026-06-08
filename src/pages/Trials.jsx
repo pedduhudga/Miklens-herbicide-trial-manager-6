@@ -36,6 +36,7 @@ import {
   exportTrialDocx,
   shareTrial as shareTrialFn,
 } from '../services/trialReports.js';
+import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 
 const RESULT_COLORS = {
   'Excellent': 'bg-emerald-100 text-emerald-700',
@@ -459,6 +460,12 @@ export default function Trials({ onMenuClick }) {
       const driveMatch = typeof imageUrl === 'string' && imageUrl.includes('drive.google.com') && imageUrl.match(/(?:[?&]id=|\/d\/)([a-zA-Z0-9_-]{10,})/);
       const driveFileId = driveMatch ? driveMatch[1] : null;
 
+      const primaryObsField = getPrimaryObservationField(activeCategory);
+      const fieldConfig = catConfig.observationFields?.find(f => f.key === primaryObsField);
+      const promptText = activeCategory === 'herbicide'
+        ? 'Analyze this field plot image. Estimate the percentage (0-100) of ground covered by weeds (both green and brown/burnt). Respond with ONLY a number like "45".'
+        : `Analyze this field plot image for a ${catConfig.name} trial. Estimate the value of "${fieldConfig ? fieldConfig.label : primaryObsField}". Respond with ONLY a single numeric value (e.g. "25" or "4.2").`;
+
       if (driveFileId) {
         // Drive URL — canvas pixel analysis is CORS-blocked, use Gemini fileUri only
         if (!apiKey) {
@@ -471,20 +478,20 @@ export default function Trials({ onMenuClick }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [
-            { text: 'Analyze this field plot image. Estimate the percentage (0-100) of ground covered by weeds (both green and brown/burnt). Respond with ONLY a number like "45".' },
+            { text: promptText },
             { fileData: { mimeType: 'image/jpeg', fileUri } }
           ]}] })
         });
         const d = await resp.json();
         const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const m2 = txt.match(/\d+/);
+        const m2 = txt.match(/[\d.]+/);
         if (m2) {
-          const cover = Math.min(100, Math.max(0, parseInt(m2[0])));
+          const cover = parseFloat(m2[0]);
           const result = { cover, confidence: 85, source: 'AI (Gemini)', greenPct: null, brownPct: null };
           setCoverDetectResult(result);
           return result;
         }
-        throw new Error('Gemini did not return a cover percentage');
+        throw new Error('Gemini did not return a valid numeric value');
       }
 
       // Local data URL or regular remote URL — run pixel analysis first
@@ -506,15 +513,15 @@ export default function Trials({ onMenuClick }) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ contents: [{ parts: [
-                { text: 'Analyze this field plot image. Estimate the percentage (0-100) of ground covered by weeds (both green and brown/burnt). Respond with ONLY a number like "45".' },
+                { text: promptText },
                 { inlineData: { mimeType, data: base64 } }
               ]}] })
             });
             const d = await resp.json();
             const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const m2 = txt.match(/\d+/);
+            const m2 = txt.match(/[\d.]+/);
             if (m2) {
-              const cover = Math.min(100, Math.max(0, parseInt(m2[0])));
+              const cover = parseFloat(m2[0]);
               const result = { cover, confidence: 90, source: 'AI (Gemini)', greenPct: pixelResult.greenPct, brownPct: pixelResult.brownPct };
               setCoverDetectResult(result);
               return result;
@@ -2322,6 +2329,18 @@ If none are present, write "None".`;
   const handleExportDocIng       = useCallback((trial) => exportTrialDocx(trial, { withIngredients: true,  withWeeds: true,  formulations: state.formulations || [] }), [state.formulations]);
   // PPT
   const handleExportPpt          = useCallback((trial) => generatePpt(trial), []);
+  // Advanced Excel (11-Sheet)
+  const handleExportAdvancedExcel = useCallback(async (trial) => {
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating Advanced Excel Report...', type: 'info' } }));
+    try {
+      const generator = new AdvancedReportGenerator(trial, activeCategory);
+      await generator.generateCompleteReport();
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Report generated successfully!', type: 'success' } }));
+    } catch (error) {
+      console.error(error);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to generate report: ${error.message}`, type: 'error' } }));
+    }
+  }, [activeCategory]);
 
   const handleAiSingleGenerate = useCallback(async (trial) => {
     const apiKey = state.settings?.apiKeys?.[0];
@@ -2958,6 +2977,11 @@ If none are present, write "None".`;
                       <button onClick={() => { handleExportPpt(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <MonitorPlay className="w-4 h-4 text-orange-500" /> PowerPoint (.pptx)
                       </button>
+                      {activeCategory !== 'herbicide' && (
+                        <button onClick={() => { handleExportAdvancedExcel(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <FileSpreadsheet className="w-4 h-4 text-amber-500" /> Advanced Excel (11-Sheet)
+                        </button>
+                      )}
                       <button onClick={() => { exportHtmlSlide(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <Archive className="w-4 h-4 text-blue-500" /> HTML Report (printable)
                       </button>
@@ -3881,6 +3905,17 @@ If none are present, write "None".`;
                     </button>
                   </div>
 
+                  {/* ── ADVANCED REPORT ── */}
+                  {activeCategory !== 'herbicide' && (
+                    <div className="mb-3">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1 mb-2">Advanced Reports</p>
+                      <button onClick={() => handleExportAdvancedExcel(detailTrial)} className="w-full flex items-center gap-2 p-2.5 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 text-left transition">
+                        <FileSpreadsheet className="w-4 h-4 text-amber-600 shrink-0" />
+                        <div><p className="text-xs font-semibold text-slate-800 font-bold">Export Advanced Excel (11-Sheet)</p><p className="text-[10px] text-slate-500">TOK2322C standard workbook with formulas, ANOVA, charts, weather, photos</p></div>
+                      </button>
+                    </div>
+                  )}
+
                   {/* ── PRESENTATION ── */}
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1">Presentation</p>
                   <button onClick={() => handleExportPpt(detailTrial)} className="w-full flex items-center gap-2 p-2.5 bg-orange-50 hover:bg-orange-100 rounded-xl border border-orange-200 text-left transition">
@@ -4112,6 +4147,99 @@ If none are present, write "None".`;
             </div>
           </div>
 
+          {/* AI Auto-fill from Photo for Non-Herbicide Categories */}
+          {activeCategory !== 'herbicide' && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1">✨ AI Observation Automation</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                id="ai-autofill-upload" 
+                className="hidden" 
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const reader = new FileReader();
+                  reader.onload = async ev => {
+                    const dataUrl = ev.target.result;
+                    setAiGenRunning(dataUrl || true);
+                    try {
+                      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Running AI plot analysis...', type: 'info' } }));
+                      const trialDate = activeTrial?.Date ? new Date(activeTrial.Date) : new Date();
+                      const pDate = obsForm.date ? new Date(obsForm.date) : new Date();
+                      const daa = Math.max(0, Math.round((pDate.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24)));
+                      
+                      const result = await analyzePhoto(dataUrl, {
+                        treatment: activeTrial?.FormulationName,
+                        daa: obsForm.daa || daa,
+                        rep: activeTrial?.Replication || 1,
+                        category: activeCategory
+                      });
+                      
+                      if (result.success && result.data) {
+                        const aiData = result.data;
+                        const updatedObs = { ...obsForm };
+                        
+                        // Populate metrics
+                        if (aiData.metrics && typeof aiData.metrics === 'object') {
+                          Object.entries(aiData.metrics).forEach(([k, v]) => {
+                            const num = parseFloat(v);
+                            if (!isNaN(num)) {
+                              updatedObs[k] = num;
+                            }
+                          });
+                        }
+                        
+                        // Populate rootToShootRatio if applicable
+                        if (updatedObs.rootBiomass && updatedObs.shootBiomass) {
+                          const rb = parseFloat(updatedObs.rootBiomass);
+                          const sb = parseFloat(updatedObs.shootBiomass);
+                          if (sb > 0) updatedObs.rootToShootRatio = parseFloat((rb / sb).toFixed(3));
+                        }
+                        
+                        // Populate notes and targets
+                        const aiNotes = [];
+                        if (aiData.overallAssessment) aiNotes.push(aiData.overallAssessment);
+                        if (aiData.notes) aiNotes.push(aiData.notes);
+                        updatedObs.notes = aiNotes.join(' | ') || updatedObs.notes;
+                        
+                        if (aiData.targets && Array.isArray(aiData.targets)) {
+                          updatedObs.weedDetails = aiData.targets.map(t => ({
+                            species: t.name || t.species || 'Unknown',
+                            cover: typeof t.value === 'number' ? t.value : parseFloat(t.value || t.cover || 0),
+                            status: t.status || '',
+                            notes: t.notes || ''
+                          }));
+                        }
+                        
+                        setObsForm(updatedObs);
+                        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis populated successfully!', type: 'success' } }));
+                      } else {
+                        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI failed to analyze photo: ' + (result.error || 'unknown error'), type: 'error' } }));
+                      }
+                    } catch (err) {
+                      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis failed: ' + err.message, type: 'error' } }));
+                    } finally {
+                      setAiGenRunning(false);
+                    }
+                  };
+                  reader.readAsDataURL(f);
+                  e.target.value = '';
+                }} 
+              />
+              <button 
+                type="button" 
+                onClick={() => document.getElementById('ai-autofill-upload')?.click()}
+                disabled={aiGenRunning}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg hover:from-violet-700 hover:to-indigo-700 font-semibold shadow-sm disabled:opacity-50"
+              >
+                {aiGenRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <BrainCircuit className="w-3.5 h-3.5" />}
+                {aiGenRunning ? 'Analyzing Photo...' : 'Scan Photo to Auto-Fill All Fields'}
+              </button>
+              <p className="text-[10px] text-slate-500 text-center px-4">Upload a plot photo to let AI automatically measure disease severity, pest counts, chlorophyll index, leaf counts, or vigor ratings, and break down species.</p>
+            </div>
+          )}
+
           {/* Dynamic Observation Fields */}
           <div className="grid grid-cols-1 gap-4">
             {catConfig.observationFields?.map(field => {
@@ -4150,7 +4278,21 @@ If none are present, write "None".`;
                     max={field.max !== undefined ? field.max : undefined}
                     step="0.1"
                     value={obsForm[field.key] ?? ''}
-                    onChange={e => setObsForm({ ...obsForm, [field.key]: e.target.value })}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setObsForm(prev => {
+                        const next = { ...prev, [field.key]: val };
+                        // Real-time calculation of Root-to-Shoot Ratio
+                        if (field.key === 'rootBiomass' || field.key === 'shootBiomass') {
+                          const rb = parseFloat(next.rootBiomass);
+                          const sb = parseFloat(next.shootBiomass);
+                          if (!isNaN(rb) && !isNaN(sb) && sb > 0) {
+                            next.rootToShootRatio = parseFloat((rb / sb).toFixed(3));
+                          }
+                        }
+                        return next;
+                      });
+                    }}
                     className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
                   />
                   {isPrimary && coverDetectResult && (
