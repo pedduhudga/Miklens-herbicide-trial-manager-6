@@ -929,3 +929,36 @@ export class AnalysisEngine {
                     return { method: 'lsd', alpha, lsd: lsdRef, value: lsdRef, letters };
                 }
             }
+
+            function assignCLDByComparator(treatmentStats, isNonSignificant) {
+                const sorted = [...treatmentStats].sort((a, b) => b.mean - a.mean);
+                const n = sorted.length;
+                const cliques = [];
+                for (let i = 0; i < n; i++) {
+                    const clique = [i];
+                    for (let j = 0; j < n; j++) {
+                        if (i === j) continue;
+                        if (clique.every(idx => isNonSignificant(sorted[idx], sorted[j]))) clique.push(j);
+                    }
+                    clique.sort((a, b) => a - b);
+                    if (!cliques.some(c => c.join(',') === clique.join(','))) {
+                        if (!cliques.some(c => clique.every(idx => c.includes(idx)))) {
+                            for (let k = cliques.length - 1; k >= 0; k--) {
+                                if (cliques[k].every(idx => clique.includes(idx))) cliques.splice(k, 1);
+                            }
+                            cliques.push(clique);
+                        }
+                    }
+                }
+                cliques.sort((a, b) => a[0] - b[0]);
+                const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+                sorted.forEach(ts => ts.rank = '');
+                cliques.forEach((c, i) => {
+                    const l = letters[i % 26];
+                    c.forEach(idx => sorted[idx].rank += l);
+                });
+                treatmentStats.forEach(ts => {
+                    const m = sorted.find(s => s.treatmentId === ts.treatmentId);
+                    if (m) ts.rank = m.rank.split('').sort().join('');
+                });
+            }
