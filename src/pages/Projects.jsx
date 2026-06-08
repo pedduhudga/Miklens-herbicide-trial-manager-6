@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
@@ -9,8 +9,9 @@ import {
   Lock, Unlock, Download, FileText, RefreshCw, BarChart2, Shuffle,
   ClipboardList, Package, Sparkles, Save, Loader2, CheckCircle2,
   AlertTriangle, AlertCircle, ShieldAlert, LayoutGrid, TrendingUp,
-  Sigma, Printer, MapPin
+  Sigma, Printer, MapPin, Thermometer, Droplets, CloudRain
 } from 'lucide-react';
+import Chart from 'chart.js/auto';
 import { safeJsonParse } from '../utils/helpers.js';
 import { AnalysisEngine } from '../utils/analysisUtils.js';
 import PlotMap from '../components/PlotMap.jsx';
@@ -163,6 +164,13 @@ export default function Projects({ onMenuClick }) {
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [blockForm, setBlockForm] = useState({ Name: '', ReplicationNum: '' });
   const [showMap, setShowMap] = useState(false);
+  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'report'
+
+  const wceChartRef = useRef(null);
+  const perfChartRef = useRef(null);
+  const speciesChartRef = useRef(null);
+  const radarChartRef = useRef(null);
+  const yieldChartRef = useRef(null);
 
   const [randomizeForm, setRandomizeForm] = useState({
     investigatorName: '',
@@ -185,6 +193,7 @@ export default function Projects({ onMenuClick }) {
   // ── Open project dashboard ──────────────────────────────────────────────
   const openProject = (id) => {
     setActiveProjectId(id);
+    setViewMode('dashboard');
     setAnalysisResults(null);
     setPostHocMethod('lsd');
     const p = projects.find(x => String(x.ID) === String(id));
@@ -213,6 +222,287 @@ export default function Projects({ onMenuClick }) {
   useEffect(() => {
     if (activeProjectId) runAnalysis(postHocMethod);
   }, [activeProjectId, postHocMethod, runAnalysis]); // eslint-disable-line
+
+  // Initialize and update Chart.js instances for the Scientific Report
+  useEffect(() => {
+    if (viewMode !== 'report' || !activeProject || !analysisResults) return;
+
+    const projectCategory = activeProject?.Category || activeCategory;
+    const projectConfig = getCategoryConfig(projectCategory);
+    const chartInstances = [];
+
+    const safeDestroy = (instance) => {
+      if (instance) instance.destroy();
+    };
+
+    // 1. WCE Over Time (Line Chart)
+    const ctxWce = wceChartRef.current;
+    if (ctxWce && wceTimelineData.daas.length > 0 && wceTimelineData.series.length > 0) {
+      const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+      const datasets = wceTimelineData.series.map((s, index) => ({
+        label: s.name,
+        data: s.values,
+        borderColor: colors[index % colors.length],
+        backgroundColor: colors[index % colors.length],
+        fill: false,
+        tension: 0.1
+      }));
+      const chart = new Chart(ctxWce, {
+        type: 'line',
+        data: {
+          labels: wceTimelineData.daas,
+          datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } }
+          },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: `% ${projectConfig.primaryMetric.key}` } }
+          }
+        }
+      });
+      chartInstances.push(chart);
+    }
+
+    // 2. Final Performance (Bar Chart)
+    const ctxPerf = perfChartRef.current;
+    if (ctxPerf && perfChartData.length > 0) {
+      const chart = new Chart(ctxPerf, {
+        type: 'bar',
+        data: {
+          labels: perfChartData.map(d => d.label),
+          datasets: [{
+            label: `Mean ${activeProject.Metric}`,
+            data: perfChartData.map(d => d.value),
+            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+            borderColor: '#3b82f6',
+            borderWidth: 1,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Mean' } }
+          }
+        }
+      });
+      chartInstances.push(chart);
+    }
+
+    // 3. Species Cover (Stacked Bar)
+    const ctxSpecies = speciesChartRef.current;
+    if (ctxSpecies) {
+      const engine = new AnalysisEngine(activeProject.ID, state);
+      const allSpecies = new Set();
+      const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+      projectTrials.forEach(t => {
+        const eff = safeJsonParse(t.EfficacyDataJSON, []);
+        eff.forEach(e => {
+          if (e.weedDetails && Array.isArray(e.weedDetails)) {
+            e.weedDetails.forEach(w => {
+              if (w.species && w.species.toLowerCase() !== 'total') {
+                allSpecies.add(w.species);
+              }
+            });
+          }
+        });
+      });
+
+      const speciesList = [...allSpecies];
+      const treatments = engine.treatments;
+
+      if (speciesList.length > 0 && treatments.length > 0) {
+        const datasets = speciesList.map((species, i) => {
+          const data = treatments.map(tName => {
+            const repValues = engine.getData('cover', species, null)[tName] || [];
+            return repValues.length > 0 ? (repValues.reduce((s, v) => s + v, 0) / repValues.length) : 0;
+          });
+          const colors = ['#059669', '#d97706', '#7c3aed', '#db2777', '#2563eb', '#dc2626', '#0891b2', '#ea580c'];
+          return {
+            label: species,
+            data: data,
+            backgroundColor: colors[i % colors.length],
+            borderColor: colors[i % colors.length],
+            borderWidth: 1
+          };
+        });
+
+        const chart = new Chart(ctxSpecies, {
+          type: 'bar',
+          data: {
+            labels: treatments.map(t => t.length > 12 ? t.slice(0, 10) + '…' : t),
+            datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              tooltip: { mode: 'index', intersect: false },
+              legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } }
+            },
+            scales: {
+              x: { stacked: true },
+              y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Cover (%)' } }
+            }
+          }
+        });
+        chartInstances.push(chart);
+      } else {
+        const ctx = ctxSpecies.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, ctxSpecies.width, ctxSpecies.height);
+          ctx.font = '12px sans-serif';
+          ctx.fillStyle = '#94a3b8';
+          ctx.textAlign = 'center';
+          ctx.fillText(`No ${projectConfig.targetLabel.toLowerCase()} data recorded`, ctxSpecies.width / 2, ctxSpecies.height / 2);
+        }
+      }
+    }
+
+    // 4. Radar (Control Spectrum)
+    const ctxRadar = radarChartRef.current;
+    if (ctxRadar) {
+      const engine = new AnalysisEngine(activeProject.ID, state);
+      const utcName = engine.utcName;
+      const treatments = engine.treatments;
+
+      const allSpecies = new Set();
+      const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+      projectTrials.forEach(t => {
+        const eff = safeJsonParse(t.EfficacyDataJSON, []);
+        eff.forEach(e => {
+          if (e.weedDetails && Array.isArray(e.weedDetails)) {
+            e.weedDetails.forEach(w => {
+              if (w.species && w.species.toLowerCase() !== 'total') {
+                allSpecies.add(w.species);
+              }
+            });
+          }
+        });
+      });
+      const speciesList = [...allSpecies];
+
+      if (treatments.length > 0 && speciesList.length >= 3) {
+        const utcMeans = {};
+        if (utcName) {
+          speciesList.forEach(s => {
+            const vals = engine.getData('cover', s, null)[utcName] || [];
+            utcMeans[s] = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+          });
+        }
+
+        const datasets = treatments.filter(t => t !== utcName).map((tName, i) => {
+          const data = speciesList.map(s => {
+            const tVals = engine.getData('cover', s, null)[tName] || [];
+            const tMean = tVals.length > 0 ? (tVals.reduce((a, b) => a + b, 0) / tVals.length) : 0;
+            let control = 0;
+            if (utcName && utcMeans[s] > 0) {
+              control = ((utcMeans[s] - tMean) / utcMeans[s]) * 100;
+            } else if (!utcName) {
+              control = Math.max(0, 100 - tMean);
+            }
+            return Math.min(100, Math.max(0, control));
+          });
+
+          const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+          return {
+            label: tName,
+            data,
+            borderColor: colors[i % colors.length],
+            backgroundColor: colors[i % colors.length] + '22',
+            fill: true,
+            pointRadius: 2
+          };
+        });
+
+        const chart = new Chart(ctxRadar, {
+          type: 'radar',
+          data: { labels: speciesList, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } }
+            },
+            scales: {
+              r: {
+                min: 0,
+                max: 100,
+                ticks: { display: false, stepSize: 20 },
+                pointLabels: { font: { size: 9 } }
+              }
+            }
+          }
+        });
+        chartInstances.push(chart);
+      } else {
+        const ctx = ctxRadar.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, ctxRadar.width, ctxRadar.height);
+          ctx.font = '12px sans-serif';
+          ctx.fillStyle = '#94a3b8';
+          ctx.textAlign = 'center';
+          ctx.fillText(`Need 3+ ${projectConfig.targetLabel.toLowerCase()} species for Radar`, ctxRadar.width / 2, ctxRadar.height / 2);
+        }
+      }
+    }
+
+    // 5. Yield Chart (Bar)
+    const ctxYield = yieldChartRef.current;
+    if (ctxYield) {
+      const engine = new AnalysisEngine(activeProject.ID, state);
+      const yieldData = engine.getData('yield');
+      const hasYield = Object.values(yieldData).some(arr => arr.some(v => v > 0));
+
+      if (hasYield) {
+        const container = document.getElementById('project-yield-container');
+        if (container) container.classList.remove('hidden');
+
+        const labels = engine.treatments;
+        const means = labels.map(t => {
+          const vals = yieldData[t] || [];
+          return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+        });
+
+        const colors = labels.map((t, i) => ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]);
+
+        const chart = new Chart(ctxYield, {
+          type: 'bar',
+          data: {
+            labels: labels.map(t => t.length > 12 ? t.slice(0, 10) + '…' : t),
+            datasets: [{
+              label: 'Mean Yield',
+              data: means,
+              backgroundColor: colors,
+              borderRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, title: { display: true, text: 'Yield' } }
+            }
+          }
+        });
+        chartInstances.push(chart);
+      } else {
+        const container = document.getElementById('project-yield-container');
+        if (container) container.classList.add('hidden');
+      }
+    }
+
+    return () => {
+      chartInstances.forEach(safeDestroy);
+    };
+  }, [viewMode, activeProject, analysisResults, wceTimelineData, perfChartData, state.trials, state.formulations, activeCategory]);
 
   // Re-run when post-hoc method changes
   const handlePostHocChange = (method) => {
@@ -632,50 +922,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   // ── Scientific Report ─────────────────────────────────────────────────────
   const handleScientificReport = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
-    const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
-    const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
-    const projectCategory = activeProject?.Category || activeCategory;
-    const projectConfig = getCategoryConfig(projectCategory);
-    const treatmentRows = (analysisResults.grouping || []).map(g => {
-      const ts = treatmentStats.find(x => x.name === g.name);
-      const metricVal = ts ? (ts.wce || ts.mean || 0) : 0;
-      return `<tr><td style="padding:8px 10px;border:1px solid #e2e8f0">${g.name}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${ts ? ts.sd.toFixed(2) : '-'}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${ts ? ts.cv.toFixed(1) : '-'}%</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center">${isFinite(metricVal) ? metricVal.toFixed(1) : '-'}${projectConfig.primaryMetric.unit || ''}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:#047857;background:#f0fdf4;border-radius:4px">${g.grouping}</td></tr>`;
-    }).join('');
-    const html = `<!DOCTYPE html><html><head><title>Scientific Report - ${activeProject.Name}</title>
-<style>body{font-family:system-ui,-apple-system,sans-serif;margin:40px;color:#1e293b;line-height:1.6}h1{color:#065f46;font-size:28px;border-bottom:3px solid #10b981;padding-bottom:12px}h2{color:#334155;font-size:16px;text-transform:uppercase;letter-spacing:1px;margin-top:30px;border-left:4px solid #10b981;padding-left:12px}table{border-collapse:collapse;width:100%;margin:12px 0}th{background:#f1f5f9;padding:10px;border:1px solid #e2e8f0;text-align:left;font-size:12px;text-transform:uppercase;color:#64748b}td{padding:8px 10px;border:1px solid #e2e8f0;font-size:13px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px;color:#475569;margin:20px 0;padding:16px;background:#f8fafc;border-radius:8px}.meta span{font-weight:600;color:#1e293b}.sig{background:#dcfce7;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:#166534}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.stat-box{background:#f8fafc;padding:12px;border-radius:8px;text-align:center;border:1px solid #e2e8f0}.stat-label{font-size:11px;color:#64748b;text-transform:uppercase}.stat-value{font-size:20px;font-weight:700;color:#1e293b}</style></head>
-<body><h1>Scientific RCBD Report: ${activeProject.Name}</h1>
-<div class="meta">
-<div>Project ID: <span>${activeProject.ID}</span></div><div>Status: <span>${activeProject.Status || 'Draft'}</span></div>
-<div>Location: <span>${activeProject.Location || 'N/A'}</span></div><div>Investigator: <span>${activeProject.Investigator || 'N/A'}</span></div>
-<div>Crop: <span>${activeProject.Crop || 'N/A'}</span></div><div>Target ${projectConfig.targetLabel}: <span>${activeProject.TargetWeed || 'N/A'}</span></div>
-<div>Metric: <span>${activeProject.Metric}</span></div><div>Generated: <span>${formatDateTime(new Date())}</span></div>
-<div>Blocks: <span>${pBlocks.length}</span></div><div>Plots: <span>${pTrials.length}</span></div>
-</div>
-<h2>Summary Statistics</h2>
-<div class="stat-grid">
-<div class="stat-box"><div class="stat-label">CV%</div><div class="stat-value">${isFinite(analysisResults.anova?.cv) ? analysisResults.anova.cv.toFixed(1) : '-'}%</div></div>
-<div class="stat-box"><div class="stat-label">LSD (0.05)</div><div class="stat-value">${isFinite(analysisResults.postHoc?.value) ? analysisResults.postHoc.value.toFixed(2) : '-'}</div></div>
-<div class="stat-box"><div class="stat-label">F-Ratio</div><div class="stat-value">${isFinite(analysisResults.anova?.fVal) ? analysisResults.anova.fVal.toFixed(2) : '-'}</div></div>
-<div class="stat-box"><div class="stat-label">P-Value</div><div class="stat-value">${isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '-'}</div></div>
-</div>
-<h2>Treatment Means & Statistical Grouping</h2>
-<table><thead><tr><th>Treatment</th><th style="text-align:center">Mean</th><th style="text-align:center">SD</th><th style="text-align:center">CV%</th><th style="text-align:center">${projectConfig.primaryMetric.key}${projectConfig.primaryMetric.unit || ''}</th><th style="text-align:center">Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${treatmentRows}</tbody></table>
-<p style="font-size:12px;color:#64748b;margin-top:8px">Means sharing the same letter are not significantly different (${postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05). Design: ${analysisResults.balance?.isBalanced ? 'Balanced RCBD' : 'Unbalanced RCBD (robust)'}</p>
-<h2>ANOVA Results</h2>
-<table><thead><tr><th>Source</th><th style="text-align:center">DF</th><th style="text-align:center">SS</th><th style="text-align:center">MS</th><th style="text-align:center">F</th><th style="text-align:center">P</th><th style="text-align:center">Sig</th></tr></thead>
-<tbody>
-<tr><td>Treatment</td><td style="text-align:center">${analysisResults.anova?.dfTreat ?? '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.ssTreat) ? analysisResults.anova.ssTreat.toFixed(2) : '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.msTreat) ? analysisResults.anova.msTreat.toFixed(2) : '-'}</td><td style="text-align:center;font-weight:bold">${isFinite(analysisResults.anova?.fVal) ? analysisResults.anova.fVal.toFixed(2) : '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '-'}</td><td style="text-align:center"><span class="sig">${sigStars(analysisResults.anova?.pVal)}</span></td></tr>
-<tr><td>Block</td><td style="text-align:center">${analysisResults.anova?.dfBlock ?? '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.ssBlock) ? analysisResults.anova.ssBlock.toFixed(2) : '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.msBlock) ? analysisResults.anova.msBlock.toFixed(2) : '-'}</td><td colspan="3"></td></tr>
-<tr><td>Error</td><td style="text-align:center">${analysisResults.anova?.dfError ?? '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.ssError) ? analysisResults.anova.ssError.toFixed(2) : '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.msError) ? analysisResults.anova.msError.toFixed(2) : '-'}</td><td colspan="3"></td></tr>
-<tr style="background:#f8fafc;font-weight:600"><td>Total</td><td style="text-align:center">${analysisResults.anova?.dfTotal ?? '-'}</td><td style="text-align:center">${isFinite(analysisResults.anova?.ssTotal) ? analysisResults.anova.ssTotal.toFixed(2) : '-'}</td><td colspan="4"></td></tr>
-</tbody></table>
-<h2>Agronomist Narrative</h2>
-<div style="background:#f8fafc;padding:16px;border-radius:8px;border-left:4px solid #6366f1"><p style="margin:0;font-size:14px;line-height:1.6;white-space:pre-wrap">${narrative || 'No narrative generated yet.'}</p></div>
-</body></html>`;
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    toast('Scientific report opened');
+    setViewMode('report');
+    toast('Scientific report view loaded');
   };
 
   // ── Regulatory DOCX Export ────────────────────────────────────────────────
@@ -839,6 +1087,300 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const treatments = [...new Set(projectTrials.map(t => t.FormulationName).filter(Boolean))];
     const isLocked = activeProject.Status === 'Locked';
+    const projectCategory = activeProject?.Category || activeCategory;
+    const projectConfig = getCategoryConfig(projectCategory);
+
+    if (viewMode === 'report') {
+      const temps = projectTrials.map(t => parseFloat(t.Temperature)).filter(n => isFinite(n));
+      const hums = projectTrials.map(t => parseFloat(t.Humidity)).filter(n => isFinite(n));
+      const rains = projectTrials.map(t => parseFloat(t.Rain)).filter(n => isFinite(n));
+      const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 'N/A';
+      const sum = arr => arr.length ? arr.reduce((a, b) => a + b, 0).toFixed(1) : 'N/A';
+
+      return (
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <TopBar title={`Scientific Report - ${activeProject.Name}`} onMenuClick={onMenuClick} />
+          <div className="flex-1 overflow-y-auto">
+            {/* Header */}
+            <div className="bg-white border-b px-6 py-4">
+              <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setViewMode('dashboard')} className="p-2 rounded-full hover:bg-slate-100 transition">
+                    <ArrowLeft className="h-6 w-6 text-slate-600" />
+                  </button>
+                  <div>
+                    <h1 className="text-2xl font-bold text-slate-800">Scientific Trial Report</h1>
+                    <p className="text-xs text-slate-500">{activeProject.Name} — Metric: {activeProject.Metric}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleGenerateNarrative}
+                  disabled={isGeneratingNarrative}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-md hover:bg-indigo-700 transition text-sm font-bold disabled:opacity-50"
+                >
+                  {isGeneratingNarrative ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Generate AI Narrative
+                </button>
+              </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto p-6 space-y-6">
+              {/* 1. Protocol & Conditions Summary */}
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 border-b pb-2 mb-4 flex items-center gap-2 text-sm">
+                  <ClipboardList className="h-4 w-4 text-emerald-600" />
+                  Trial Conditions & Protocol
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-600">
+                  <div>
+                    <h4 className="font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Site Information</h4>
+                    <p><span className="text-slate-400">Location:</span> <span className="font-semibold text-slate-700">{activeProject.Location || '—'}</span></p>
+                    <p><span className="text-slate-400">Investigator:</span> <span className="font-semibold text-slate-700">{activeProject.Investigator || '—'}</span></p>
+                    <p><span className="text-slate-400">Design:</span> <span className="font-semibold text-slate-700">{activeProject.Design || 'RCBD'} ({projectTrials.length} plots)</span></p>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Application Details</h4>
+                    <p><span className="text-slate-400">Crop:</span> <span className="font-semibold text-slate-700">{activeProject.Crop || '—'}</span></p>
+                    <p><span className="text-slate-400">Spray Volume:</span> <span className="font-semibold text-slate-700">{activeProject.SprayVolume ? `${activeProject.SprayVolume} L/ha` : '—'}</span></p>
+                    <p><span className="text-slate-400">Start Date:</span> <span className="font-semibold text-slate-700">{activeProject.StartDate ? formatDate(activeProject.StartDate) : '—'}</span></p>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Avg. Weather Conditions</h4>
+                    {temps.length > 0 ? (
+                      <div className="flex gap-3 mt-1">
+                        <div className="text-center bg-orange-50 p-2 rounded-lg border border-orange-100 flex-1">
+                          <Thermometer className="h-4 w-4 mx-auto text-orange-500 mb-1" />
+                          <span className="font-bold text-orange-700 text-xs">{avg(temps)}°C</span>
+                        </div>
+                        <div className="text-center bg-blue-50 p-2 rounded-lg border border-blue-100 flex-1">
+                          <Droplets className="h-4 w-4 mx-auto text-blue-500 mb-1" />
+                          <span className="font-bold text-blue-700 text-xs">{avg(hums)}%</span>
+                        </div>
+                        <div className="text-center bg-slate-50 p-2 rounded-lg border border-slate-200 flex-1">
+                          <CloudRain className="h-4 w-4 mx-auto text-slate-500 mb-1" />
+                          <span className="font-bold text-slate-700 text-xs">{sum(rains)}mm</span>
+                        </div>
+                      </div>
+                    ) : <p className="text-slate-400 italic">No weather data recorded.</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Visual Analysis Charts */}
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 border-b pb-2 mb-6 flex items-center gap-2 text-sm">
+                  <BarChart2 className="h-4 w-4 text-emerald-600" />
+                  Visual Analysis
+                </h3>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 mb-3 text-center">{projectConfig.primaryMetric.key} % Over Time (per Treatment)</h4>
+                    <div className="h-[260px] relative">
+                      <canvas ref={wceChartRef}></canvas>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 mb-3 text-center">Final Treatment Performance</h4>
+                    <div className="h-[260px] relative">
+                      <canvas ref={perfChartRef}></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stacked Species, Radar & Yield Charts */}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mt-8 border-t pt-8">
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 mb-3 text-center">Mean Target Cover by {projectConfig.targetLabel} (Final)</h4>
+                    <div className="h-[260px] relative">
+                      <canvas ref={speciesChartRef}></canvas>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 mb-3 text-center">{projectConfig.primaryMetric.key} Spectrum (Radar)</h4>
+                    <div className="h-[260px] relative">
+                      <canvas ref={radarChartRef}></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Yield Chart Container */}
+                <div id="project-yield-container" className="mt-8 border-t pt-8 hidden">
+                  <h4 className="text-xs font-semibold text-slate-500 mb-3 text-center">Crop Yield Analysis</h4>
+                  <div className="h-[260px] relative max-w-xl mx-auto">
+                    <canvas ref={yieldChartRef}></canvas>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Detailed Efficacy & Statistical Separation */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left Column: Tables */}
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Means Table */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-sm">Treatment Means & Significance</h3>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {postHocMethod === 'tukey'
+                            ? "Tukey HSD controls family-wise error (more conservative)."
+                            : "Fisher's LSD is more powerful but less conservative."}
+                        </p>
+                      </div>
+                      <div className="shrink-0">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Post-hoc test</label>
+                        <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className="text-xs border rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                          <option value="lsd">Fisher's LSD</option>
+                          <option value="tukey">Tukey HSD</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase">
+                          <tr>
+                            <th className="p-3">Treatment</th>
+                            <th className="p-3 text-center">Mean</th>
+                            <th className="p-3 text-center">Group ({postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {analysisResults && (analysisResults.grouping || []).map((g, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="p-3 font-medium text-slate-700">{g.name}</td>
+                              <td className="p-3 text-center">{isFinite(g.mean) ? g.mean.toFixed(2) : '—'}</td>
+                              <td className="p-3 text-center font-bold text-emerald-700">{g.grouping}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-4 text-[10px] text-slate-400">
+                      Means sharing the same letter are not significantly different ({postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05).
+                      {analysisResults?.postHoc?.value && <span className="ml-2 font-semibold">{postHocMethod === 'tukey' ? 'HSD' : 'LSD'} (0.05) = {analysisResults.postHoc.value.toFixed(2)}</span>}
+                    </p>
+                  </div>
+
+                  {/* ANOVA Table */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h3 className="font-bold text-slate-800 mb-4 text-sm">ANOVA Results</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase">
+                          <tr>
+                            <th className="p-3">Source</th>
+                            <th className="p-3 text-right">DF</th>
+                            <th className="p-3 text-right">SS</th>
+                            <th className="p-3 text-right">MS</th>
+                            <th className="p-3 text-right">F</th>
+                            <th className="p-3 text-right">P</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {analysisResults?.anova && (
+                            <>
+                              <tr>
+                                <td className="p-3 font-medium">Treatment</td>
+                                <td className="p-3 text-right">{analysisResults.anova.dfTreat ?? '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova.ssTreat) ? analysisResults.anova.ssTreat.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova.msTreat) ? analysisResults.anova.msTreat.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova.fVal) ? analysisResults.anova.fVal.toFixed(2) : '—'}</td>
+                                <td className={`p-3 text-right ${(analysisResults.anova.pVal ?? 1) < 0.05 ? 'text-emerald-600 font-bold' : ''}`}>
+                                  {isFinite(analysisResults.anova.pVal) ? analysisResults.anova.pVal.toFixed(4) : '—'}
+                                </td>
+                              </tr>
+                              {isFinite(analysisResults.anova.ssBlock) && (
+                                <tr>
+                                  <td className="p-3 font-medium">Block</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.dfBlock ?? '—'}</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.ssBlock.toFixed(2)}</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.msBlock.toFixed(2)}</td>
+                                  <td className="p-3 text-right"></td>
+                                  <td className="p-3 text-right"></td>
+                                </tr>
+                              )}
+                              <tr>
+                                <td className="p-3 font-medium">Error</td>
+                                <td className="p-3 text-right">{analysisResults.anova.dfError ?? '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova.ssError) ? analysisResults.anova.ssError.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova.msError) ? analysisResults.anova.msError.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right"></td>
+                                <td className="p-3 text-right"></td>
+                              </tr>
+                              {isFinite(analysisResults.anova.ssTotal) && (
+                                <tr className="bg-slate-50 font-semibold">
+                                  <td className="p-3">Total</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.dfTotal ?? '—'}</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.ssTotal.toFixed(2)}</td>
+                                  <td className="p-3 text-right"></td>
+                                  <td className="p-3 text-right"></td>
+                                  <td className="p-3 text-right"></td>
+                                </tr>
+                              )}
+                            </>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Narrative & Stats Summary */}
+                <div className="space-y-6">
+                  {/* AI narrative */}
+                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100">
+                    <h3 className="font-bold text-indigo-900 mb-1 flex items-center gap-2 text-sm">
+                      <FileText className="h-4 w-4" /> Agronomist Narrative
+                    </h3>
+                    <p className="text-[10px] text-indigo-700 mb-3">AI-generated summary of findings.</p>
+                    <textarea
+                      value={narrative}
+                      onChange={e => setNarrative(e.target.value)}
+                      rows={12}
+                      className="w-full p-3 rounded-lg border-0 shadow-inner bg-white/80 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-y"
+                      placeholder="Type narrative or generate using AI..."
+                    />
+                    <button
+                      onClick={handleSaveNarrative}
+                      disabled={isSavingNarrative}
+                      className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-bold transition text-xs flex items-center justify-center gap-2"
+                    >
+                      {isSavingNarrative ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Save Narrative
+                    </button>
+                  </div>
+
+                  {/* Trial Statistics Summary Panel */}
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h3 className="font-bold text-slate-800 mb-4 text-xs uppercase tracking-wider">Trial Statistics</h3>
+                    <div className="space-y-3 text-xs">
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                        <span className="text-slate-500">CV (%)</span>
+                        <span className="font-bold text-slate-800">
+                          {analysisResults?.anova?.cv ? `${analysisResults.anova.cv.toFixed(2)}%` : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                        <span className="text-slate-500">{postHocMethod === 'tukey' ? 'HSD (0.05)' : 'LSD (0.05)'}</span>
+                        <span className="font-bold text-slate-800">
+                          {analysisResults?.postHoc?.value ? analysisResults.postHoc.value.toFixed(2) : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Design</span>
+                        <span className="font-bold text-slate-800">
+                          {analysisResults?.balance?.isBalanced ? 'Balanced RCBD' : 'Unbalanced RCBD (robust)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
