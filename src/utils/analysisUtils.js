@@ -1,5 +1,6 @@
 import { isMixedWeedPlaceholder, canonicalizeWeedSpecies, normalizeLifecycleSafeStatus } from './weedUtils.js';
 import { safeJsonParse, extractMetricValue } from './helpers.js';
+import { getPrimaryObservationField } from './categoryConfig.js';
 
 export function validateEfficacyData (efficacy) {
                 if (!Array.isArray(efficacy)) {
@@ -581,6 +582,8 @@ export class AnalysisEngine {
                     this.state = state; // Global state reference
                     this.trials = state.trials.filter(t => t.ProjectID === projectId);
                     this.blocks = state.blocks.filter(b => b.ProjectID === projectId);
+                    this.project = (state.projects || []).find(p => p.ID === projectId);
+                    this.category = this.project?.Category || 'herbicide';
 
                     // Identify treatments (Formulations)
                     this.treatments = [...new Set(this.trials.map(t => t.FormulationName))];
@@ -620,31 +623,35 @@ export class AnalysisEngine {
                 // Get aggregated data for a specific metric
                 getData(metric, species = null, daa = null) {
                     const data = {};
+                    const primaryField = getPrimaryObservationField(this.category);
                     this.treatments.forEach(trt => {
                         const reps = this.getReplications(trt);
                         data[trt] = reps.map(r => {
                             // If using backend data
                             if (r.trialId) {
-                                if (metric === 'yield') return r.yield || 0;
-                                if (metric === 'cover') return r.cover || 0;
-                                return 0;
+                                if (metric === 'yield') return r.yield || r.yieldValue || 0;
+                                if (metric === 'cover' || metric === primaryField) return r.cover || r.diseaseSeverity || r.pestCount || r.plantHeight || 0;
+                                return r[metric] || 0;
                             }
 
                             // Local fallback
-                            if (metric === 'yield') return parseFloat(r.Yield || 0);
+                            if (metric === 'yield') return parseFloat(r.Yield || r.YieldValue || 0);
                             const eff = safeJsonParse(r.EfficacyDataJSON, []);
                             if (eff.length === 0) return 0;
                             let obs = daa !== null ? (eff.find(e => e.daa === daa) || eff[eff.length - 1]) : eff.sort((a, b) => b.daa - a.daa)[0];
                             if (!obs) return 0;
-                            if (metric === 'cover') {
-                                if (species) {
-                                    const canonicalSpecies = window.canonicalizeWeedSpecies(species);
-                                    const d = (obs.weedDetails || []).find(w => window.canonicalizeWeedSpecies(w.species) === canonicalSpecies);
-                                    return d ? parseFloat(d.cover) : 0;
+                            if (metric === 'cover' || metric === primaryField) {
+                                if (this.category === 'herbicide') {
+                                    if (species) {
+                                        const canonicalSpecies = window.canonicalizeWeedSpecies(species);
+                                        const d = (obs.weedDetails || []).find(w => window.canonicalizeWeedSpecies(w.species) === canonicalSpecies);
+                                        return d ? parseFloat(d.cover) : 0;
+                                    }
+                                    return (obs.weedDetails || []).reduce((sum, w) => sum + parseFloat(w.cover), 0);
                                 }
-                                return (obs.weedDetails || []).reduce((sum, w) => sum + parseFloat(w.cover), 0);
+                                return parseFloat(obs[primaryField] ?? obs.weedCover ?? 0);
                             }
-                            return 0;
+                            return parseFloat(obs[metric] ?? 0);
                         });
                     });
                     return data;
@@ -667,10 +674,15 @@ export class AnalysisEngine {
                     let anovaResults = this.calculateANOVA(anovaData);
 
                     const efficacy = {};
+                    const primaryField = getPrimaryObservationField(this.category);
                     if (this.utcName && means[this.utcName] > 0) {
                         treatments.forEach(t => {
-                            if (metric === 'cover') {
-                                efficacy[t] = ((means[this.utcName] - means[t]) / means[this.utcName]) * 100;
+                            if (metric === 'cover' || metric === primaryField) {
+                                if (this.category === 'nutrition' || this.category === 'biostimulant') {
+                                    efficacy[t] = ((means[t] - means[this.utcName]) / means[this.utcName]) * 100;
+                                } else {
+                                    efficacy[t] = ((means[this.utcName] - means[t]) / means[this.utcName]) * 100;
+                                }
                             } else {
                                 efficacy[t] = 0;
                             }

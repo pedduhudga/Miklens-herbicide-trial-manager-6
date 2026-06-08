@@ -183,9 +183,9 @@ export default function Projects({ onMenuClick }) {
     setIsAnalyzing(true);
     try {
       const engine = new AnalysisEngine(activeProjectId, state);
-      // Detect primary metric: prefer yield if any trial has yield data, otherwise use cover
+      // Detect primary metric: prefer yield if any trial has yield data, otherwise use category's primary observation field
       const hasYield = (state.trials || []).filter(t => t.ProjectID === activeProjectId).some(t => parseFloat(t.Yield || t.YieldValue) > 0);
-      const primaryMetric = hasYield ? 'yield' : 'cover';
+      const primaryMetric = hasYield ? 'yield' : getPrimaryObservationField(activeCategory);
       const results = await engine.analyze(primaryMetric, null, null, { postHoc: method, persist: true });
       setAnalysisResults(results);
     } catch (e) {
@@ -193,12 +193,12 @@ export default function Projects({ onMenuClick }) {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [activeProjectId, state, postHocMethod]);
+  }, [activeProjectId, state, postHocMethod, activeCategory]);
 
   // Auto-run analysis when project opens
   useEffect(() => {
     if (activeProjectId) runAnalysis(postHocMethod);
-  }, [activeProjectId]); // eslint-disable-line
+  }, [activeProjectId, postHocMethod, runAnalysis]); // eslint-disable-line
 
   // Re-run when post-hoc method changes
   const handlePostHocChange = (method) => {
@@ -649,19 +649,22 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
 
   const handleExportR = () => {
     if (!activeProject) return;
+    const key = config.primaryMetric.key;
     const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
     exportCSV(`${activeProject.Name}_R.csv`, trials.map(t => ({
-      Treatment: t.FormulationName, Block: t.BlockID, WCE: t.WCE || '', Result: t.Result || ''
-    })), ['Treatment', 'Block', 'WCE', 'Result']);
+      Treatment: t.FormulationName, Block: t.BlockID, [key]: t[key] || '', Result: t.Result || ''
+    })), ['Treatment', 'Block', key, 'Result']);
     toast('Exported for R');
   };
 
   const handleExportSAS = () => {
     if (!activeProject) return;
+    const key = config.primaryMetric.key;
+    const keyLower = key.toLowerCase();
     const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
-    const lines = ['data rcbd;', 'input trt $ block wce;', 'datalines;',
-      ...trials.map(t => `${(t.FormulationName || 'T').replace(/\s/g, '_')} ${t.BlockID || 1} ${t.WCE || 0}`),
-      ';', 'run;', '', 'proc glm data=rcbd;', '  class trt block;', '  model wce=block trt;', '  lsmeans trt / pdiff adjust=tukey;', 'run;'
+    const lines = ['data rcbd;', `input trt $ block ${keyLower};`, 'datalines;',
+      ...trials.map(t => `${(t.FormulationName || 'T').replace(/\s/g, '_')} ${t.BlockID || 1} ${t[key] || 0}`),
+      ';', 'run;', '', 'proc glm data=rcbd;', '  class trt block;', `  model ${keyLower}=block trt;`, '  lsmeans trt / pdiff adjust=tukey;', 'run;'
     ];
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
     a.download = `${activeProject.Name}_SAS.sas`; a.click();
@@ -1029,7 +1032,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Per-treatment WCE timeline */}
                       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                        <h4 className="font-bold text-sm text-slate-700 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> WCE % Over Time (per Treatment)</h4>
+                        <h4 className="font-bold text-sm text-slate-700 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> {config.primaryMetric.key} % Over Time (per Treatment)</h4>
                         {wceTimelineData.daas.length > 0 && wceTimelineData.series.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="text-xs w-full min-w-max">
