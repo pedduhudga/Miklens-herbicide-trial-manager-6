@@ -969,6 +969,8 @@ LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.pos
   // ── Regulatory PDF ────────────────────────────────────────────────────
   const handleRegulatoryPDF = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
+    const projectCategory = activeProject?.Category || activeCategory;
+    const projectConfig = getCategoryConfig(projectCategory);
     const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     const cv = isFinite(analysisResults.anova?.cv) ? analysisResults.anova.cv.toFixed(1) : 'N/A';
@@ -978,7 +980,7 @@ LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.pos
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${isFinite(g.mean) ? g.mean.toFixed(2) : '-'}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.sd.toFixed(2) : '-'}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.cv.toFixed(1) : '-'}%</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.wce.toFixed(1) : '-'}${config.primaryMetric.unit || ''}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center">${ts ? ts.wce.toFixed(1) : '-'}${projectConfig.primaryMetric.unit || ''}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;font-weight:bold;color:#059669">${g.grouping}</td></tr>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><title>Regulatory Report - ${activeProject.Name}</title>
@@ -989,7 +991,7 @@ LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.pos
 <div>Blocks: <span>${pBlocks.length}</span></div><div>Plots: <span>${pTrials.length}</span></div>
 <div>Start Date: <span>${formatDateTime(activeProject.StartDate) || 'N/A'}</span></div><div>Generated: <span>${formatDateTime(new Date())}</span></div></div>
 <h2>Treatment Means & Statistical Grouping</h2>
-<table><thead><tr><th>Treatment</th><th>Mean</th><th>SD</th><th>CV%</th><th>${config.primaryMetric.key}%</th><th>Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Treatment</th><th>Mean</th><th>SD</th><th>CV%</th><th>${projectConfig.primaryMetric.key}%</th><th>Group (${postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th></tr></thead><tbody>${rows}</tbody></table>
 <p style="font-size:11px;color:#64748b;margin-top:6px">Means sharing the same letter are not significantly different (${postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05). ${postHocMethod === 'tukey' ? 'HSD' : 'LSD'} (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.postHoc.value.toFixed(2) : 'N/A'}</p>
 <h2>ANOVA Table</h2>
 <table><thead><tr><th>Source</th><th>DF</th><th>SS</th><th>MS</th><th>F</th><th>P</th><th>Sig</th></tr></thead><tbody>
