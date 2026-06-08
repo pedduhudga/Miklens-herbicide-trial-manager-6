@@ -2,6 +2,8 @@ import { isMixedWeedPlaceholder, canonicalizeWeedSpecies, normalizeLifecycleSafe
 import { safeJsonParse, extractMetricValue } from './helpers.js';
 import { getPrimaryObservationField } from './categoryConfig.js';
 import { jStat } from 'jstat';
+import { apiCall } from '../services/db.js';
+
 
 
 export function validateEfficacyData (efficacy) {
