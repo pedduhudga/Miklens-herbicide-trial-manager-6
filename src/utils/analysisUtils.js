@@ -1,5 +1,5 @@
 import { isMixedWeedPlaceholder, canonicalizeWeedSpecies, normalizeLifecycleSafeStatus } from './weedUtils.js';
-import { safeJsonParse, extractMetricValue } from './helpers.js';
+import { safeJsonParse, extractMetricValue, formatSignificance } from './helpers.js';
 import { getPrimaryObservationField } from './categoryConfig.js';
 import { jStat } from 'jstat';
 import { apiCall } from '../services/db.js';
@@ -647,8 +647,8 @@ export class AnalysisEngine {
                             if (metric === 'cover' || metric === primaryField) {
                                 if (this.category === 'herbicide') {
                                     if (species) {
-                                        const canonicalSpecies = window.canonicalizeWeedSpecies(species);
-                                        const d = (obs.weedDetails || []).find(w => window.canonicalizeWeedSpecies(w.species) === canonicalSpecies);
+                                        const canonicalSpecies = canonicalizeWeedSpecies(species);
+                                        const d = (obs.weedDetails || []).find(w => canonicalizeWeedSpecies(w.species) === canonicalSpecies);
                                         return d ? parseFloat(d.cover) : 0;
                                     }
                                     return (obs.weedDetails || []).reduce((sum, w) => sum + parseFloat(w.cover), 0);

@@ -72,3 +72,19 @@ export function extractMetricValue (observation, project) {
 
     return null;
 };
+
+export function formatSignificance(pValue) {
+    if (pValue === null || pValue === undefined) {
+        return { symbol: '?', text: 'Cannot compute', p: null };
+    }
+    if (pValue < 0.001) {
+        return { symbol: '***', text: 'Highly Significant', p: pValue };
+    }
+    if (pValue < 0.01) {
+        return { symbol: '**', text: 'Very Significant', p: pValue };
+    }
+    if (pValue < 0.05) {
+        return { symbol: '*', text: 'Significant', p: pValue };
+    }
+    return { symbol: 'NS', text: 'Not Significant', p: pValue };
+}
