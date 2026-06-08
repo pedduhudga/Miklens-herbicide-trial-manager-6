@@ -605,8 +605,8 @@ export class AnalysisEngine {
                  * Fetch optimized analysis data from backend
                  */
                 async fetchBackendData() {
-                    if (!this.getAppState) {
-                        // No getAppState provided — skip backend, use local data silently
+                    if (!this.getAppState || !this.getAppState()?.settings?.scriptUrl) {
+                        // No getAppState or scriptUrl configured — skip backend, use local data silently
                         return null;
                     }
                     try {
@@ -732,7 +732,7 @@ export class AnalysisEngine {
                     };
 
                     // PERSIST RESULTS TO BACKEND
-                    if (options.persist !== false && this.getAppState) {
+                    if (options.persist !== false && this.getAppState && this.getAppState()?.settings?.scriptUrl) {
                         try {
                             await apiCall('saveAnalysisResults', {
                                 projectId: this.projectId,
