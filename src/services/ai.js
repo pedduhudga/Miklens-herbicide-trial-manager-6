@@ -1,6 +1,7 @@
 import { AVAILABLE_GEMINI_MODELS } from '../utils/aiConstants.js';
 import { GoogleGenAI } from "@google/genai";
 import { formatSignificance } from '../utils/helpers.js';
+import { AnalysisEngine, validateEfficacyData } from '../utils/analysisUtils.js';
 
 const GEMINI_MODEL_PRIORITY = AVAILABLE_GEMINI_MODELS.map(m => m.id);
 

@@ -341,7 +341,7 @@ export default function Projects({ onMenuClick }) {
     if (!activeProjectId) return;
     setIsAnalyzing(true);
     try {
-      const engine = new AnalysisEngine(activeProjectId, state);
+      const engine = new AnalysisEngine(activeProjectId, state, getAppState);
       // Detect primary metric: prefer yield if any trial has yield data, otherwise use category's primary observation field
       const hasYield = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProjectId)).some(t => parseFloat(t.Yield || t.YieldValue) > 0);
       const primaryMetric = hasYield ? 'yield' : getPrimaryObservationField(activeCategory);
@@ -434,7 +434,7 @@ export default function Projects({ onMenuClick }) {
     // 3. Species Cover (Stacked Bar)
     const ctxSpecies = speciesChartRef.current;
     if (ctxSpecies) {
-      const engine = new AnalysisEngine(activeProject.ID, state);
+      const engine = new AnalysisEngine(activeProject.ID, state, getAppState);
       const allSpecies = new Set();
       const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
       projectTrials.forEach(t => {
@@ -504,7 +504,7 @@ export default function Projects({ onMenuClick }) {
     // 4. Radar (Control Spectrum)
     const ctxRadar = radarChartRef.current;
     if (ctxRadar) {
-      const engine = new AnalysisEngine(activeProject.ID, state);
+      const engine = new AnalysisEngine(activeProject.ID, state, getAppState);
       const utcName = engine.utcName;
       const treatments = engine.treatments;
 
@@ -592,7 +592,7 @@ export default function Projects({ onMenuClick }) {
     // 5. Yield Chart (Bar)
     const ctxYield = yieldChartRef.current;
     if (ctxYield) {
-      const engine = new AnalysisEngine(activeProject.ID, state);
+      const engine = new AnalysisEngine(activeProject.ID, state, getAppState);
       const yieldData = engine.getData('yield');
       const hasYield = Object.values(yieldData).some(arr => arr.some(v => v > 0));
 

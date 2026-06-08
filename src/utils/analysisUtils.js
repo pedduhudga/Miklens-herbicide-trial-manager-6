@@ -1,4 +1,4 @@
-import { isMixedWeedPlaceholder, canonicalizeWeedSpecies, normalizeLifecycleSafeStatus } from './weedUtils.js';
+import { isMixedWeedPlaceholder, canonicalizeWeedSpecies, normalizeLifecycleSafeStatus, upsertCoverCorrectionNote } from './weedUtils.js';
 import { safeJsonParse, extractMetricValue, formatSignificance } from './helpers.js';
 import { getPrimaryObservationField } from './categoryConfig.js';
 import { jStat } from 'jstat';
@@ -273,7 +273,7 @@ export function validateEfficacyData (efficacy) {
                                     if (preferred) {
                                         preferred.cover = targetCover;
                                         preferred.status = 'Unaffected';
-                                        preferred.notes = window.upsertCoverCorrectionNote(preferred.notes, `${targetCover}% redistributed from total ${targetCover}% baseline`);
+                                        preferred.notes = upsertCoverCorrectionNote(preferred.notes, `${targetCover}% redistributed from total ${targetCover}% baseline`);
                                     } else {
                                         const mixed = (obs.weedDetails || []).find(x => isMixedWeedPlaceholder(String(x.species || '')));
                                         if (mixed) {
@@ -331,7 +331,7 @@ export function validateEfficacyData (efficacy) {
                                                 x.status = 'Unaffected';
                                                 x.notes = `Auto-reconciled: assigned ${share}% baseline cover from notes/history.`;
                                                 dominant.cover = domCover - share;
-                                                dominant.notes = window.upsertCoverCorrectionNote(dominant.notes, `${share}% redistributed to ${x.species}`);
+                                                dominant.notes = upsertCoverCorrectionNote(dominant.notes, `${share}% redistributed to ${x.species}`);
                                             }
                                         });
                                     }
@@ -581,9 +581,10 @@ if (typeof window !== 'undefined') {
 }
 
 export class AnalysisEngine {
-                constructor(projectId, state) {
+                constructor(projectId, state, getAppState = null) {
                     this.projectId = projectId;
                     this.state = state; // Global state reference
+                    this.getAppState = getAppState; // Function to retrieve live app state for apiCall
                     this.trials = state.trials.filter(t => t.ProjectID === projectId);
                     this.blocks = state.blocks.filter(b => b.ProjectID === projectId);
                     this.project = (state.projects || []).find(p => p.ID === projectId);
@@ -604,8 +605,12 @@ export class AnalysisEngine {
                  * Fetch optimized analysis data from backend
                  */
                 async fetchBackendData() {
+                    if (!this.getAppState) {
+                        // No getAppState provided — skip backend, use local data silently
+                        return null;
+                    }
                     try {
-                        const result = await apiCall('getProjectAnalysisData', { projectId: this.projectId });
+                        const result = await apiCall('getProjectAnalysisData', { projectId: this.projectId }, true, this.getAppState);
                         if (result && result.success) {
                             this.backendData = result;
                             return result;
@@ -727,12 +732,12 @@ export class AnalysisEngine {
                     };
 
                     // PERSIST RESULTS TO BACKEND
-                    if (options.persist !== false) {
+                    if (options.persist !== false && this.getAppState) {
                         try {
                             await apiCall('saveAnalysisResults', {
                                 projectId: this.projectId,
                                 results: results
-                            });
+                            }, true, this.getAppState);
                             await apiCall('logAnalysisRun', {
                                 projectId: this.projectId,
                                 metric: metric,
@@ -740,7 +745,7 @@ export class AnalysisEngine {
                                 pValue: anovaResults.pVal,
                                 significance: formatSignificance(anovaResults.pVal).symbol,
                                 results: results
-                            });
+                            }, true, this.getAppState);
                             console.log('[AnalysisEngine] Results persisted to sheet');
                         } catch (e) {
                             console.error('[AnalysisEngine] Failed to persist results:', e);
