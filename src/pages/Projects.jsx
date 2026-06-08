@@ -535,7 +535,7 @@ export default function Projects({ onMenuClick }) {
       treatmentKeys.forEach(k => {
         const count = blockTrtCounts[b.ID]?.[k] || 0;
         if (count > 0) observed++;
-        else missing.push({ blockName: b.Name || b.ID, key });
+        else missing.push({ blockName: b.Name || b.ID, key: k });
       });
     });
     const coveragePct = expectedCells > 0 ? Math.round((observed / expectedCells) * 100) : 0;
