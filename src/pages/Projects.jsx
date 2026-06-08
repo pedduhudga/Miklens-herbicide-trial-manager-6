@@ -679,7 +679,7 @@ export default function Projects({ onMenuClick }) {
   const handleLockToggle = async () => {
     if (!activeProject) return;
     const newStatus = activeProject.Status === 'Locked' ? 'Draft' : 'Locked';
-    const updated = projects.map(p => p.ID === activeProject.ID ? { ...p, Status: newStatus } : p);
+    const updated = (state.projects || []).map(p => String(p.ID) === String(activeProject.ID) ? { ...p, Status: newStatus } : p);
     updateState({ projects: updated });
     try {
       await updateProject({ ID: activeProject.ID, Status: newStatus }, getAppState);
