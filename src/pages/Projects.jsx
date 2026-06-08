@@ -102,6 +102,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
 
 // ── Block card ─────────────────────────────────────────────────────────────
 function BlockCard({ block, trials, activeCategory, onPlotClick }) {
+  const config = getCategoryConfig(activeCategory);
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
   const hasControl = controls.length > 0;
   const tooMany = controls.length > 1;
