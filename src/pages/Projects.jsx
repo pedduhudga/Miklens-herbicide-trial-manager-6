@@ -734,6 +734,17 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     }
   };
 
+  const getTrialMetricValue = (t) => {
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    if (config.primaryMetric.key === 'Yield' || config.primaryMetric.key === 'YieldValue') {
+      return parseFloat(t.Yield || t.YieldValue || 0);
+    }
+    const eff = safeJsonParse(t.EfficacyDataJSON, []);
+    if (!eff.length) return 0;
+    const latest = eff.sort((a, b) => b.daa - a.daa)[0];
+    return latest ? parseFloat(latest[primaryObsField] ?? latest.weedCover ?? 0) : 0;
+  };
+
   // ── Recalculate DAA for project trials ──────────────────────────────────
   const handleRecalcDAA = async () => {
     if (!activeProject) return;
@@ -753,9 +764,19 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       if (changed) updated++;
       return { ...t, EfficacyDataJSON: JSON.stringify(recalculated) };
     });
+    
+    // Save to local state first
     updateState({ trials: newTrials });
-    toast(`Recalculated DAA for ${updated} trial(s)`, updated > 0 ? 'success' : 'info');
-    if (updated > 0) runAnalysis(postHocMethod);
+    
+    try {
+      const modifiedTrials = newTrials.filter(t => String(t.ProjectID) === String(activeProject.ID));
+      await addBatchTrials({ trials: modifiedTrials }, getAppState);
+      toast(`Recalculated and saved DAA for ${updated} trial(s)`, 'success');
+      if (updated > 0) runAnalysis(postHocMethod);
+    } catch (err) {
+      console.error(err);
+      toast('Failed to save recalculated DAA to database.', 'error');
+    }
   };
 
   // ── Randomize Layout ────────────────────────────────────────────────────
@@ -1022,19 +1043,25 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     if (!activeProject) return;
     const key = config.primaryMetric.key;
     const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
-    exportCSV(`${activeProject.Name}_R.csv`, trials.map(t => ({
-      Treatment: t.FormulationName, Block: t.BlockID, [key]: t[key] || '', Result: t.Result || ''
-    })), ['Treatment', 'Block', key, 'Result']);
+    exportCSV(`${activeProject.Name}_R.csv`, trials.map(t => {
+      const val = getTrialMetricValue(t);
+      return {
+        Treatment: t.FormulationName,
+        Block: t.Replication || t.BlockID || '1',
+        [key]: val,
+        Result: t.Result || val
+      };
+    }), ['Treatment', 'Block', key, 'Result']);
     toast('Exported for R');
   };
 
   const handleExportSAS = () => {
     if (!activeProject) return;
     const key = config.primaryMetric.key;
-    const keyLower = key.toLowerCase();
+    const keyLower = key.toLowerCase().replace(/[^a-z0-9]/g, '');
     const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const lines = ['data rcbd;', `input trt $ block ${keyLower};`, 'datalines;',
-      ...trials.map(t => `${(t.FormulationName || 'T').replace(/\s/g, '_')} ${t.BlockID || 1} ${t[key] || 0}`),
+      ...trials.map(t => `${(t.FormulationName || 'T').replace(/\s/g, '_')} ${t.Replication || t.BlockID || 1} ${getTrialMetricValue(t)}`),
       ';', 'run;', '', 'proc glm data=rcbd;', '  class trt block;', `  model ${keyLower}=block trt;`, '  lsmeans trt / pdiff adjust=tukey;', 'run;'
     ];
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));

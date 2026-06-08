@@ -1,6 +1,8 @@
 import { isMixedWeedPlaceholder, canonicalizeWeedSpecies, normalizeLifecycleSafeStatus } from './weedUtils.js';
 import { safeJsonParse, extractMetricValue } from './helpers.js';
 import { getPrimaryObservationField } from './categoryConfig.js';
+import { jStat } from 'jstat';
+
 
 export function validateEfficacyData (efficacy) {
                 if (!Array.isArray(efficacy)) {
