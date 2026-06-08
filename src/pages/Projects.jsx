@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
-import { addProject, deleteProject, addBlock, updateProject } from '../services/dataLayer.js';
+import { addProject, deleteProject, addBlock, updateProject, addBatchTrials } from '../services/dataLayer.js';
 import {
   Plus, Trash2, Layers, Beaker, Activity, ChevronRight, ArrowLeft,
   Lock, Unlock, Download, FileText, RefreshCw, BarChart2, Shuffle,
@@ -161,6 +161,18 @@ export default function Projects({ onMenuClick }) {
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [blockForm, setBlockForm] = useState({ Name: '', ReplicationNum: '' });
   const [showMap, setShowMap] = useState(false);
+
+  const [randomizeForm, setRandomizeForm] = useState({
+    investigatorName: '',
+    dosage: '',
+    weedSpecies: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [selectedTreatments, setSelectedTreatments] = useState({});
+
+  const activeFormulations = useMemo(() => {
+    return (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'));
+  }, [state.formulations, activeCategory]);
 
   const projects = useMemo(() => {
     return (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide'));
@@ -455,30 +467,136 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 
   // ── Randomize Layout ────────────────────────────────────────────────────
   const [isRandomizeModalOpen, setIsRandomizeModalOpen] = useState(false);
-  const [randomizeBlockId, setRandomizeBlockId] = useState('');
 
   const handleRandomizeLayout = () => {
     if (!activeProject) return;
     const pBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
-    if (pBlocks.length === 0) { toast('No blocks to randomize', 'error'); return; }
-    setRandomizeBlockId(pBlocks[0]?.ID || '');
+    if (pBlocks.length === 0) { toast('No blocks to randomize. Please add at least one block first.', 'error'); return; }
+    
+    // Initialize formulation selections
+    const initialSelections = {};
+    activeFormulations.forEach(f => {
+      // Auto-detect control/untreated to pre-assign control role
+      const isControl = f.Name.toLowerCase().includes('control') || f.Name.toLowerCase().includes('untreated') || f.Name.toLowerCase().includes('check');
+      initialSelections[f.ID] = {
+        selected: isControl, // select control by default
+        role: isControl ? 'control' : 'experimental'
+      };
+    });
+    setSelectedTreatments(initialSelections);
+    
+    setRandomizeForm({
+      investigatorName: activeProject.Investigator || '',
+      dosage: '',
+      weedSpecies: activeProject.TargetWeed || '',
+      date: activeProject.StartDate ? activeProject.StartDate.split('T')[0] : new Date().toISOString().split('T')[0]
+    });
+    
     setIsRandomizeModalOpen(true);
   };
 
-  const applyRandomization = () => {
-    if (!randomizeBlockId) { toast('Select a block', 'error'); return; }
-    const blockTrials = (state.trials || []).filter(t => t.BlockID === randomizeBlockId);
-    if (blockTrials.length === 0) { toast('No trials in this block', 'error'); return; }
-    // Fisher-Yates shuffle for plot orders
-    const shuffled = [...blockTrials].sort(() => Math.random() - 0.5);
-    const updates = shuffled.map((t, i) => ({ ...t, RandomizationOrder: i + 1 }));
-    const newTrials = (state.trials || []).map(t => {
-      const upd = updates.find(u => u.ID === t.ID);
-      return upd || t;
+  const applyRandomization = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    
+    // Get list of selected treatments
+    const trtList = Object.entries(selectedTreatments)
+      .filter(([_, value]) => value.selected)
+      .map(([fid, value]) => {
+        const f = activeFormulations.find(form => form.ID === fid);
+        return {
+          fid,
+          name: f?.Name || 'Unknown',
+          role: value.role
+        };
+      });
+      
+    if (trtList.length === 0) {
+      toast('Please select at least one treatment.', 'error');
+      return;
+    }
+    
+    const controls = trtList.filter(t => t.role === 'control');
+    if (controls.length !== 1) {
+      toast('You must select exactly ONE Untreated Control.', 'error');
+      return;
+    }
+    
+    const pBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
+    if (pBlocks.length === 0) {
+      toast('Create at least one block before randomizing.', 'error');
+      return;
+    }
+    
+    const trialsToSave = [];
+    pBlocks.forEach(block => {
+      // Create pool of treatments for this block
+      const blockTreatments = trtList.map(t => ({
+        FormulationID: t.fid,
+        FormulationName: t.name,
+        IsControl: t.role === 'control',
+        IsStandardCheck: t.role === 'standard'
+      }));
+      
+      // Fisher-Yates Shuffle
+      for (let i = blockTreatments.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [blockTreatments[i], blockTreatments[j]] = [blockTreatments[j], blockTreatments[i]];
+      }
+      
+      // Create Trial objects
+      blockTreatments.forEach((t, index) => {
+        const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+        
+        // Category specific field mapping: e.g. WeedSpecies, DiseaseTarget, PestTarget, NutrientType, BiostimulantType
+        const targetField = config.targetField || 'WeedSpecies';
+        
+        const tToSave = {
+          ID: trialId,
+          ProjectID: activeProject.ID,
+          BlockID: block.ID,
+          FormulationID: t.FormulationID,
+          FormulationName: t.FormulationName,
+          InvestigatorName: randomizeForm.investigatorName || '',
+          Dosage: randomizeForm.dosage || '',
+          Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+          Replication: block.ReplicationNum || '1',
+          RandomizationOrder: index + 1,
+          IsControl: t.IsControl,
+          IsStandardCheck: t.IsStandardCheck,
+          Status: 'Draft',
+          IsLive: true,
+          EfficacyDataJSON: '[]',
+          PhotoURLs: '[]',
+          WeedPhotosJSON: '[]',
+          PlotNumber: index + 1,
+          AISummariesJSON: JSON.stringify({ plotNum: index + 1 }),
+          Category: activeCategory,
+          [targetField]: randomizeForm.weedSpecies || ''
+        };
+        
+        // Add to batch list
+        trialsToSave.push(tToSave);
+      });
     });
-    updateState({ trials: newTrials });
-    toast(`Randomized ${updates.length} plots in block`, 'success');
+    
+    // Call batch API to save trials
     setIsRandomizeModalOpen(false);
+    toast(`Generating layout with ${trialsToSave.length} plots...`);
+    
+    // Add to state locally
+    const currentTrials = state.trials || [];
+    // Remove old trials for this project if any exist to overwrite
+    const otherTrials = currentTrials.filter(t => t.ProjectID !== activeProject.ID);
+    updateState({ trials: [...otherTrials, ...trialsToSave] });
+    
+    try {
+      await addBatchTrials({ trials: trialsToSave }, getAppState);
+      toast('Randomized layout generated successfully!', 'success');
+      runAnalysis(postHocMethod);
+    } catch (err) {
+      console.error(err);
+      toast('Failed to save randomized layout to database.', 'error');
+    }
   };
 
   // ── Protocol Settings ───────────────────────────────────────────────────
@@ -1330,28 +1448,105 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
       </Modal>
 
       {/* ── Randomize Layout Modal ── */}
-      <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize Layout">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600">Randomize plot arrangement within a block using Fisher-Yates shuffle algorithm.</p>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Select Block</label>
-            <select value={randomizeBlockId} onChange={e => setRandomizeBlockId(e.target.value)} className={INPUT}>
-              <option value="">Select a block...</option>
-              {(state.blocks || []).filter(b => b.ProjectID === activeProject?.ID).map(b => (
-                <option key={b.ID} value={b.ID}>{b.Name}</option>
-              ))}
-            </select>
+      <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout">
+        <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+            <p className="text-xs font-bold text-emerald-600 uppercase">Target Project</p>
+            <p className="text-base font-bold text-emerald-900">{activeProject?.Name}</p>
           </div>
+          <p className="text-xs text-slate-500">Select treatments to distribute across all blocks in this project. Plots will be generated for every block. One treatment must be tagged as "Untreated Control" to enable calculations later.</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Treatments Selection */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Select Treatments</label>
+              <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1 bg-slate-50">
+                {activeFormulations.map(f => {
+                  const selection = selectedTreatments[f.ID] || { selected: false, role: 'experimental' };
+                  return (
+                    <div key={f.ID} className="flex items-center gap-2 p-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">
+                      <input 
+                        type="checkbox" 
+                        checked={selection.selected} 
+                        onChange={e => setSelectedTreatments(prev => ({
+                          ...prev,
+                          [f.ID]: { ...selection, selected: e.target.checked }
+                        }))} 
+                        className="h-4 w-4 rounded text-emerald-600"
+                      />
+                      <span className="flex-grow pl-1 text-xs font-medium text-slate-700 truncate" title={f.Name}>{f.Name}</span>
+                      <select 
+                        value={selection.role} 
+                        onChange={e => setSelectedTreatments(prev => ({
+                          ...prev,
+                          [f.ID]: { selected: true, role: e.target.value }
+                        }))} 
+                        className="text-[10px] border border-slate-300 rounded px-1 py-0.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      >
+                        <option value="experimental">Experimental</option>
+                        <option value="standard">Standard Check</option>
+                        <option value="control">Untreated Control</option>
+                      </select>
+                    </div>
+                  );
+                })}
+                {activeFormulations.length === 0 && (
+                  <p className="text-xs text-slate-400 italic p-3 text-center">No formulations found in this category.</p>
+                )}
+              </div>
+            </div>
+            
+            {/* Default Plot Info */}
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-slate-700">Default Plot Info</label>
+              <div>
+                <input 
+                  type="text" 
+                  placeholder="Investigator" 
+                  value={randomizeForm.investigatorName} 
+                  onChange={e => setRandomizeForm(p => ({ ...p, investigatorName: e.target.value }))} 
+                  className={INPUT} 
+                />
+              </div>
+              <div>
+                <input 
+                  type="text" 
+                  placeholder="Default Dosage (e.g. 100 mL/ha)" 
+                  value={randomizeForm.dosage} 
+                  onChange={e => setRandomizeForm(p => ({ ...p, dosage: e.target.value }))} 
+                  className={INPUT} 
+                />
+              </div>
+              <div>
+                <input 
+                  type="text" 
+                  placeholder={`Target ${config.targetLabel}`} 
+                  value={randomizeForm.weedSpecies} 
+                  onChange={e => setRandomizeForm(p => ({ ...p, weedSpecies: e.target.value }))} 
+                  className={INPUT} 
+                />
+              </div>
+              <div>
+                <input 
+                  type="date" 
+                  value={randomizeForm.date} 
+                  onChange={e => setRandomizeForm(p => ({ ...p, date: e.target.value }))} 
+                  className={INPUT} 
+                />
+              </div>
+            </div>
+          </div>
+          
           <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-800">
-            <strong>Warning:</strong> Randomization will assign a new random order to all plots in the selected block. This action cannot be undone.
+            <strong>Warning:</strong> Generating a new randomized layout will replace any existing plots/trials for this project.
           </div>
           <div className="pt-4 flex justify-end gap-3 border-t">
             <button type="button" onClick={() => setIsRandomizeModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
-            <button onClick={applyRandomization} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-              <Shuffle className="w-4 h-4" /> Apply Randomization
+            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+              <Shuffle className="w-4 h-4" /> Generate & Randomize
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* ── Protocol Settings Modal ── */}
