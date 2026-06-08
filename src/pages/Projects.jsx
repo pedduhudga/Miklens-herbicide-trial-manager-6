@@ -1815,17 +1815,22 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                   <h3 className="font-bold text-slate-800 mb-3 text-sm">Actions</h3>
                   <div className="space-y-1">
-                    {[
-                      { label: isLocked ? 'Refresh Report' : 'Run Analysis', icon: BarChart2, color: 'text-emerald-700 hover:bg-emerald-50', action: () => runAnalysis(postHocMethod) },
-                      { label: 'Recalculate DAA', icon: RefreshCw, color: 'text-amber-700 hover:bg-amber-50', action: handleRecalcDAA },
-                      { label: 'Randomize Layout', icon: Shuffle, color: 'text-emerald-700 hover:bg-emerald-50', action: handleRandomizeLayout, disabled: isLocked },
-                      { label: 'Protocol Settings', icon: ClipboardList, color: 'text-blue-700 hover:bg-blue-50', action: openProtocolSettings, disabled: isLocked },
-                    ].map(({ label, icon: Icon, color, action, disabled }) => (
-                      <button key={label} onClick={action} disabled={disabled}
-                        className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${color} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                        <Icon className="w-4 h-4 shrink-0" /> {label}
-                      </button>
-                    ))}
+                    <button onClick={() => runAnalysis(postHocMethod)}
+                      className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-emerald-700 hover:bg-emerald-50">
+                      <BarChart2 className="w-4 h-4 shrink-0" /> {isLocked ? 'Refresh Report' : 'Run Analysis'}
+                    </button>
+                    <button onClick={handleRecalcDAA}
+                      className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-amber-700 hover:bg-amber-50">
+                      <RefreshCw className="w-4 h-4 shrink-0" /> Recalculate DAA
+                    </button>
+                    <button onClick={handleRandomizeLayout} disabled={isLocked}
+                      className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-emerald-700 hover:bg-emerald-50 ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                      <Shuffle className="w-4 h-4 shrink-0" /> Randomize Layout
+                    </button>
+                    <button onClick={openProtocolSettings} disabled={isLocked}
+                      className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-blue-700 hover:bg-blue-50 ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                      <ClipboardList className="w-4 h-4 shrink-0" /> Protocol Settings
+                    </button>
                     <hr className="my-2 border-slate-100" />
                     <button onClick={handleExportR} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition">
                       <Download className="w-4 h-4" /> Export to R (CSV)
