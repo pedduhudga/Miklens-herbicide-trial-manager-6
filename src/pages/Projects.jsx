@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
@@ -52,7 +53,7 @@ function InlineBarChart({ data, color = '#10b981', height = 120 }) {
 }
 
 // ── Plot mini card ─────────────────────────────────────────────────────────
-function PlotMiniCard({ trial, activeCategory = 'herbicide' }) {
+function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
   const isControl = String(trial.IsControl).toLowerCase() === 'true';
   const isCheck = String(trial.IsStandardCheck).toLowerCase() === 'true';
   const isCompleted = String(trial.IsCompleted).toLowerCase() === 'true';
@@ -76,7 +77,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide' }) {
   const metricVal = latest ? latest[primaryObsField] : null;
 
   return (
-    <div className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition relative overflow-hidden ${bg}`}>
+    <div onClick={onClick} className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition relative overflow-hidden cursor-pointer ${bg}`}>
       <div className={`absolute top-0 left-0 w-1 h-full ${ribbon}`} />
       <div className="flex justify-between items-start mb-1">
         <span className="text-[9px] font-bold text-slate-400">PLOT {plotNum}</span>
@@ -99,7 +100,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide' }) {
 }
 
 // ── Block card ─────────────────────────────────────────────────────────────
-function BlockCard({ block, trials, activeCategory }) {
+function BlockCard({ block, trials, activeCategory, onPlotClick }) {
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
   const hasControl = controls.length > 0;
   const tooMany = controls.length > 1;
@@ -125,7 +126,7 @@ function BlockCard({ block, trials, activeCategory }) {
         {trials.length > 0 ? (
           <div className="flex gap-3 min-w-max pb-1">
             {[...trials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-              .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} />)}
+              .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
           </div>
         ) : (
           <p className="text-xs text-slate-400 italic py-3">No plots in this block.</p>
@@ -138,6 +139,7 @@ function BlockCard({ block, trials, activeCategory }) {
 // ── Main component ─────────────────────────────────────────────────────────
 export default function Projects({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const navigate = useNavigate();
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
 
@@ -178,14 +180,14 @@ export default function Projects({ onMenuClick }) {
     return (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide'));
   }, [state.projects, activeCategory]);
 
-  const activeProject = activeProjectId ? projects.find(p => p.ID === activeProjectId) : null;
+  const activeProject = activeProjectId ? projects.find(p => String(p.ID) === String(activeProjectId)) : null;
 
   // ── Open project dashboard ──────────────────────────────────────────────
   const openProject = (id) => {
     setActiveProjectId(id);
     setAnalysisResults(null);
     setPostHocMethod('lsd');
-    const p = projects.find(x => x.ID === id);
+    const p = projects.find(x => String(x.ID) === String(id));
     setNarrative(p?.Narrative || '');
   };
 
@@ -196,7 +198,7 @@ export default function Projects({ onMenuClick }) {
     try {
       const engine = new AnalysisEngine(activeProjectId, state);
       // Detect primary metric: prefer yield if any trial has yield data, otherwise use category's primary observation field
-      const hasYield = (state.trials || []).filter(t => t.ProjectID === activeProjectId).some(t => parseFloat(t.Yield || t.YieldValue) > 0);
+      const hasYield = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProjectId)).some(t => parseFloat(t.Yield || t.YieldValue) > 0);
       const primaryMetric = hasYield ? 'yield' : getPrimaryObservationField(activeCategory);
       const results = await engine.analyze(primaryMetric, null, null, { postHoc: method, persist: true });
       setAnalysisResults(results);
@@ -221,8 +223,8 @@ export default function Projects({ onMenuClick }) {
   // ── Design completeness ─────────────────────────────────────────────────
   const designCheck = useMemo(() => {
     if (!activeProject) return null;
-    const blocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
-    const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const blocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const treatmentKeys = [...new Set(trials.map(t => t.FormulationName || t.FormulationID || 'Unknown'))];
     const expectedCells = blocks.length * treatmentKeys.length;
 
@@ -264,7 +266,7 @@ export default function Projects({ onMenuClick }) {
   // ── Per-treatment WCE over time ─────────────────────────────────────────
   const wceTimelineData = useMemo(() => {
     if (!activeProject) return { daas: [], series: [] };
-    const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const daaSet = new Set();
     trials.forEach(t => safeJsonParse(t.EfficacyDataJSON, []).forEach(e => { if (e.daa > 0) daaSet.add(e.daa); }));
     const daas = [...daaSet].sort((a, b) => a - b);
@@ -322,7 +324,7 @@ export default function Projects({ onMenuClick }) {
   // ── Per-treatment stats (Mean, SD, CV, WCE) ────────────────────────────
   const treatmentStats = useMemo(() => {
     if (!activeProject || !analysisResults?.means) return [];
-    const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const utcName = Object.keys(analysisResults.means).find(n => /control|untreated|check/i.test(n));
     const utcMean = utcName ? (analysisResults.means[utcName] ?? 0) : 0;
     const primaryObsField = getPrimaryObservationField(activeCategory);
@@ -370,7 +372,7 @@ export default function Projects({ onMenuClick }) {
       ID: Date.now().toString(),
       ProjectID: activeProjectId,
       Name: blockForm.Name.trim(),
-      ReplicationNum: blockForm.ReplicationNum || String((state.blocks || []).filter(b => b.ProjectID === activeProjectId).length + 1),
+      ReplicationNum: blockForm.ReplicationNum || String((state.blocks || []).filter(b => String(b.ProjectID) === String(activeProjectId)).length + 1),
       CreatedAt: new Date().toISOString(),
     };
     updateState({ blocks: [...(state.blocks || []), payload] });
@@ -400,7 +402,7 @@ export default function Projects({ onMenuClick }) {
     setIsSavingNarrative(true);
     try {
       await updateProject({ ID: activeProjectId, Narrative: narrative }, getAppState);
-      const updated = projects.map(p => p.ID === activeProjectId ? { ...p, Narrative: narrative } : p);
+      const updated = projects.map(p => String(p.ID) === String(activeProjectId) ? { ...p, Narrative: narrative } : p);
       updateState({ projects: updated });
       toast('Narrative saved');
     } catch { toast('Failed to save narrative', 'error'); }
@@ -444,10 +446,10 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   // ── Recalculate DAA for project trials ──────────────────────────────────
   const handleRecalcDAA = async () => {
     if (!activeProject) return;
-    const pTrials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     let updated = 0;
     const newTrials = (state.trials || []).map(t => {
-      if (t.ProjectID !== activeProject.ID || !t.Date) return t;
+      if (String(t.ProjectID) !== String(activeProject.ID) || !t.Date) return t;
       const appDate = new Date(t.Date);
       const eff = safeJsonParse(t.EfficacyDataJSON, []);
       const recalculated = eff.map(obs => {
@@ -470,7 +472,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 
   const handleRandomizeLayout = () => {
     if (!activeProject) return;
-    const pBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
+    const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     if (pBlocks.length === 0) { toast('No blocks to randomize. Please add at least one block first.', 'error'); return; }
     
     // Initialize formulation selections
@@ -521,7 +523,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       return;
     }
     
-    const pBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
+    const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     if (pBlocks.length === 0) {
       toast('Create at least one block before randomizing.', 'error');
       return;
@@ -586,7 +588,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     // Add to state locally
     const currentTrials = state.trials || [];
     // Remove old trials for this project if any exist to overwrite
-    const otherTrials = currentTrials.filter(t => t.ProjectID !== activeProject.ID);
+    const otherTrials = currentTrials.filter(t => String(t.ProjectID) !== String(activeProject.ID));
     updateState({ trials: [...otherTrials, ...trialsToSave] });
     
     try {
@@ -630,8 +632,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   // ── Scientific Report ─────────────────────────────────────────────────────
   const handleScientificReport = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
-    const pTrials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
-    const pBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
+    const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     const projectCategory = activeProject?.Category || activeCategory;
     const projectConfig = getCategoryConfig(projectCategory);
     const treatmentRows = (analysisResults.grouping || []).map(g => {
@@ -719,8 +721,8 @@ LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.pos
   // ── Regulatory PDF ────────────────────────────────────────────────────
   const handleRegulatoryPDF = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
-    const pTrials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
-    const pBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
+    const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     const cv = isFinite(analysisResults.anova?.cv) ? analysisResults.anova.cv.toFixed(1) : 'N/A';
     const rows = (analysisResults.grouping || []).map(g => {
       const ts = treatmentStats.find(x => x.name === g.name);
@@ -768,7 +770,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
   const handleExportR = () => {
     if (!activeProject) return;
     const key = config.primaryMetric.key;
-    const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     exportCSV(`${activeProject.Name}_R.csv`, trials.map(t => ({
       Treatment: t.FormulationName, Block: t.BlockID, [key]: t[key] || '', Result: t.Result || ''
     })), ['Treatment', 'Block', key, 'Result']);
@@ -779,7 +781,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     if (!activeProject) return;
     const key = config.primaryMetric.key;
     const keyLower = key.toLowerCase();
-    const trials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const trials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const lines = ['data rcbd;', `input trt $ block ${keyLower};`, 'datalines;',
       ...trials.map(t => `${(t.FormulationName || 'T').replace(/\s/g, '_')} ${t.BlockID || 1} ${t[key] || 0}`),
       ';', 'run;', '', 'proc glm data=rcbd;', '  class trt block;', `  model ${keyLower}=block trt;`, '  lsmeans trt / pdiff adjust=tukey;', 'run;'
@@ -833,8 +835,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
   // PROJECT DASHBOARD VIEW
   // ══════════════════════════════════════════════════════════════════════════
   if (activeProject) {
-    const projectBlocks = (state.blocks || []).filter(b => b.ProjectID === activeProject.ID);
-    const projectTrials = (state.trials || []).filter(t => t.ProjectID === activeProject.ID);
+    const projectBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
+    const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const treatments = [...new Set(projectTrials.map(t => t.FormulationName).filter(Boolean))];
     const isLocked = activeProject.Status === 'Locked';
 
@@ -987,7 +989,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   {projectBlocks.length > 0 ? (
                     <div className="space-y-4">
                       {projectBlocks.map(b => (
-                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => t.BlockID === b.ID)} activeCategory={activeCategory} />
+                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} />
                       ))}
                     </div>
                   ) : (
@@ -1324,8 +1326,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.length > 0 ? projects.map(p => {
-            const pb = (state.blocks || []).filter(b => b.ProjectID === p.ID);
-            const pt = (state.trials || []).filter(t => t.ProjectID === p.ID);
+            const pb = (state.blocks || []).filter(b => String(b.ProjectID) === String(p.ID));
+            const pt = (state.trials || []).filter(t => String(t.ProjectID) === String(p.ID));
             const treats = [...new Set(pt.map(t => t.FormulationName).filter(Boolean))];
             const statusClass = p.Status === 'Locked' ? 'bg-slate-800 text-white' : p.Status === 'Finalized' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
 
