@@ -83,7 +83,8 @@ export default function QRScanner({ isOpen, onClose, onScan, continuous = false 
     <div className="fullscreen-overlay fixed inset-0 bg-black z-[10000] flex flex-col justify-center items-center overflow-hidden">
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-md z-[10002] text-white"
+        aria-label="Close scanner"
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-md z-[10002] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         <X className="w-6 h-6" />
       </button>
