@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useDeferredValue, useEffect } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, X, Activity, FolderOpen, FlaskConical, Leaf, Filter, Building2, Clock } from 'lucide-react';
+import { Search, X, Activity, FolderOpen, FlaskConical, Leaf, Building2, Clock } from 'lucide-react';
 import { safeJsonParse } from '../utils/helpers.js';
 
 const TYPE_CONFIG = {
@@ -17,7 +17,7 @@ function highlight(text, query) {
   if (!query || !text) return text || '';
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const parts = String(text).split(new RegExp(`(${escaped})`, 'gi'));
-  return parts.map((part, i) =>
+  return parts.map((part) =>
     part.toLowerCase() === query.toLowerCase()
       ? `<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${part}</mark>`
       : part
@@ -84,25 +84,33 @@ export default function SmartSearch({ onMenuClick }) {
   const { state } = useAppState();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [typeFilter, setTypeFilter] = useState('all');
   const [recentSearches, setRecentSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem('smartSearch_recent') || '[]'); } catch { return []; }
   });
   const inputRef = useRef(null);
 
-  const addToRecent = (q) => {
-    if (!q.trim()) return;
-    setRecentSearches(prev => {
-      const updated = [q, ...prev.filter(s => s !== q)].slice(0, MAX_RECENT);
-      localStorage.setItem('smartSearch_recent', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
   const index = useMemo(() => buildIndex(state), [state.trials, state.projects, state.formulations, state.ingredients, state.organisations]);
 
+  useEffect(() => {
+    const q = deferredQuery.trim();
+    if (q.length > 1) {
+      const timeoutId = setTimeout(() => {
+        setRecentSearches(prev => {
+          if (prev[0] === q) return prev; // Avoid unnecessary state updates
+          const updated = [q, ...prev.filter(s => s !== q)].slice(0, MAX_RECENT);
+          localStorage.setItem('smartSearch_recent', JSON.stringify(updated));
+          return updated;
+        });
+      }, 500); // Debounce to avoid setting state too often inside effect
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [deferredQuery]);
+
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     if (!q) return [];
     const words = q.split(/\s+/);
     return index
@@ -114,10 +122,10 @@ export default function SmartSearch({ onMenuClick }) {
       .filter(item => item.score > 0 && (typeFilter === 'all' || item.type === typeFilter))
       .sort((a, b) => b.score - a.score)
       .slice(0, 50);
-  }, [query, index, typeFilter]);
+  }, [deferredQuery, index, typeFilter]);
 
   const counts = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     if (!q) return {};
     const words = q.split(/\s+/);
     const c = { trial: 0, project: 0, formulation: 0, ingredient: 0 };
@@ -126,7 +134,7 @@ export default function SmartSearch({ onMenuClick }) {
       if (words.some(w => haystack.includes(w))) c[item.type]++;
     });
     return c;
-  }, [query, index]);
+  }, [deferredQuery, index]);
 
   const handleNavigate = (item) => {
     if (item.type === 'trial') {
@@ -139,7 +147,6 @@ export default function SmartSearch({ onMenuClick }) {
 
   const handleSearch = (q) => {
     setQuery(q);
-    if (q.trim().length > 1) addToRecent(q.trim());
   };
 
   const FILTERS = [
@@ -184,7 +191,7 @@ export default function SmartSearch({ onMenuClick }) {
                 {FILTERS.map(f => (
                   <button key={f.key} onClick={() => setTypeFilter(f.key)}
                     className={`text-xs px-3 py-1 rounded-full font-semibold transition border ${typeFilter === f.key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}>
-                    {f.label}{f.key !== 'all' && counts[f.key] !== undefined ? ` (${counts[f.key]})` : f.key === 'all' && query ? ` (${results.length + (typeFilter === 'all' ? 0 : 0)})` : ''}
+                    {f.label}{f.key !== 'all' && counts[f.key] !== undefined ? ` (${counts[f.key]})` : f.key === 'all' && deferredQuery ? ` (${results.length + (typeFilter === 'all' ? 0 : 0)})` : ''}
                   </button>
                 ))}
               </div>
@@ -193,7 +200,7 @@ export default function SmartSearch({ onMenuClick }) {
         </div>
 
         <div className="max-w-3xl mx-auto px-4 py-4 space-y-2">
-          {!query ? (
+          {!deferredQuery ? (
             <div className="text-center py-10 text-slate-400">
               <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
               <p className="font-semibold text-slate-500">Search across all your data</p>
@@ -229,12 +236,12 @@ export default function SmartSearch({ onMenuClick }) {
           ) : results.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-              <p className="font-semibold">No results for "{query}"</p>
+              <p className="font-semibold">No results for "{deferredQuery}"</p>
               <p className="text-sm mt-1">Try different keywords or remove filters</p>
             </div>
           ) : (
             <>
-              <p className="text-xs text-slate-400 font-semibold pb-1">{results.length} result{results.length !== 1 ? 's' : ''} for "{query}"</p>
+              <p className="text-xs text-slate-400 font-semibold pb-1">{results.length} result{results.length !== 1 ? 's' : ''} for "{deferredQuery}"</p>
               {results.map((item) => {
                 const cfg = TYPE_CONFIG[item.type];
                 const Icon = cfg.icon;
@@ -249,10 +256,10 @@ export default function SmartSearch({ onMenuClick }) {
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
                       </div>
                       <p className="text-sm font-semibold text-slate-800 truncate"
-                        dangerouslySetInnerHTML={{ __html: highlight(item.title, query.trim()) }} />
+                        dangerouslySetInnerHTML={{ __html: highlight(item.title, deferredQuery.trim()) }} />
                       {item.sub && (
                         <p className="text-xs text-slate-400 truncate mt-0.5"
-                          dangerouslySetInnerHTML={{ __html: highlight(item.sub, query.trim()) }} />
+                          dangerouslySetInnerHTML={{ __html: highlight(item.sub, deferredQuery.trim()) }} />
                       )}
                     </div>
                     <span className="text-xs text-emerald-600 font-semibold opacity-0 group-hover:opacity-100 shrink-0">View →</span>
