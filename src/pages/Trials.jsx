@@ -212,7 +212,36 @@ export default function Trials({ onMenuClick }) {
         setDetailTab('info');
       }
     }
-  }, [location.search, state.trials]);
+
+    const addNew = searchParams.get('addNew');
+    const pId = searchParams.get('projectId');
+    const bId = searchParams.get('blockId');
+    if (addNew === 'true') {
+      navigate('/trials', { replace: true });
+      const initialForm = emptyForm(activeCategory);
+      initialForm.ProjectID = pId || '';
+      initialForm.BlockID = bId || '';
+      if (pId) {
+        const proj = (state.projects || []).find(p => String(p.ID) === String(pId));
+        if (proj) {
+          initialForm.InvestigatorName = proj.Investigator || '';
+          initialForm.Location = proj.Location || '';
+          initialForm.Lat = proj.Lat || '';
+          initialForm.Lon = proj.Lon || '';
+          initialForm.Dosage = proj.Dosage || '';
+        }
+      }
+      if (bId) {
+        const block = (state.blocks || []).find(b => String(b.ID) === String(bId));
+        if (block) {
+          initialForm.Replication = block.ReplicationNum || '';
+        }
+      }
+      setFormData(initialForm);
+      setEditingTrial(null);
+      setIsModalOpen(true);
+    }
+  }, [location.search, state.trials, state.projects, state.blocks, activeCategory, navigate]);
 
   // Keep activeTrial in sync with the global state (e.g. after sync updates)
   useEffect(() => {
