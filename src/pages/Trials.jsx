@@ -507,6 +507,19 @@ export default function Trials({ onMenuClick }) {
   }, []);
 
   const detectWeedCoverAI = useCallback(async (imageUrl) => {
+    if (weedIdResult && weedIdResult.length > 0) {
+      const totalCover = weedIdResult.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
+      const avgConf = Math.round((weedIdResult.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / weedIdResult.length) * 100);
+      const result = {
+        cover: totalCover,
+        confidence: avgConf || 85,
+        source: 'AI (Weed ID Sum)',
+        greenPct: totalCover,
+        brownPct: 0
+      };
+      setCoverDetectResult(result);
+      return result;
+    }
     setDetectingCover(true);
     setCoverDetectResult(null);
     try {
@@ -670,10 +683,28 @@ export default function Trials({ onMenuClick }) {
         const weeds = JSON.parse(jsonMatch[0]);
         setWeedIdResult(weeds);
         if (openAnalyzer) setPhotoAnalyzerResults(weeds);
+        
+        // Sync with coverDetectResult to avoid contradiction
+        const totalCover = weeds.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
+        const avgConf = Math.round((weeds.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / (weeds.length || 1)) * 100);
+        setCoverDetectResult({
+          cover: totalCover,
+          confidence: avgConf || 85,
+          source: 'AI (Weed ID Sum)',
+          greenPct: totalCover,
+          brownPct: 0
+        });
       } else {
         const fallback = [{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }];
         setWeedIdResult(fallback);
         if (openAnalyzer) setPhotoAnalyzerResults(fallback);
+        setCoverDetectResult({
+          cover: 0,
+          confidence: 50,
+          source: 'AI (Weed ID Sum)',
+          greenPct: 0,
+          brownPct: 0
+        });
       }
     } catch(e) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weed ID failed: ' + e.message, type: 'error' } }));
@@ -1278,9 +1309,7 @@ export default function Trials({ onMenuClick }) {
 
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: driveUrl ? 'Photo saved to Drive! Starting AI analysis...' : 'Photo saved locally. Starting AI analysis...', type: 'info' } }));
 
-      const trialDate = new Date(targetTrial.Date);
-      const pDate = new Date(photoDate);
-      const daa = Math.max(0, Math.round((pDate.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const daa = calculateDAA(photoDate, targetTrial.Date);
 
       // Auto-fetch weather — always attempt, using stored GPS or browser location
       const fetchWeatherForPhoto = async (lat, lon) => {
@@ -1606,19 +1635,12 @@ export default function Trials({ onMenuClick }) {
       const existingDAAs = new Set(existingObs.map(o => o.daa));
       daaCoverageMap.set(trial.ID, existingDAAs);
 
-      const trialDate = new Date(trial.Date);
-
       photos.forEach((photo, idx) => {
         const src = photo.fileData || photo.url || photo;
         if (!src) return;
 
         // Calculate DAA from photo date
-        let daa = 0;
-        if (photo.date) {
-          const photoDate = new Date(photo.date);
-          daa = Math.round((photoDate.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24));
-          daa = daa >= 0 ? daa : 0;
-        }
+        const daa = calculateDAA(photo.date, trial.Date);
 
         photosToAnalyze.push({
           imageData: src,
@@ -1690,13 +1712,7 @@ export default function Trials({ onMenuClick }) {
   const handleAnalyzeSinglePhoto = async (photoSrc, photoDate) => {
     if (!activeTrial || aiGenRunning) return;
     setAiGenRunning(true);
-    const trialDate = new Date(activeTrial.Date);
-    let daa = 0;
-    if (photoDate) {
-      const pd = new Date(photoDate);
-      daa = Math.round((pd.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24));
-      daa = daa >= 0 ? daa : 0;
-    }
+    const daa = calculateDAA(photoDate, activeTrial.Date);
 
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Analyzing photo with AI (DAA ${daa})...`, type: 'info' } }));
     try {
@@ -2268,9 +2284,9 @@ export default function Trials({ onMenuClick }) {
   const daaCoverage = useMemo(() => {
     if (!activeTrial) return { allDAAs: [], obsDAAs: [], photoDAAs: [], hasGaps: false };
     const obs = validateEfficacyData(safeJsonParse(activeTrial.EfficacyDataJSON, []));
-    const photoDates = detailPhotos.map(p => p.date ? new Date(p.date) : null).filter(Boolean);
-    const trialDate = activeTrial.Date ? new Date(activeTrial.Date) : null;
-    const photoDAAs = trialDate ? photoDates.map(pd => Math.max(0, Math.round((pd.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24)))) : [];
+    const photoDAAs = activeTrial.Date 
+      ? detailPhotos.map(p => p.date ? calculateDAA(p.date, activeTrial.Date) : null).filter(val => val !== null)
+      : [];
     const obsDAAs = obs.map(o => o.daa).filter(d => d !== undefined && d !== null);
     const allDAAs = [...new Set([...obsDAAs, ...photoDAAs])].sort((a, b) => a - b);
     const maxDAA = allDAAs.length > 0 ? Math.max(...allDAAs) : 0;

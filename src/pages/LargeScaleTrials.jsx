@@ -227,9 +227,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
     const obsDAAs = obs.map(o => o.daa);
     const photoDAAs = photos.map(p => {
       if (!p.date || !activeSubTrial.Date) return 0;
-      const tDate = new Date(activeSubTrial.Date);
-      const pDate = new Date(p.date);
-      return Math.max(0, Math.round((pDate.getTime() - tDate.getTime()) / 86400000));
+      return calculateDAA(p.date, activeSubTrial.Date);
     });
     const allDAAs = Array.from(new Set([...obsDAAs, ...photoDAAs])).sort((a, b) => a - b);
     const hasGaps = allDAAs.some(daa => !obsDAAs.includes(daa));
@@ -492,9 +490,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
       await updateTrial({ ID: updatedTrial.ID, PhotoURLs: updatedTrial.PhotoURLs }, getAppState);
 
-      const trialDate = new Date(targetTrial.Date);
-      const pDate = new Date(photoDate);
-      const daa = Math.max(0, Math.round((pDate.getTime() - trialDate.getTime()) / 86400000));
+      const daa = calculateDAA(photoDate, targetTrial.Date);
 
       // AI Analysis
       const keys = getAPIKeys('gemini-3-flash');
@@ -633,6 +629,19 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, []);
 
   const detectWeedCoverAI = useCallback(async (imageUrl) => {
+    if (weedIdResult && weedIdResult.length > 0) {
+      const totalCover = weedIdResult.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
+      const avgConf = Math.round((weedIdResult.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / weedIdResult.length) * 100);
+      const result = {
+        cover: totalCover,
+        confidence: avgConf || 85,
+        source: 'AI (Weed ID Sum)',
+        greenPct: totalCover,
+        brownPct: 0
+      };
+      setCoverDetectResult(result);
+      return result;
+    }
     setDetectingCover(true);
     setCoverDetectResult(null);
     try {
@@ -743,8 +752,26 @@ export default function LargeScaleTrials({ onMenuClick }) {
       if (jsonMatch) {
         const weeds = JSON.parse(jsonMatch[0]);
         setWeedIdResult(weeds);
+        
+        // Sync with coverDetectResult to avoid contradiction
+        const totalCover = weeds.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
+        const avgConf = Math.round((weeds.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / (weeds.length || 1)) * 100);
+        setCoverDetectResult({
+          cover: totalCover,
+          confidence: avgConf || 85,
+          source: 'AI (Weed ID Sum)',
+          greenPct: totalCover,
+          brownPct: 0
+        });
       } else {
         setWeedIdResult([{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }]);
+        setCoverDetectResult({
+          cover: 0,
+          confidence: 50,
+          source: 'AI (Weed ID Sum)',
+          greenPct: 0,
+          brownPct: 0
+        });
       }
     } catch(e) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weed ID failed: ' + e.message, type: 'error' } }));
@@ -854,13 +881,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const handleAnalyzeSinglePhoto = async (photoSrc, photoDate) => {
     if (!activeSubTrial || aiGenRunning) return;
     setAiGenRunning(true);
-    const trialDate = new Date(activeSubTrial.Date);
-    let daa = 0;
-    if (photoDate) {
-      const pd = new Date(photoDate);
-      daa = Math.round((pd.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24));
-      daa = daa >= 0 ? daa : 0;
-    }
+    const daa = calculateDAA(photoDate, activeSubTrial.Date);
 
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Analyzing photo with AI (DAA ${daa})...`, type: 'info' } }));
     try {
