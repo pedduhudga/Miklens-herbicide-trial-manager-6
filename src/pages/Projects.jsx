@@ -165,7 +165,133 @@ export default function Projects({ onMenuClick }) {
 
   // list view state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ Name: '', Metric: config.primaryMetric.label, TargetWeed: '', Crop: '', Location: '', Investigator: '', StartDate: '' });
+  const [formData, setFormData] = useState({ 
+    Name: '', 
+    Metric: config.primaryMetric.label, 
+    TargetWeed: '', 
+    Crop: '', 
+    Location: '', 
+    Investigator: '', 
+    StartDate: '',
+    Lat: '',
+    Lon: '',
+    WeatherTemp: '',
+    WeatherHumidity: '',
+    WeatherWind: '',
+    WeatherRain: '',
+    WeatherDetails: ''
+  });
+
+  const [isFetchingGeo, setIsFetchingGeo] = useState(false);
+  const [isFetchingGeoProtocol, setIsFetchingGeoProtocol] = useState(false);
+
+  const handleAutofetchLocationAndWeather = () => {
+    if (!navigator.geolocation) {
+      toast('Geolocation is not supported by this browser', 'error');
+      return;
+    }
+    setIsFetchingGeo(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const lon = position.coords.longitude.toFixed(6);
+        
+        setFormData(prev => ({
+          ...prev,
+          Location: prev.Location || `Lat: ${lat}, Lon: ${lon}`
+        }));
+        
+        try {
+          const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&wind_speed_unit=kmh`);
+          const data = await response.json();
+          if (data && data.current) {
+            const temp = data.current.temperature_2m;
+            const hum = data.current.relative_humidity_2m;
+            const wind = data.current.wind_speed_10m;
+            const rain = data.current.precipitation;
+            
+            setFormData(prev => ({
+              ...prev,
+              Lat: lat,
+              Lon: lon,
+              WeatherTemp: temp,
+              WeatherHumidity: hum,
+              WeatherWind: wind,
+              WeatherRain: rain,
+              WeatherDetails: `${temp}°C, Hum: ${hum}%, Wind: ${wind} km/h, Rain: ${rain}mm`
+            }));
+            
+            toast('Location & current weather fetched successfully!');
+          }
+        } catch (err) {
+          console.warn('Weather fetch failed:', err);
+          toast('Location fetched, but weather details could not be retrieved', 'warning');
+        } finally {
+          setIsFetchingGeo(false);
+        }
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        toast(`Failed to get location: ${error.message}`, 'error');
+        setIsFetchingGeo(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleAutofetchLocationAndWeatherForProtocol = () => {
+    if (!navigator.geolocation) {
+      toast('Geolocation is not supported by this browser', 'error');
+      return;
+    }
+    setIsFetchingGeoProtocol(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const lon = position.coords.longitude.toFixed(6);
+        
+        setProtocolForm(prev => ({
+          ...prev,
+          Location: prev.Location || `Lat: ${lat}, Lon: ${lon}`
+        }));
+        
+        try {
+          const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&wind_speed_unit=kmh`);
+          const data = await response.json();
+          if (data && data.current) {
+            const temp = data.current.temperature_2m;
+            const hum = data.current.relative_humidity_2m;
+            const wind = data.current.wind_speed_10m;
+            const rain = data.current.precipitation;
+            
+            setProtocolForm(prev => ({
+              ...prev,
+              Lat: lat,
+              Lon: lon,
+              WeatherTemp: temp,
+              WeatherHumidity: hum,
+              WeatherWind: wind,
+              WeatherRain: rain,
+              WeatherDetails: `${temp}°C, Hum: ${hum}%, Wind: ${wind} km/h, Rain: ${rain}mm`
+            }));
+            
+            toast('Location & current weather fetched successfully!');
+          }
+        } catch (err) {
+          console.warn('Weather fetch failed:', err);
+          toast('Location fetched, but weather details could not be retrieved', 'warning');
+        } finally {
+          setIsFetchingGeoProtocol(false);
+        }
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        toast(`Failed to get location: ${error.message}`, 'error');
+        setIsFetchingGeoProtocol(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // Reset/sync Metric default when activeCategory changes
   useEffect(() => {
@@ -967,17 +1093,44 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 
   // ── Protocol Settings ───────────────────────────────────────────────────
   const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
-  const [protocolForm, setProtocolForm] = useState({ TargetWeed: '', Crop: '', Metric: 'Weed Control Efficiency', ApplicationTiming: '', SprayVolume: '', Notes: '' });
+  const [protocolForm, setProtocolForm] = useState({ 
+    Name: '',
+    TargetWeed: '', 
+    Crop: '', 
+    Metric: 'Weed Control Efficiency', 
+    ApplicationTiming: '', 
+    SprayVolume: '', 
+    Notes: '',
+    Location: '',
+    Investigator: '',
+    Lat: '',
+    Lon: '',
+    WeatherTemp: '',
+    WeatherHumidity: '',
+    WeatherWind: '',
+    WeatherRain: '',
+    WeatherDetails: ''
+  });
 
   const openProtocolSettings = () => {
     if (!activeProject) return;
     setProtocolForm({
+      Name: activeProject.Name || '',
       TargetWeed: activeProject.TargetWeed || '',
       Crop: activeProject.Crop || '',
       Metric: activeProject.Metric || 'Weed Control Efficiency',
       ApplicationTiming: activeProject.ApplicationTiming || '',
       SprayVolume: activeProject.SprayVolume || '',
-      Notes: activeProject.Notes || ''
+      Notes: activeProject.Notes || '',
+      Location: activeProject.Location || '',
+      Investigator: activeProject.Investigator || '',
+      Lat: activeProject.Lat || '',
+      Lon: activeProject.Lon || '',
+      WeatherTemp: activeProject.WeatherTemp || '',
+      WeatherHumidity: activeProject.WeatherHumidity || '',
+      WeatherWind: activeProject.WeatherWind || '',
+      WeatherRain: activeProject.WeatherRain || '',
+      WeatherDetails: activeProject.WeatherDetails || ''
     });
     setIsProtocolModalOpen(true);
   };
@@ -988,7 +1141,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     updateState({ projects: updated });
     try {
       await updateProject({ ID: activeProject.ID, ...protocolForm }, getAppState);
-      toast('Protocol settings saved');
+      toast('Project & protocol settings saved');
       setIsProtocolModalOpen(false);
     } catch { toast('Failed to save', 'error'); }
   };
@@ -1852,9 +2005,13 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       ['Total Plots', projectTrials.length],
                       ['Crop', activeProject.Crop || 'N/A'],
                       ['Location', activeProject.Location || 'N/A'],
+                      activeProject.WeatherTemp ? ['Weather Temp', `${activeProject.WeatherTemp}°C`] : null,
+                      activeProject.WeatherHumidity ? ['Humidity', `${activeProject.WeatherHumidity}%`] : null,
+                      activeProject.WeatherWind ? ['Wind Speed', `${activeProject.WeatherWind} km/h`] : null,
+                      activeProject.WeatherRain ? ['Rain', `${activeProject.WeatherRain} mm`] : null,
                       ['Investigator', activeProject.Investigator || 'N/A'],
                       ['Metric', activeProject.Metric],
-                    ].map(([label, val]) => (
+                    ].filter(Boolean).map(([label, val]) => (
                       <li key={label} className="flex justify-between border-b border-slate-50 pb-2 last:border-0 last:pb-0">
                         <span className="text-slate-500">{label}</span>
                         <span className="font-bold text-slate-800 truncate max-w-[120px] text-right" title={String(val)}>{val}</span>
@@ -2037,9 +2194,43 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   <form onSubmit={(e) => { e.preventDefault(); saveProtocolSettings(); }} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Project Name *</label>
+                        <input required value={protocolForm.Name} onChange={e => setProtocolForm(v => ({ ...v, Name: e.target.value }))} className={INPUT} placeholder="e.g., Study Name" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Investigator</label>
+                        <input value={protocolForm.Investigator} onChange={e => setProtocolForm(v => ({ ...v, Investigator: e.target.value }))} className={INPUT} placeholder="Lead researcher" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="block text-sm font-semibold text-slate-700">Location</label>
+                          <button
+                            type="button"
+                            onClick={handleAutofetchLocationAndWeatherForProtocol}
+                            disabled={isFetchingGeoProtocol}
+                            className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                          >
+                            {isFetchingGeoProtocol ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
+                              </>
+                            ) : (
+                              <>
+                                <MapPin className="w-3 h-3" /> Auto-fetch
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <input value={protocolForm.Location} onChange={e => setProtocolForm(v => ({ ...v, Location: e.target.value }))} className={INPUT} placeholder="e.g., North Field" />
+                      </div>
+                      <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Target {config.targetLabel}</label>
                         <input value={protocolForm.TargetWeed} onChange={e => setProtocolForm(v => ({ ...v, TargetWeed: e.target.value }))} className={INPUT} placeholder={`e.g., Target ${config.targetLabel}`} />
                       </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Crop</label>
                         <input value={protocolForm.Crop} onChange={e => setProtocolForm(v => ({ ...v, Crop: e.target.value }))} className={INPUT} placeholder="e.g., Rice (Oryza sativa)" />
@@ -2202,7 +2393,25 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Location</label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-semibold text-slate-700">Location</label>
+                <button
+                  type="button"
+                  onClick={handleAutofetchLocationAndWeather}
+                  disabled={isFetchingGeo}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                >
+                  {isFetchingGeo ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-3 h-3" /> Auto-fetch
+                    </>
+                  )}
+                </button>
+              </div>
               <input value={formData.Location} onChange={e => setFormData(v => ({ ...v, Location: e.target.value }))} className={INPUT} placeholder="e.g., North Field" />
             </div>
             <div>
@@ -2381,9 +2590,43 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
         <form onSubmit={(e) => { e.preventDefault(); saveProtocolSettings(); }} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Project Name *</label>
+              <input required value={protocolForm.Name} onChange={e => setProtocolForm(v => ({ ...v, Name: e.target.value }))} className={INPUT} placeholder="e.g., Study Name" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Investigator</label>
+              <input value={protocolForm.Investigator} onChange={e => setProtocolForm(v => ({ ...v, Investigator: e.target.value }))} className={INPUT} placeholder="Lead researcher" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-semibold text-slate-700">Location</label>
+                <button
+                  type="button"
+                  onClick={handleAutofetchLocationAndWeatherForProtocol}
+                  disabled={isFetchingGeoProtocol}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                >
+                  {isFetchingGeoProtocol ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-3 h-3" /> Auto-fetch
+                    </>
+                  )}
+                </button>
+              </div>
+              <input value={protocolForm.Location} onChange={e => setProtocolForm(v => ({ ...v, Location: e.target.value }))} className={INPUT} placeholder="e.g., North Field" />
+            </div>
+            <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Target {config.targetLabel}</label>
               <input value={protocolForm.TargetWeed} onChange={e => setProtocolForm(v => ({ ...v, TargetWeed: e.target.value }))} className={INPUT} placeholder={`e.g., Target ${config.targetLabel}`} />
             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Crop</label>
               <input value={protocolForm.Crop} onChange={e => setProtocolForm(v => ({ ...v, Crop: e.target.value }))} className={INPUT} placeholder="e.g., Rice (Oryza sativa)" />
