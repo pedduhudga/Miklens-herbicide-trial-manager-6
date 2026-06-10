@@ -497,8 +497,8 @@ export function getPrimaryObservationField(categoryId) {
     herbicide: 'weedCover',
     fungicide: 'diseaseSeverity',
     pesticide: 'pestCount',
-    nutrition: 'plantHeight',
-    biostimulant: 'plantHeight',
+    nutrition: 'yieldKgPlot',
+    biostimulant: 'overallVigor',
   };
   return fieldMap[categoryId] || 'weedCover';
 }

@@ -64,8 +64,16 @@ export function extractMetricValue (observation, project) {
                isFinite(parseFloat(observation.damageRating)) ? parseFloat(observation.damageRating) : null;
     }
 
-    if (category === 'nutrition' || category === 'biostimulant') {
-        return isFinite(parseFloat(observation.plantHeight)) ? parseFloat(observation.plantHeight) : 
+    if (category === 'nutrition') {
+        return isFinite(parseFloat(observation.yieldKgPlot)) ? parseFloat(observation.yieldKgPlot) : 
+               isFinite(parseFloat(observation.plantHeight)) ? parseFloat(observation.plantHeight) : 
+               isFinite(parseFloat(observation.chlorophyllIndex)) ? parseFloat(observation.chlorophyllIndex) : 
+               isFinite(parseFloat(observation.biomassWeight)) ? parseFloat(observation.biomassWeight) : null;
+    }
+
+    if (category === 'biostimulant') {
+        return isFinite(parseFloat(observation.overallVigor)) ? parseFloat(observation.overallVigor) : 
+               isFinite(parseFloat(observation.plantHeight)) ? parseFloat(observation.plantHeight) : 
                isFinite(parseFloat(observation.chlorophyllIndex)) ? parseFloat(observation.chlorophyllIndex) : 
                isFinite(parseFloat(observation.biomassWeight)) ? parseFloat(observation.biomassWeight) : null;
     }
