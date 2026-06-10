@@ -1345,12 +1345,47 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this project? Blocks and plots will be orphaned.')) return;
-    updateState({ projects: projects.filter(p => p.ID !== id) });
+    const proj = (state.projects || []).find(p => String(p.ID) === String(id));
+    const projectName = proj ? proj.Name : 'this project';
+    if (!window.confirm(`Are you sure you want to delete "${projectName}"? This will permanently delete the project and all its associated blocks and plots/trials. This cannot be undone.`)) return;
+    
+    // Find all blocks and trials associated with this project
+    const projectBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(id));
+    const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(id));
+
+    // Update state to remove project, blocks, and trials
+    updateState({ 
+      projects: (state.projects || []).filter(p => String(p.ID) !== String(id)),
+      blocks: (state.blocks || []).filter(b => String(b.ProjectID) !== String(id)),
+      trials: (state.trials || []).filter(t => String(t.ProjectID) !== String(id))
+    });
+
     try {
       await deleteProject({ ID: id }, getAppState);
-      toast('Project deleted');
-    } catch { toast('Failed to delete project', 'error'); }
+      
+      // Delete associated blocks
+      for (const b of projectBlocks) {
+        try {
+          await deleteBlock({ ID: b.ID }, getAppState);
+        } catch (err) {
+          console.error('Failed to delete block', b.ID, err);
+        }
+      }
+      
+      // Delete associated trials
+      for (const t of projectTrials) {
+        try {
+          const { deleteTrial } = await import('../services/dataLayer.js');
+          await deleteTrial({ ID: t.ID }, getAppState);
+        } catch (err) {
+          console.error('Failed to delete trial', t.ID, err);
+        }
+      }
+      
+      toast('Project and all associated blocks and trials deleted');
+    } catch { 
+      toast('Failed to delete project', 'error'); 
+    }
   };
 
   // ══════════════════════════════════════════════════════════════════════════
