@@ -37,6 +37,7 @@ import {
   shareTrial as shareTrialFn,
 } from '../services/trialReports.js';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
+import { fetchWeather } from '../services/weather.js';
 
 const RESULT_COLORS = {
   'Excellent': 'bg-emerald-100 text-emerald-700',
@@ -101,6 +102,24 @@ export default function Trials({ onMenuClick }) {
   const [isObsModalOpen, setIsObsModalOpen] = useState(false);
   const [editingObsIdx, setEditingObsIdx] = useState(null);
   const [obsForm, setObsForm] = useState({ daa: '', date: toDatetimeLocal(new Date()), weedCover: '', notes: '', weedDetails: [], weatherTemp: '', weatherHumidity: '', weatherWind: '', weatherRain: '' });
+
+  // --- Application modal ---
+  const [isAppModalOpen, setIsAppModalOpen] = useState(false);
+  const [editingAppIdx, setEditingAppIdx] = useState(null);
+  const [appForm, setAppForm] = useState({
+    code: '',
+    date: toDatetimeLocal(new Date()),
+    dosage: '',
+    cropStage: '',
+    targetStage: '',
+    method: 'Foliar Spray',
+    temp: '',
+    humidity: '',
+    windspeed: '',
+    rain: 'No',
+    notes: ''
+  });
+  const [isFetchingAppWeather, setIsFetchingAppWeather] = useState(false);
 
   // --- Bulk Edit modal ---
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
@@ -725,6 +744,128 @@ export default function Trials({ onMenuClick }) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Observation saved', type: 'success' } }));
     } catch (err) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to save observation', type: 'error' } }));
+    }
+  };
+
+  // --- Applications Log Logic ---
+  const handleOpenAppModal = (app = null, idx = null) => {
+    if (app) {
+      setEditingAppIdx(idx);
+      setAppForm({
+        code: app.code || '',
+        date: app.date || toDatetimeLocal(new Date()),
+        dosage: app.dosage || activeTrial.Dosage || '',
+        cropStage: app.cropStage || '',
+        targetStage: app.targetStage || '',
+        method: app.method || 'Foliar Spray',
+        temp: app.temp || '',
+        humidity: app.humidity || '',
+        windspeed: app.windspeed || '',
+        rain: app.rain || 'No',
+        notes: app.notes || ''
+      });
+    } else {
+      setEditingAppIdx(null);
+      // Auto-sequence application code/name: App A, App B, App C...
+      const currentApps = safeJsonParse(activeTrial?.ApplicationLogJSON, []);
+      const nextLetter = String.fromCharCode(65 + currentApps.length); // A, B, C...
+      setAppForm({
+        code: `App ${nextLetter}`,
+        date: toDatetimeLocal(new Date()),
+        dosage: activeTrial?.Dosage || '',
+        cropStage: '',
+        targetStage: '',
+        method: 'Foliar Spray',
+        temp: '',
+        humidity: '',
+        windspeed: '',
+        rain: 'No',
+        notes: ''
+      });
+    }
+    setIsAppModalOpen(true);
+  };
+
+  const handleSaveApp = async (e) => {
+    e.preventDefault();
+    if (!activeTrial) return;
+
+    const currentApps = safeJsonParse(activeTrial.ApplicationLogJSON, []);
+    const newApp = { ...appForm };
+
+    if (editingAppIdx !== null) {
+      currentApps[editingAppIdx] = newApp;
+    } else {
+      currentApps.push(newApp);
+    }
+    currentApps.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const updated = {
+      ...activeTrial,
+      ApplicationLogJSON: JSON.stringify(currentApps)
+    };
+
+    updateState({ trials: getAppState().trials.map(t => t.ID === updated.ID ? updated : t) });
+    setActiveTrial(updated);
+    setIsAppModalOpen(false);
+
+    try {
+      await updateTrial({ ID: updated.ID, ApplicationLogJSON: updated.ApplicationLogJSON }, getAppState);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Application saved', type: 'success' } }));
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to save application', type: 'error' } }));
+    }
+  };
+
+  const handleDeleteApp = async (idx) => {
+    if (!activeTrial || !window.confirm('Delete this application entry? This cannot be undone.')) return;
+
+    const currentApps = safeJsonParse(activeTrial.ApplicationLogJSON, []);
+    currentApps.splice(idx, 1);
+
+    const updated = {
+      ...activeTrial,
+      ApplicationLogJSON: JSON.stringify(currentApps)
+    };
+
+    updateState({ trials: getAppState().trials.map(t => t.ID === updated.ID ? updated : t) });
+    setActiveTrial(updated);
+
+    try {
+      await updateTrial({ ID: updated.ID, ApplicationLogJSON: updated.ApplicationLogJSON }, getAppState);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Application deleted', type: 'success' } }));
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to delete application', type: 'error' } }));
+    }
+  };
+
+  const handleFetchAppWeather = async () => {
+    const lat = activeTrial.Lat;
+    const lon = activeTrial.Lon;
+    const dateStr = appForm.date;
+
+    if (!lat || !lon) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Trial location coordinates (GPS) are missing.', type: 'warning' } }));
+      return;
+    }
+
+    setIsFetchingAppWeather(true);
+    try {
+      const weather = await fetchWeather(lat, lon, dateStr, getAppState);
+      if (weather) {
+        setAppForm(prev => ({
+          ...prev,
+          temp: weather.temp !== undefined ? String(weather.temp) : prev.temp,
+          humidity: weather.humidity !== undefined ? String(weather.humidity) : prev.humidity,
+          windspeed: weather.windspeed !== undefined ? String(weather.windspeed) : prev.windspeed,
+        }));
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weather data fetched successfully!', type: 'success' } }));
+      }
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to fetch weather data.', type: 'error' } }));
+    } finally {
+      setIsFetchingAppWeather(false);
     }
   };
 
@@ -3013,11 +3154,12 @@ If none are present, write "None".`;
 
             {/* Tabs */}
             <div className="flex border-b bg-white overflow-x-auto">
-              {[['info','Info'],['observations','Observations'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']].map(([k, label]) => (
+              {[['info','Info'],['applications','Applications'],['observations','Observations'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']].map(([k, label]) => (
                 <button key={k} onClick={() => setDetailTab(k)}
                   className={`px-4 py-3 text-sm font-semibold border-b-2 transition
                     ${detailTab === k ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
                   {label}
+                  {k === 'applications' && safeJsonParse(detailTrial.ApplicationLogJSON, []).length > 0 && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 rounded-full">{safeJsonParse(detailTrial.ApplicationLogJSON, []).length}</span>}
                   {k === 'observations' && detailEfficacy.length > 0 && <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-1.5 rounded-full">{detailEfficacy.length}</span>}
                   {k === 'photos' && detailPhotos.length > 0 && <span className="ml-1 text-xs bg-blue-100 text-blue-700 px-1.5 rounded-full">{detailPhotos.length}</span>}
                 </button>
@@ -3025,6 +3167,126 @@ If none are present, write "None".`;
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
+              {/* Applications Log Tab */}
+              {detailTab === 'applications' && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">Treatment Applications Log</h4>
+                      <p className="text-xs text-slate-500">Record sequential treatment applications made to this plot.</p>
+                    </div>
+                    {!detailIsCompleted && (
+                      <button 
+                        onClick={() => handleOpenAppModal(null)}
+                        className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Application
+                      </button>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const apps = safeJsonParse(detailTrial.ApplicationLogJSON, []);
+                    if (apps.length === 0) {
+                      return (
+                        <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-200">
+                          <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-sm font-semibold text-slate-400">No sequential applications recorded yet</p>
+                          {!detailIsCompleted && (
+                            <button 
+                              onClick={() => handleOpenAppModal(null)}
+                              className="mt-3 text-xs text-emerald-600 font-bold hover:underline"
+                            >
+                              Add the first application entry →
+                            </button>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {apps.map((app, idx) => (
+                          <div key={idx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="bg-slate-50 px-4 py-3 border-b flex justify-between items-center">
+                              <div className="flex items-center gap-2.5">
+                                <span className="bg-amber-100 text-amber-800 font-bold text-xs px-2 py-0.5 rounded">
+                                  {app.code || `App ${String.fromCharCode(65 + idx)}`}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-500">
+                                  {app.date ? formatDateTime(app.date) : 'No date'}
+                                </span>
+                              </div>
+                              {!detailIsCompleted && (
+                                <div className="flex items-center gap-1">
+                                  <button 
+                                    onClick={() => handleOpenAppModal(app, idx)} 
+                                    className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition" 
+                                    title="Edit Application"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteApp(idx)} 
+                                    className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition" 
+                                    title="Delete Application"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-xs">
+                              {app.dosage && (
+                                <div className="bg-slate-50 p-2 rounded-lg">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase">Dosage Rate</span>
+                                  <span className="font-semibold text-slate-700">{app.dosage}</span>
+                                </div>
+                              )}
+                              {app.method && (
+                                <div className="bg-slate-50 p-2 rounded-lg">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase">Method</span>
+                                  <span className="font-semibold text-slate-700">{app.method}</span>
+                                </div>
+                              )}
+                              {app.cropStage && (
+                                <div className="bg-slate-50 p-2 rounded-lg">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase">Crop Stage (BBCH)</span>
+                                  <span className="font-semibold text-slate-700">{app.cropStage}</span>
+                                </div>
+                              )}
+                              {app.targetStage && (
+                                <div className="bg-slate-50 p-2 rounded-lg">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase">Target Stage</span>
+                                  <span className="font-semibold text-slate-700">{app.targetStage}</span>
+                                </div>
+                              )}
+                              {(app.temp || app.humidity || app.windspeed) && (
+                                <div className="bg-slate-50 p-2 rounded-lg col-span-2">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase">Weather at Application</span>
+                                  <span className="font-semibold text-slate-700 flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                                    {app.temp && <span>Temp: {app.temp}°C</span>}
+                                    {app.humidity && <span>RH: {app.humidity}%</span>}
+                                    {app.windspeed && <span>Wind: {app.windspeed} km/h</span>}
+                                    <span>Rain within 2h: {app.rain || 'No'}</span>
+                                  </span>
+                                </div>
+                              )}
+                              {app.notes && (
+                                <div className="col-span-full border-t pt-2 mt-1">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Application Notes</span>
+                                  <p className="text-slate-600 whitespace-pre-wrap leading-relaxed">{app.notes}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {/* Info Tab */}
               {detailTab === 'info' && (
                 <div className="space-y-4">
@@ -4098,6 +4360,181 @@ If none are present, write "None".`;
           <div className="text-[10px] text-slate-400 text-right">{aiBatchProgress.current} / {aiBatchProgress.total}</div>
         </div>
       )}
+
+      {/* ── APPLICATION LOG MODAL ── */}
+      <Modal isOpen={isAppModalOpen} onClose={() => setIsAppModalOpen(false)} title={editingAppIdx !== null ? 'Edit Application Entry' : 'Log Application'}>
+        <form onSubmit={handleSaveApp} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Code/Name *</label>
+              <input
+                type="text"
+                required
+                value={appForm.code}
+                onChange={e => setAppForm({ ...appForm, code: e.target.value })}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                placeholder="e.g. App A"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Date & Time *</label>
+              <input
+                type="datetime-local"
+                required
+                value={appForm.date}
+                onChange={e => setAppForm({ ...appForm, date: e.target.value })}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Dosage / Rate</label>
+              <input
+                type="text"
+                value={appForm.dosage}
+                onChange={e => setAppForm({ ...appForm, dosage: e.target.value })}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                placeholder="e.g. 100 mL/ha"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Method</label>
+              <select
+                value={appForm.method}
+                onChange={e => setAppForm({ ...appForm, method: e.target.value })}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+              >
+                <option value="Foliar Spray">Foliar Spray</option>
+                <option value="Soil Drench">Soil Drench</option>
+                <option value="Broadcast">Broadcast</option>
+                <option value="Seed Treatment">Seed Treatment</option>
+                <option value="Direct Injection">Direct Injection</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Crop Growth Stage (BBCH)</label>
+              <input
+                type="text"
+                value={appForm.cropStage}
+                onChange={e => setAppForm({ ...appForm, cropStage: e.target.value })}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                placeholder="e.g. BBCH 12"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Target / Weed Growth Stage</label>
+              <input
+                type="text"
+                value={appForm.targetStage}
+                onChange={e => setAppForm({ ...appForm, targetStage: e.target.value })}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                placeholder="e.g. 10 cm height"
+              />
+            </div>
+          </div>
+
+          {/* Weather Details Box */}
+          <div className="border rounded-xl p-3 bg-slate-50 space-y-3">
+            <div className="flex justify-between items-center border-b pb-2">
+              <span className="text-xs font-bold text-slate-700 uppercase">Weather Conditions at Application</span>
+              <button
+                type="button"
+                onClick={handleFetchAppWeather}
+                disabled={isFetchingAppWeather}
+                className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 disabled:opacity-50"
+              >
+                {isFetchingAppWeather ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="w-3 h-3" /> Auto-fetch weather
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Temp (°C)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={appForm.temp}
+                  onChange={e => setAppForm({ ...appForm, temp: e.target.value })}
+                  className="w-full px-2 py-1.5 border rounded-lg bg-white"
+                  placeholder="25"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Humidity (%)</label>
+                <input
+                  type="number"
+                  value={appForm.humidity}
+                  onChange={e => setAppForm({ ...appForm, humidity: e.target.value })}
+                  className="w-full px-2 py-1.5 border rounded-lg bg-white"
+                  placeholder="60"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Wind (km/h)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={appForm.windspeed}
+                  onChange={e => setAppForm({ ...appForm, windspeed: e.target.value })}
+                  className="w-full px-2 py-1.5 border rounded-lg bg-white"
+                  placeholder="10"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Rain within 2h?</label>
+                <select
+                  value={appForm.rain}
+                  onChange={e => setAppForm({ ...appForm, rain: e.target.value })}
+                  className="w-full px-2 py-1.5 border rounded-lg bg-white"
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Application Notes / Details</label>
+            <textarea
+              rows="3"
+              value={appForm.notes}
+              onChange={e => setAppForm({ ...appForm, notes: e.target.value })}
+              className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+              placeholder="Record any specific details such as nozzle type, pressure, soil moisture, etc."
+            />
+          </div>
+
+          <div className="pt-4 flex justify-end gap-3 border-t">
+            <button
+              type="button"
+              onClick={() => setIsAppModalOpen(false)}
+              className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition"
+            >
+              Save Application Entry
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* ── OBSERVATION MODAL ── */}
       <Modal isOpen={isObsModalOpen} onClose={() => setIsObsModalOpen(false)} title={editingObsIdx !== null ? 'Edit Observation' : 'Log Observation'}>

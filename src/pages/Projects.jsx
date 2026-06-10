@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
-import { addProject, deleteProject, addBlock, deleteBlock, updateProject, addBatchTrials } from '../services/dataLayer.js';
+import { addProject, deleteProject, addBlock, deleteBlock, updateProject, addBatchTrials, deleteTrial } from '../services/dataLayer.js';
 import {
   Plus, Trash2, Layers, Beaker, Activity, ChevronRight, ArrowLeft,
   Lock, Unlock, Download, FileText, RefreshCw, BarChart2, Shuffle,
@@ -321,7 +321,8 @@ export default function Projects({ onMenuClick }) {
     investigatorName: '',
     dosage: '',
     weedSpecies: '',
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    replications: '4'
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
   const [randomizeTreatments, setRandomizeTreatments] = useState([]);
@@ -963,7 +964,6 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   const handleRandomizeLayout = () => {
     if (!activeProject) return;
     const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
-    if (pBlocks.length === 0) { toast('No blocks to randomize. Please add at least one block first.', 'error'); return; }
     
     // Auto-populate treatments list scientifically
     const initialTreatments = [
@@ -984,7 +984,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       investigatorName: activeProject.Investigator || '',
       dosage: '',
       weedSpecies: activeProject.TargetWeed || '',
-      date: activeProject.StartDate ? activeProject.StartDate.split('T')[0] : new Date().toISOString().split('T')[0]
+      date: activeProject.StartDate ? activeProject.StartDate.split('T')[0] : new Date().toISOString().split('T')[0],
+      replications: String(pBlocks.length || 4)
     });
     
     setIsRandomizeModalOpen(true);
@@ -1051,15 +1052,29 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       return;
     }
     
-    const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
-    if (pBlocks.length === 0) {
-      toast('Create at least one block before randomizing.', 'error');
-      return;
-    }
-    
+    setIsRandomizeModalOpen(false);
+    toast('Generating randomized layout and blocks...');
+
+    // Generate new Blocks based on the chosen number of replications
+    const numReps = parseInt(randomizeForm.replications) || 4;
+    const blocksToSave = [];
     const trialsToSave = [];
-    pBlocks.forEach(block => {
-      // Create pool of treatments for this block
+
+    for (let r = 1; r <= numReps; r++) {
+      const blockId = 'block_' + Date.now() + '_' + r + '_' + Math.random().toString(36).substring(2, 7);
+      const blockName = `Rep ${String.fromCharCode(64 + r)}`; // Rep A, Rep B, Rep C, etc.
+      blocksToSave.push({
+        ID: blockId,
+        ProjectID: activeProject.ID,
+        Name: blockName,
+        ReplicationNum: String(r),
+        CreatedAt: new Date().toISOString(),
+        Category: activeCategory
+      });
+    }
+
+    // Generate plots (trials) randomized within each block
+    blocksToSave.forEach(block => {
       const blockTreatments = trtList.map(t => ({
         FormulationID: t.fid,
         FormulationName: t.name,
@@ -1067,20 +1082,17 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
         IsStandardCheck: t.role === 'standard',
         dosage: t.dosage
       }));
-      
+
       // Fisher-Yates Shuffle
       for (let i = blockTreatments.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [blockTreatments[i], blockTreatments[j]] = [blockTreatments[j], blockTreatments[i]];
       }
-      
-      // Create Trial objects
+
       blockTreatments.forEach((t, index) => {
         const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-        
-        // Category specific field mapping: e.g. WeedSpecies, DiseaseTarget, PestTarget, NutrientType, BiostimulantType
         const targetField = config.targetField || 'WeedSpecies';
-        
+
         const tToSave = {
           ID: trialId,
           ProjectID: activeProject.ID,
@@ -1104,23 +1116,39 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
           Category: activeCategory,
           [targetField]: randomizeForm.weedSpecies || ''
         };
-        
-        // Add to batch list
         trialsToSave.push(tToSave);
       });
     });
-    
-    // Call batch API to save trials
-    setIsRandomizeModalOpen(false);
-    toast(`Generating layout with ${trialsToSave.length} plots...`);
-    
-    // Add to state locally
+
+    // Remove old blocks and trials from local state
+    const currentBlocks = state.blocks || [];
+    const otherBlocks = currentBlocks.filter(b => String(b.ProjectID) !== String(activeProject.ID));
     const currentTrials = state.trials || [];
-    // Remove old trials for this project if any exist to overwrite
     const otherTrials = currentTrials.filter(t => String(t.ProjectID) !== String(activeProject.ID));
-    updateState({ trials: [...otherTrials, ...trialsToSave] });
-    
+
+    updateState({
+      blocks: [...otherBlocks, ...blocksToSave],
+      trials: [...otherTrials, ...trialsToSave]
+    });
+
+    // Sync with Firebase
+    const oldBlocks = currentBlocks.filter(b => String(b.ProjectID) === String(activeProject.ID));
+    const oldTrials = currentTrials.filter(t => String(t.ProjectID) === String(activeProject.ID));
+
     try {
+      // 1. Delete old trials
+      for (const t of oldTrials) {
+        try { await deleteTrial({ ID: t.ID }, getAppState); } catch (e) { console.error(e); }
+      }
+      // 2. Delete old blocks
+      for (const b of oldBlocks) {
+        try { await deleteBlock({ ID: b.ID }, getAppState); } catch (e) { console.error(e); }
+      }
+      // 3. Save new blocks
+      for (const b of blocksToSave) {
+        try { await addBlock(b, getAppState); } catch (e) { console.error(e); }
+      }
+      // 4. Save new trials in batch
       await addBatchTrials({ trials: trialsToSave }, getAppState);
       toast('Randomized layout generated successfully!', 'success');
       runAnalysis(postHocMethod);
@@ -2171,7 +2199,19 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
                     
                     {/* Default Plot Info Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Replications (Blocks)</label>
+                        <select 
+                          value={randomizeForm.replications} 
+                          onChange={e => setRandomizeForm(p => ({ ...p, replications: e.target.value }))} 
+                          className={INPUT}
+                        >
+                          {[2, 3, 4, 5, 6, 7, 8].map(n => (
+                            <option key={n} value={String(n)}>{n} Replications</option>
+                          ))}
+                        </select>
+                      </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Investigator</label>
                         <input 
@@ -2622,7 +2662,19 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
           
           {/* Default Plot Info Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Replications (Blocks)</label>
+              <select 
+                value={randomizeForm.replications} 
+                onChange={e => setRandomizeForm(p => ({ ...p, replications: e.target.value }))} 
+                className={INPUT}
+              >
+                {[2, 3, 4, 5, 6, 7, 8].map(n => (
+                  <option key={n} value={String(n)}>{n} Replications</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Investigator</label>
               <input 
