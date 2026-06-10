@@ -124,6 +124,9 @@ export function fitDoseResponse(data) {
     return { error: 'Need at least 3 valid data points (dose ≥ 0, response 0–100)' };
   }
 
+  // Sort valid points by dose ascending to ensure directionality check is correct
+  valid.sort((a, b) => a.dose - b.dose);
+
   const responses = valid.map(d => d.response);
   const dMin = Math.min(...responses);
   const dMax = Math.max(...responses);

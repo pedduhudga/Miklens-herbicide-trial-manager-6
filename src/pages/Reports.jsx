@@ -227,25 +227,23 @@ export default function Reports({ onMenuClick }) {
                  </button>
               </div>
 
-              {activeCategory !== 'herbicide' && (
-                <div 
-                  onClick={handleGenerateAdvancedExcel}
-                  className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full hover:border-amber-400"
-                >
-                   <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                      <FileBox className="w-7 h-7" />
-                   </div>
-                   <h3 className="font-bold text-lg text-slate-800 mb-3">Advanced Excel (11-Sheet)</h3>
-                   <p className="text-sm text-slate-500 mb-6 flex-grow">Generate a complete multi-sheet agricultural Excel workbook matching TOK2322C, including ANOVA, statistics, and embedded charts.</p>
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); handleGenerateAdvancedExcel(); }}
-                     className="w-full py-3 bg-amber-50 text-amber-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-amber-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                     disabled={!selectedTrialId}
-                   >
-                     Export Workbook <Download className="w-4 h-4" />
-                   </button>
-                </div>
-              )}
+              <div 
+                onClick={handleGenerateAdvancedExcel}
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full hover:border-amber-400"
+              >
+                 <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <FileBox className="w-7 h-7" />
+                 </div>
+                 <h3 className="font-bold text-lg text-slate-800 mb-3">Advanced Excel (11-Sheet)</h3>
+                 <p className="text-sm text-slate-500 mb-6 flex-grow">Generate a complete multi-sheet agricultural Excel workbook matching TOK2322C, including ANOVA, statistics, and embedded charts.</p>
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); handleGenerateAdvancedExcel(); }}
+                   className="w-full py-3 bg-amber-50 text-amber-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-amber-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                   disabled={!selectedTrialId}
+                 >
+                   Export Workbook <Download className="w-4 h-4" />
+                 </button>
+              </div>
 
               <div
                 onClick={() => setShowBuilder(true)}

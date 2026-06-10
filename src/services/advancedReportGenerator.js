@@ -15,6 +15,17 @@ function safeJsonParse(val, fallback = []) {
   try { return JSON.parse(val); } catch { return fallback; }
 }
 
+// Helper to convert 1-based column index to Excel column letters (e.g. 7 -> G)
+function getColumnLetter(col) {
+  let letter = '';
+  while (col > 0) {
+    let temp = (col - 1) % 26;
+    letter = String.fromCharCode(65 + temp) + letter;
+    col = Math.floor((col - temp) / 26);
+  }
+  return letter;
+}
+
 // Helper to generate dynamic scientific narrative using Gemini AI
 async function generateNarrativeWithAI(trial, category, observations, anovaResults) {
   try {
@@ -758,7 +769,8 @@ export class AdvancedReportGenerator {
     ws.getRow(3).font = { bold: true };
 
     let r = 4;
-    this.activeFields.forEach(f => {
+    this.activeFields.forEach((f, fIdx) => {
+      const fieldCol = getColumnLetter(7 + fIdx);
       ws.getCell(`A${r}`).value = f.label;
       ws.getCell(`A${r}`).font = { bold: true };
       
@@ -768,7 +780,7 @@ export class AdvancedReportGenerator {
         const cLetter = String.fromCharCode(66 + colIdx);
         // Write the formula
         ws.getCell(`${cLetter}${r+1}`).value = {
-          formula: `AVERAGEIFS('Assessment Data Summary'!G:G, 'Assessment Data Summary'!F:F, 1, 'Assessment Data Summary'!A:A, "${date}")`
+          formula: `AVERAGEIFS('Assessment Data Summary'!${fieldCol}:${fieldCol}, 'Assessment Data Summary'!F:F, 1, 'Assessment Data Summary'!A:A, "${date}")`
         };
       });
 
@@ -778,7 +790,7 @@ export class AdvancedReportGenerator {
         const cLetter = String.fromCharCode(66 + colIdx);
         // Write the formula
         ws.getCell(`${cLetter}${r+2}`).value = {
-          formula: `AVERAGEIFS('Assessment Data Summary'!G:G, 'Assessment Data Summary'!F:F, 2, 'Assessment Data Summary'!A:A, "${date}")`
+          formula: `AVERAGEIFS('Assessment Data Summary'!${fieldCol}:${fieldCol}, 'Assessment Data Summary'!F:F, 2, 'Assessment Data Summary'!A:A, "${date}")`
         };
       });
 

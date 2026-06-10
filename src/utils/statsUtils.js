@@ -60,6 +60,21 @@ export function performANOVA(trials, options = {}) {
   if (treatmentNames.length < 2) {
     return { error: 'Need at least 2 treatments for ANOVA', fStatistic: null, pValue: null };
   }
+
+  // Check for design balance (all treatment-block combinations should have the same number of observations)
+  let isBalanced = true;
+  let expectedCount = -1;
+  for (const trt of treatmentNames) {
+    for (const block of blockIds) {
+      const count = treatments[trt][block]?.length || 0;
+      if (expectedCount === -1) {
+        expectedCount = count;
+      } else if (count !== expectedCount) {
+        isBalanced = false;
+      }
+    }
+  }
+  const balanceWarning = isBalanced ? null : "Warning: Experimental design is unbalanced. Some treatment/block combinations have missing or multiple observations. ANOVA calculations may be statistically biased.";
   
   // Calculate means
   const grandSum = [];
@@ -150,7 +165,8 @@ export function performANOVA(trials, options = {}) {
     treatmentMeans,
     grandMean,
     treatments: treatmentNames,
-    blocks: blockIds
+    blocks: blockIds,
+    balanceWarning
   };
 }
 
@@ -362,6 +378,10 @@ const Q_TABLE_05 = {
   18: [2.97, 3.61, 4, 4.28, 4.49, 4.67, 4.82, 4.96, 5.07, 5.17],
   19: [2.96, 3.59, 3.98, 4.25, 4.47, 4.65, 4.79, 4.92, 5.04, 5.14],
   20: [2.95, 3.58, 3.96, 4.23, 4.45, 4.62, 4.77, 4.9, 5.01, 5.11],
+  24: [2.92, 3.53, 3.9, 4.17, 4.37, 4.54, 4.68, 4.81, 4.92, 5.01],
+  30: [2.89, 3.49, 3.85, 4.1, 4.3, 4.46, 4.6, 4.72, 4.82, 4.92],
+  40: [2.86, 3.44, 3.79, 4.04, 4.23, 4.39, 4.52, 4.63, 4.73, 4.82],
+  60: [2.83, 3.4, 3.74, 3.98, 4.16, 4.31, 4.44, 4.55, 4.65, 4.73],
   "inf": [2.77, 3.31, 3.63, 3.86, 4.03, 4.17, 4.29, 4.39, 4.47, 4.55]
 };
 
@@ -419,7 +439,7 @@ const Q_TABLE_01 = {
 
 function getDunnettCritical(alpha, k, df) {
   const table = alpha <= 0.01 ? DUNNETT_TABLE_01 : DUNNETT_TABLE_05;
-  const dfKey = df >= 120 ? "inf" : (df >= 60 ? 60 : (df >= 40 ? 40 : (df >= 30 ? 30 : (df >= 20 ? 20 : (df >= 15 ? 15 : 10)))));
+  const dfKey = df >= 120 ? "inf" : (df >= 60 ? 60 : (df >= 40 ? 40 : (df >= 30 ? 30 : (df >= 20 ? 20 : (df >= 15 ? 15 : (df >= 12 ? 12 : 10))))));
   const kIndex = Math.min(Math.max(k - 1, 0), 8);
   const dfEntry = table[dfKey] || table["inf"];
   return dfEntry ? dfEntry[kIndex] : 2.5;
