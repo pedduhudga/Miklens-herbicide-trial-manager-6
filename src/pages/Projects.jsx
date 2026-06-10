@@ -842,7 +842,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const initialSelections = {};
     activeFormulations.forEach(f => {
       // Auto-detect control/untreated to pre-assign control role
-      const isControl = f.Name.toLowerCase().includes('control') || f.Name.toLowerCase().includes('untreated') || f.Name.toLowerCase().includes('check');
+      const fName = f.Name || '';
+      const isControl = fName.toLowerCase().includes('control') || fName.toLowerCase().includes('untreated') || fName.toLowerCase().includes('check');
       initialSelections[f.ID] = {
         selected: isControl, // select control by default
         role: isControl ? 'control' : 'experimental'
@@ -1928,6 +1929,202 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </div>
                   );
                 })()}
+
+                {/* ── Randomize Layout Modal ── */}
+                <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout">
+                  <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+                      <p className="text-xs font-bold text-emerald-600 uppercase">Target Project</p>
+                      <p className="text-base font-bold text-emerald-900">{activeProject?.Name}</p>
+                    </div>
+                    <p className="text-xs text-slate-500">Select treatments to distribute across all blocks in this project. Plots will be generated for every block. One treatment must be tagged as "Untreated Control" to enable calculations later.</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Treatments Selection */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Select Treatments</label>
+                        <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1 bg-slate-50">
+                          {activeFormulations.map(f => {
+                            const selection = selectedTreatments[f.ID] || { selected: false, role: 'experimental' };
+                            return (
+                              <div key={f.ID} className="flex items-center gap-2 p-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selection.selected} 
+                                  onChange={e => setSelectedTreatments(prev => ({
+                                    ...prev,
+                                    [f.ID]: { ...selection, selected: e.target.checked }
+                                  }))} 
+                                  className="h-4 w-4 rounded text-emerald-600"
+                                />
+                                <span className="flex-grow pl-1 text-xs font-medium text-slate-700 truncate" title={f.Name}>{f.Name}</span>
+                                <select 
+                                  value={selection.role} 
+                                  onChange={e => setSelectedTreatments(prev => ({
+                                    ...prev,
+                                    [f.ID]: { selected: true, role: e.target.value }
+                                  }))} 
+                                  className="text-[10px] border border-slate-300 rounded px-1 py-0.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                >
+                                  <option value="experimental">Experimental</option>
+                                  <option value="standard">Standard Check</option>
+                                  <option value="control">Untreated Control</option>
+                                </select>
+                              </div>
+                            );
+                          })}
+                          {activeFormulations.length === 0 && (
+                            <p className="text-xs text-slate-400 italic p-3 text-center">No formulations found in this category.</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Default Plot Info */}
+                      <div className="space-y-3">
+                        <label className="block text-sm font-semibold text-slate-700">Default Plot Info</label>
+                        <div>
+                          <input 
+                            type="text" 
+                            placeholder="Investigator" 
+                            value={randomizeForm.investigatorName} 
+                            onChange={e => setRandomizeForm(p => ({ ...p, investigatorName: e.target.value }))} 
+                            className={INPUT} 
+                          />
+                        </div>
+                        <div>
+                          <input 
+                            type="text" 
+                            placeholder="Default Dosage (e.g. 100 mL/ha)" 
+                            value={randomizeForm.dosage} 
+                            onChange={e => setRandomizeForm(p => ({ ...p, dosage: e.target.value }))} 
+                            className={INPUT} 
+                          />
+                        </div>
+                        <div>
+                          <input 
+                            type="text" 
+                            placeholder={`Target ${config.targetLabel}`} 
+                            value={randomizeForm.weedSpecies} 
+                            onChange={e => setRandomizeForm(p => ({ ...p, weedSpecies: e.target.value }))} 
+                            className={INPUT} 
+                          />
+                        </div>
+                        <div>
+                          <input 
+                            type="date" 
+                            value={randomizeForm.date} 
+                            onChange={e => setRandomizeForm(p => ({ ...p, date: e.target.value }))} 
+                            className={INPUT} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-800">
+                      <strong>Warning:</strong> Generating a new randomized layout will replace any existing plots/trials for this project.
+                    </div>
+                    <div className="pt-4 flex justify-end gap-3 border-t">
+                      <button type="button" onClick={() => setIsRandomizeModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
+                      <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                        <Shuffle className="w-4 h-4" /> Generate & Randomize
+                      </button>
+                    </div>
+                  </form>
+                </Modal>
+
+                {/* ── Protocol Settings Modal ── */}
+                <Modal isOpen={isProtocolModalOpen} onClose={() => setIsProtocolModalOpen(false)} title="Protocol Settings">
+                  <form onSubmit={(e) => { e.preventDefault(); saveProtocolSettings(); }} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Target {config.targetLabel}</label>
+                        <input value={protocolForm.TargetWeed} onChange={e => setProtocolForm(v => ({ ...v, TargetWeed: e.target.value }))} className={INPUT} placeholder={`e.g., Target ${config.targetLabel}`} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Crop</label>
+                        <input value={protocolForm.Crop} onChange={e => setProtocolForm(v => ({ ...v, Crop: e.target.value }))} className={INPUT} placeholder="e.g., Rice (Oryza sativa)" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Primary Metric</label>
+                      <select value={protocolForm.Metric} onChange={e => setProtocolForm(v => ({ ...v, Metric: e.target.value }))} className={INPUT}>
+                        {activeCategory === 'herbicide' && (
+                          <>
+                            <option value="Weed Control Efficiency">Weed Control Efficiency (%)</option>
+                            <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
+                            <option value="Yield">Yield (kg/ha)</option>
+                            <option value="Biomass Reduction">Biomass Reduction (%)</option>
+                          </>
+                        )}
+                        {activeCategory === 'fungicide' && (
+                          <>
+                            <option value="Disease Control Efficiency">Disease Control Efficiency (%)</option>
+                            <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
+                            <option value="Yield">Yield (kg/ha)</option>
+                            <option value="Green Leaf Area">Green Leaf Area (%)</option>
+                          </>
+                        )}
+                        {activeCategory === 'pesticide' && (
+                          <>
+                            <option value="Pest Reduction Efficiency">Pest Reduction Efficiency (%)</option>
+                            <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
+                            <option value="Yield">Yield (kg/ha)</option>
+                            <option value="Damage Rating">Damage Rating (0-9)</option>
+                          </>
+                        )}
+                        {activeCategory === 'nutrition' && (
+                          <>
+                            <option value="Yield Improvement">Yield Improvement (%)</option>
+                            <option value="Chlorophyll Index">Chlorophyll Index (SPAD)</option>
+                            <option value="Biomass Weight">Biomass Weight (g/m²)</option>
+                            <option value="Plant Height">Plant Height (cm)</option>
+                          </>
+                        )}
+                        {activeCategory === 'biostimulant' && (
+                          <>
+                            <option value="Growth Enhancement Index">Growth Enhancement Index</option>
+                            <option value="Root Biomass">Root Biomass (g)</option>
+                            <option value="Shoot Biomass">Shoot Biomass (g)</option>
+                            <option value="Chlorophyll Index">Chlorophyll Index (SPAD)</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Application Timing</label>
+                        <select value={protocolForm.ApplicationTiming} onChange={e => setProtocolForm(v => ({ ...v, ApplicationTiming: e.target.value }))} className={INPUT}>
+                          <option value="">Select timing...</option>
+                          {config.applicationTimings?.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Spray Volume (L/ha)</label>
+                        <input type="number" min="0" step="10" value={protocolForm.SprayVolume} onChange={e => setProtocolForm(v => ({ ...v, SprayVolume: e.target.value }))} className={INPUT} placeholder="e.g., 200" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Protocol Notes</label>
+                      <textarea rows={4} value={protocolForm.Notes} onChange={e => setProtocolForm(v => ({ ...v, Notes: e.target.value }))} className={`${INPUT} resize-y`} placeholder="Additional protocol details, application methods, timing constraints..." />
+                    </div>
+                    <div className="pt-4 flex justify-end gap-3 border-t">
+                      <button type="button" onClick={() => setIsProtocolModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
+                      <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                        <Save className="w-4 h-4" /> Save Protocol Settings
+                      </button>
+                    </div>
+                  </form>
+                </Modal>
+
+                {/* Plot Map Modal */}
+                {showMap && activeProject && (
+                  <PlotMap 
+                    projectId={activeProject.ID}
+                    onClose={() => setShowMap(false)}
+                  />
+                )}
 
               </div>
             </div>
