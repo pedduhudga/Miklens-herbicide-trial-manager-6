@@ -117,6 +117,7 @@ export function checkRescueRecommended(trial, projectTrials = []) {
   
   const regrowth = detectRegrowthPattern(efficacyData);
   const decline = detectEfficacyDecline(efficacyData);
+  const category = trial.Category || 'herbicide';
   
   // Find control trial for comparison
   const controlTrial = projectTrials.find(t => 
@@ -136,9 +137,14 @@ export function checkRescueRecommended(trial, projectTrials = []) {
   // 3. Significant efficacy decline (>25%) AND last observation >21 DAA
   
   if (regrowth.detected && regrowth.increase > 20) {
+    let reason = 'Significant weed regrowth detected';
+    if (category === 'fungicide') reason = 'Significant disease progression detected';
+    else if (category === 'pesticide') reason = 'Significant pest population resurgence detected';
+    else if (category === 'nutrition' || category === 'biostimulant') reason = 'Significant decline in growth metrics';
+
     return {
       recommended: true,
-      reason: 'Significant weed regrowth detected',
+      reason,
       severity: ALERT_SEVERITY.HIGH,
       details: regrowth,
       recommendedWindow: '7-14 days post-initial application'
@@ -256,16 +262,30 @@ export function checkIndustryStandards(trial) {
 export function generateTrialAlerts(trial, projectTrials = []) {
   const alerts = [];
   const efficacyData = safeJsonParse(trial.EfficacyDataJSON, []);
+  const category = trial.Category || 'herbicide';
   
   // 1. Check for regrowth
   const regrowth = detectRegrowthPattern(efficacyData);
   if (regrowth.detected) {
+    let title = 'Weed Regrowth Detected';
+    let message = `Weed cover increased by ${regrowth.increase.toFixed(1)}% after initial control`;
+    if (category === 'fungicide') {
+      title = 'Disease Outbreak Detected';
+      message = `Disease severity increased by ${regrowth.increase.toFixed(1)}% after initial control`;
+    } else if (category === 'pesticide') {
+      title = 'Pest Population Regrowth';
+      message = `Pest count increased by ${regrowth.increase.toFixed(1)}% after initial control`;
+    } else if (category === 'nutrition' || category === 'biostimulant') {
+      title = 'Decline in Growth Performance';
+      message = `Metric value declined by ${regrowth.increase.toFixed(1)}% after maximum performance`;
+    }
+
     alerts.push({
       id: `${trial.ID}-regrowth`,
       type: ALERT_TYPES.REGROWTH_DETECTED,
       severity: regrowth.increase > 20 ? ALERT_SEVERITY.HIGH : ALERT_SEVERITY.MEDIUM,
-      title: 'Weed Regrowth Detected',
-      message: `Weed cover increased by ${regrowth.increase.toFixed(1)}% after initial control`,
+      title,
+      message,
       trialId: trial.ID,
       trialName: trial.FormulationName,
       details: regrowth,
