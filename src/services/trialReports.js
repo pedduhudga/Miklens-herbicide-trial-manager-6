@@ -32,6 +32,9 @@ function getReportConfig(trial) {
   const primaryMetricUnit = config.primaryMetric?.unit || '%';
   const primaryField = getPrimaryObservationField(cat);
   
+  const primaryObsFieldObj = config.observationFields?.find(f => f.key === primaryField) || config.observationFields?.[0];
+  const primaryObsLabel = primaryObsFieldObj?.label || 'Level';
+  
   return {
     cat,
     config,
@@ -42,6 +45,7 @@ function getReportConfig(trial) {
     primaryMetricKey,
     primaryMetricUnit,
     primaryField,
+    primaryObsLabel,
   };
 }
 
@@ -214,7 +218,7 @@ function timelineRows(efficacy, categoryId = 'herbicide', trial = null) {
       const c = o.weedCover ?? 0;
       const status = c <= 10 ? 'Excellent' : c <= 30 ? 'Good' : c <= 60 ? 'Fair' : 'Poor';
       const species = (o.weedDetails || []).map(w => w.species).filter(Boolean).join(', ') || 'Total';
-      return [String(o.daa ?? '—'), species, status, o.notes || '—'];
+      return [String(o.daa ?? '—'), species, `${c}%`, status, o.notes || '—'];
     } else {
       const val = o[primaryField] ?? o.weedCover ?? 0;
       const rating = val <= 10 ? 'Excellent' : val <= 30 ? 'Good' : val <= 60 ? 'Fair' : 'Poor';
@@ -318,11 +322,17 @@ function conclusionNotes(doc, trial, y, ph) {
 async function addWeedIdSection(doc, weedPhotos, trial, y, ph) {
   if (!weedPhotos.length) return y;
   doc.addPage(); y = 20;
-  y = secHeading(doc, '6. Weed Identification Record', y, ph);
-  if (trial.WeedSpecies?.trim()) {
-    doc.setFont(undefined, 'bold'); doc.text('Target Species:', 14, y); y += 5;
+  const repConfig = getReportConfig(trial);
+  const recordLabel = repConfig.cat === 'herbicide' ? 'Weed Identification Record' :
+                      repConfig.cat === 'fungicide' ? 'Disease Identification Record' :
+                      repConfig.cat === 'pesticide' ? 'Pest Identification Record' :
+                      'Target Identification Record';
+  y = secHeading(doc, `6. ${recordLabel}`, y, ph);
+  const targetVal = trial[repConfig.config.targetField] || trial.WeedSpecies;
+  if (targetVal?.trim()) {
+    doc.setFont(undefined, 'bold'); doc.text(`${repConfig.targetLabel}:`, 14, y); y += 5;
     doc.setFont(undefined, 'normal');
-    doc.text(doc.splitTextToSize(trial.WeedSpecies, doc.internal.pageSize.getWidth() - 28), 14, y);
+    doc.text(doc.splitTextToSize(targetVal, doc.internal.pageSize.getWidth() - 28), 14, y);
     y += 12;
   }
   for (const p of weedPhotos) {
@@ -438,7 +448,7 @@ export async function generateComprehensivePdf(trial, options = {}) {
     if (y + 30 > ph - 20) { doc.addPage(); y = 20; }
     autoTable(doc, {
       startY: y,
-      head: [[repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} (${repConfig.primaryMetricUnit})`]],
+      head: [[repConfig.targetLabel, `Initial ${repConfig.primaryObsLabel}`, `Final ${repConfig.primaryObsLabel}`, `${repConfig.primaryMetricKey} (${repConfig.primaryMetricUnit})`]],
       body: wce.map(w => [w.species, w.initialCover.toFixed(1), w.finalCover.toFixed(1), w.wce.toFixed(1)]),
       headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 9 }
     });
@@ -482,8 +492,8 @@ export async function generateComprehensivePdf(trial, options = {}) {
     y = await addPhotoGrid(doc, photos, y, ph, 50, showPhotoDates);
   }
 
-  // Weed ID (only for herbicide)
-  if (withWeeds && categoryId === 'herbicide') y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
+  // Target Identification Record Section
+  if (withWeeds) y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
 
   // Executive Brief
   doc.addPage(); y = 20;
@@ -604,7 +614,7 @@ export async function generateScientificReport(trial, options = {}) {
   if (wce.length) {
     autoTable(doc, {
       startY: y,
-      head: [[repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} (${repConfig.primaryMetricUnit})`]],
+      head: [[repConfig.targetLabel, `Initial ${repConfig.primaryObsLabel}`, `Final ${repConfig.primaryObsLabel}`, `${repConfig.primaryMetricKey} (${repConfig.primaryMetricUnit})`]],
       body: wce.map(w => [w.species, w.initialCover.toFixed(1), w.finalCover.toFixed(1), w.wce.toFixed(1)]),
       headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 9 }
     });
@@ -646,10 +656,8 @@ export async function generateScientificReport(trial, options = {}) {
     y = await addPhotoGrid(doc, photos, y, ph, 50, showPhotoDates);
   }
 
-  // Weed ID (only for herbicide)
-  if (categoryId === 'herbicide') {
-    y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
-  }
+  // Target Identification Record Section
+  y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
   pdfAddFooter(doc, trial.FormulationName || 'Trial');
   doc.save(`Scientific_Report_${safeName(trial.FormulationName)}_${trial.Date || 'nodate'}.pdf`);
   toast('Scientific Report downloaded!', 'success');
@@ -694,8 +702,8 @@ export async function generatePpt(trial) {
     const s3 = pptx.addSlide();
     s3.addText(`Efficacy Analysis – ${repConfig.primaryMetricKey} per ${repConfig.targetLabel}`, { x: 0.4, y: 0.2, w: 9, h: 0.7, fontSize: 22, bold: true, color: primaryHex });
     const hdr = [{ text: repConfig.targetLabel, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
-                 { text: `Initial ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
-                 { text: `Final ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+                 { text: `Initial ${repConfig.primaryObsLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
+                 { text: `Final ${repConfig.primaryObsLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } },
                  { text: `${repConfig.primaryMetricKey} (%)`, options: { bold: true, color: 'FFFFFF', fill: { color: primaryHex } } }];
     s3.addTable([hdr, ...wce.map(w => [w.species, w.initialCover.toFixed(1), w.finalCover.toFixed(1), w.wce.toFixed(1)])],
       { x: 0.4, y: 1.0, w: 9.2, fontSize: 13, colW: [3, 2, 2, 2.2], border: { pt: 0.5, color: 'CBD5E1' } });
@@ -771,7 +779,7 @@ export function exportMultipleTrialsToCSV(trials) {
        'Weed Species', 'Result', 'DAA', 'Obs Date', 'Total Cover %',
        'Species', 'Species Cover %', 'Status', 'Notes']
     : ['Trial ID', 'Formulation', 'Investigator', 'Date', 'Location', 'Dosage',
-       repConfig.targetLabel, 'Result', 'DAA', 'Obs Date', `${repConfig.primaryMetricLabel} (${repConfig.primaryMetricUnit})`, 'Status', 'Notes'];
+       repConfig.targetLabel, 'Result', 'DAA', 'Obs Date', repConfig.primaryObsLabel, 'Status', 'Notes'];
 
   const rows = [];
 
@@ -840,8 +848,8 @@ export function exportMultipleTrialsToCSV(trials) {
 export function exportAllTrialsCSV(trials, projects = []) {
   if (!trials || !trials.length) return;
   const firstTrial = trials[0];
-  const repConfig = getReportConfig(firstTrial);
-  const targetLabel = trials.length === 1 ? repConfig.targetLabel : 'Target / Weed Species';
+  const allSameCategory = trials.every(t => (t.Category || 'herbicide') === (firstTrial.Category || 'herbicide'));
+  const targetLabel = allSameCategory ? repConfig.targetLabel : 'Target Species';
 
   const header = ['Trial ID', 'Formulation', 'Investigator', 'Date', 'Location', 'Dosage',
                   targetLabel, 'Result', 'Status', 'Project', 'Replication',
@@ -1107,7 +1115,7 @@ export function exportHtmlReport(trial, projectName = '') {
     ${wce.length ? `
     <div class="section">
       <h2>${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey})</h2>
-      <table><thead><tr><th>${repConfig.targetLabel}</th><th>Initial ${repConfig.primaryMetricLabel}</th><th>Final ${repConfig.primaryMetricLabel}</th><th>${repConfig.primaryMetricKey} %</th></tr></thead>
+      <table><thead><tr><th>${repConfig.targetLabel}</th><th>Initial ${repConfig.primaryObsLabel}</th><th>Final ${repConfig.primaryObsLabel}</th><th>${repConfig.primaryMetricKey} %</th></tr></thead>
       <tbody>${wceRows}</tbody></table>
     </div>` : ''}
 
@@ -1115,7 +1123,12 @@ export function exportHtmlReport(trial, projectName = '') {
     ${trial.Notes      ? `<div class="section"><h2>Notes</h2><p style="margin:0;line-height:1.7;">${trial.Notes}</p></div>` : ''}
 
     ${photos.length ? `<div class="section"><h2>Field Photos (${photos.length})</h2><div>${photoHtml}</div></div>` : ''}
-    ${categoryId === 'herbicide' && weedPhotos.length ? `<div class="section"><h2>Weed Identification Record</h2>${weedPhotoHtml}</div>` : ''}
+    ${weedPhotos.length ? `<div class="section"><h2>${
+      categoryId === 'herbicide' ? 'Weed Identification Record' :
+      categoryId === 'fungicide' ? 'Disease Identification Record' :
+      categoryId === 'pesticide' ? 'Pest Identification Record' :
+      'Target Identification Record'
+    }</h2>${weedPhotoHtml}</div>` : ''}
 
     <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:24px;">Generated ${new Date().toLocaleString()} — ${repConfig.config.name} Trial Manager</p>
   </div>
@@ -1261,8 +1274,8 @@ export async function exportTrialDocx(trial, options = {}) {
     <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">${repConfig.primaryMetricLabel} (${repConfig.primaryMetricKey})</h2>
     <table style="width:100%;border-collapse:collapse;font-size:10pt;">
       <thead><tr style="background:${primaryHex};color:#fff;">
-        <th style="padding:6px 8px;text-align:left;">${repConfig.targetLabel}</th><th style="padding:6px 8px;text-align:left;">Initial ${repConfig.primaryMetricLabel}</th>
-        <th style="padding:6px 8px;text-align:left;">Final ${repConfig.primaryMetricLabel}</th><th style="padding:6px 8px;text-align:left;">${repConfig.primaryMetricKey} %</th>
+        <th style="padding:6px 8px;text-align:left;">${repConfig.targetLabel}</th><th style="padding:6px 8px;text-align:left;">Initial ${repConfig.primaryObsLabel}</th>
+        <th style="padding:6px 8px;text-align:left;">Final ${repConfig.primaryObsLabel}</th><th style="padding:6px 8px;text-align:left;">${repConfig.primaryMetricKey} %</th>
       </tr></thead>
       <tbody>${wceRows}</tbody>
     </table>` : '';
@@ -1297,8 +1310,12 @@ export async function exportTrialDocx(trial, options = {}) {
       ${photos.map((p, i) => `<li>${p.label || `Photo ${i + 1}`}${p.date ? ` — ${formatDateTime(p.date)}` : ''}</li>`).join('')}
     </ul>` : '';
 
-  const weedIdHtml = (categoryId === 'herbicide' && withWeeds && weedPhotos.length) ? `
-    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">Weed Identification Record</h2>
+  const recordLabel = categoryId === 'herbicide' ? 'Weed Identification Record' :
+                      categoryId === 'fungicide' ? 'Disease Identification Record' :
+                      categoryId === 'pesticide' ? 'Pest Identification Record' :
+                      'Target Identification Record';
+  const weedIdHtml = (withWeeds && weedPhotos.length) ? `
+    <h2 style="color:${primaryHex};font-size:14pt;border-bottom:2px solid ${primaryHex};padding-bottom:4px;margin-top:24px;">${recordLabel}</h2>
     <table style="width:100%;border-collapse:collapse;font-size:10pt;">
       <thead><tr style="background:${primaryHex};color:#fff;">
         <th style="padding:6px 8px;text-align:left;">Species</th>
@@ -1475,7 +1492,7 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
   if (wceRows.length) {
     autoTable(doc, {
       startY: y,
-      head: [['Sub-Trial / Spot', 'Rep', repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} %`]],
+      head: [['Sub-Trial / Spot', 'Rep', repConfig.targetLabel, `Initial ${repConfig.primaryObsLabel}`, `Final ${repConfig.primaryObsLabel}`, `${repConfig.primaryMetricKey} %`]],
       body: wceRows,
       headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
     });
@@ -1503,8 +1520,8 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
     const eff = validateEfficacy(safeJsonParse(st.EfficacyDataJSON, []));
     if (eff.length) {
       const timelineHeaders = categoryId === 'herbicide'
-        ? ['DAA', 'Weed Species', 'Status', 'Notes']
-        : ['DAA', repConfig.targetLabel, repConfig.primaryMetricLabel, 'Status', 'Notes'];
+        ? ['DA-A', 'Weed Species', 'Total Cover %', 'Status', 'Notes']
+        : ['DA-A', repConfig.targetLabel, repConfig.primaryObsLabel, 'Status', 'Notes'];
 
       autoTable(doc, {
         startY: y,
@@ -1595,7 +1612,7 @@ export async function generateMasterScientificReport(project, subTrials, options
   if (wceRows.length) {
     autoTable(doc, {
       startY: y,
-      head: [['Sub-Trial / Spot', 'Rep', repConfig.targetLabel, `Initial ${repConfig.primaryMetricLabel}`, `Final ${repConfig.primaryMetricLabel}`, `${repConfig.primaryMetricKey} %`]],
+      head: [['Sub-Trial / Spot', 'Rep', repConfig.targetLabel, `Initial ${repConfig.primaryObsLabel}`, `Final ${repConfig.primaryObsLabel}`, `${repConfig.primaryMetricKey} %`]],
       body: wceRows,
       headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 9 }
     });
@@ -1676,8 +1693,8 @@ export async function generateMasterPpt(project, subTrials) {
   const wceHeader = [
     { text: 'Sub-Trial', options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
     { text: repConfig.targetLabel, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
-    { text: `Initial ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
-    { text: `Final ${repConfig.primaryMetricLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+    { text: `Initial ${repConfig.primaryObsLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
+    { text: `Final ${repConfig.primaryObsLabel}`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } },
     { text: `${repConfig.primaryMetricKey} %`, options: { bold: true, color: 'FFFFFF', fill: { color: themeHex } } }
   ];
   const wceRows = [wceHeader];

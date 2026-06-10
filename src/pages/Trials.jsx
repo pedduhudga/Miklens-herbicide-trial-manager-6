@@ -1722,6 +1722,10 @@ export default function Trials({ onMenuClick }) {
     const fmtD = (d) => formatDate(d);
 
     const cardsHtml = selectedTrials.map(trial => {
+      const trialCat = trial.Category || 'herbicide';
+      const cConf = getCategoryConfig(trialCat);
+      const targetLabel = cConf.targetLabel || 'Weed Species';
+      const targetValue = trial[cConf.targetField] || trial.WeedSpecies || '';
       return `
         <div class="qr-card" style="
           width: ${config.width};
@@ -1748,7 +1752,7 @@ export default function Trials({ onMenuClick }) {
             ${trial.Location ? `<div><b>Loc:</b> ${trial.Location}</div>` : ''}
             ${trial.Date ? `<div><b>Date:</b> ${fmtD(trial.Date)}</div>` : ''}
             ${trial.Dosage ? `<div><b>Dose:</b> ${trial.Dosage}</div>` : ''}
-            ${trial.WeedSpecies ? `<div style="font-size:9px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;"><b>Weeds:</b> ${trial.WeedSpecies}</div>` : ''}
+            ${targetValue ? `<div style="font-size:9px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;"><b>${targetLabel}:</b> ${targetValue}</div>` : ''}
             <div style="font-size: 8px; color: #94a3b8; margin-top: 5px; font-family: monospace;">ID: ${trial.ID.slice(-10)}</div>
           </div>
         </div>
@@ -2222,19 +2226,43 @@ export default function Trials({ onMenuClick }) {
       const efficacy = validateEfficacyData(safeJsonParse(detailTrial.EfficacyDataJSON, []));
       const sorted = [...efficacy].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
 
+      const trialCat = detailTrial.Category || 'herbicide';
+      const cConf = getCategoryConfig(trialCat);
+      const targetLabel = cConf.targetLabel || 'Weed Species';
+      const targetField = cConf.targetField || 'WeedSpecies';
+      const targetValue = detailTrial[targetField] || detailTrial.WeedSpecies || 'Not specified';
+      const primaryMetricKey = cConf.primaryMetric?.key || 'WCE';
+      const primaryMetricLabel = cConf.primaryMetric?.label || 'Weed Control Efficiency';
+      const primaryMetricUnit = cConf.primaryMetric?.unit || '%';
+      const primaryField = getPrimaryObservationField(trialCat);
+
       // Build a rich observation timeline for the AI
       const obsLines = sorted.map(o => {
+        const val = o[primaryField] ?? o.weedCover ?? '?';
         const speciesLine = (o.weedDetails || []).map(w => `${w.species}: ${w.cover}%`).join(', ');
-        return `  DAA ${o.daa}: total cover ${o.weedCover ?? '?'}%${speciesLine ? ` (${speciesLine})` : ''}${o.notes ? ` — ${o.notes}` : ''}`;
+        return `  DAA ${o.daa}: total ${cConf.observationFields?.[0]?.label || 'level'} ${val}${primaryMetricUnit}${speciesLine ? ` (${speciesLine})` : ''}${o.notes ? ` — ${o.notes}` : ''}`;
       }).join('\n');
 
       // Compute key metrics to feed the AI
       const baseline = sorted[0];
       const latest = sorted[sorted.length - 1];
-      const baseCover = parseFloat(baseline?.weedCover ?? 0) || 0;
-      const finalCover = parseFloat(latest?.weedCover ?? 0) || 0;
-      const wce = baseCover > 0 ? Math.max(0, ((baseCover - finalCover) / baseCover) * 100) : 0;
-      const minObs = sorted.reduce((m, o) => (o.weedCover ?? 100) < (m.weedCover ?? 100) ? o : m, sorted[0] ?? {});
+      const baseCover = parseFloat(baseline?.[primaryField] ?? baseline?.weedCover ?? 0) || 0;
+      const finalCover = parseFloat(latest?.[primaryField] ?? latest?.weedCover ?? 0) || 0;
+      const isPositiveMetric = (trialCat === 'nutrition' || trialCat === 'biostimulant');
+      let wce = 0;
+      if (isPositiveMetric) {
+        wce = baseCover > 0 ? ((finalCover - baseCover) / baseCover) * 100 : 0;
+      } else {
+        wce = baseCover > 0 ? ((baseCover - finalCover) / baseCover) * 100 : 0;
+      }
+      wce = Math.max(0, wce);
+
+      const minObs = sorted.reduce((m, o) => {
+        const valO = parseFloat(o[primaryField] ?? o.weedCover ?? 0) || 0;
+        const valM = parseFloat(m[primaryField] ?? m.weedCover ?? 0) || 0;
+        return valO < valM ? o : m;
+      }, sorted[0] ?? {});
+
       const controlDaysVal = detailTrial.FinalControlDuration
         ? parseInt(detailTrial.FinalControlDuration, 10)
         : (detailTrial.Date ? Math.max(0, Math.round((new Date() - new Date(detailTrial.Date)) / 86400000)) : null);
@@ -2274,7 +2302,7 @@ export default function Trials({ onMenuClick }) {
 
       const fmtTrialDate = formatDate(detailTrial.Date) || 'N/A';
 
-      const prompt = `You are a senior agronomist writing a professional herbicide field trial narrative for an official regulatory-style report (SOP/TDS validation standard).
+      const prompt = `You are a senior agronomist/scientist writing a professional ${cConf.name} field trial narrative for an official regulatory-style report (SOP/TDS validation standard).
       
       Do NOT include any observations about photo mismatches, data anomalies, or reporting inconsistencies in the main 5 sections. Any data anomalies or discrepancies must be appended strictly at the end, separated by a custom delimiter.
       
@@ -2284,76 +2312,74 @@ TRIAL DATA:
 - Product: ${detailTrial.FormulationName}
 - Application date: ${fmtTrialDate}, Location: ${detailTrial.Location || 'N/A'}
 - Dosage: ${detailTrial.Dosage || 'N/A'}
-- Target weeds: ${detailTrial.WeedSpecies || 'Not specified'}
+- Target ${targetLabel}: ${targetValue}
 - Control days tracked: ${controlDaysVal != null ? controlDaysVal + ' days' : 'Ongoing'}
 - Trial status: ${(detailTrial.IsCompleted === true || detailTrial.IsCompleted === 'true') ? 'Completed/Finalized' : 'Ongoing'}
 - Rated result: ${detailTrial.Result || 'Not yet rated'}
-- Overall WCE: ${wce.toFixed(1)}% (initial ${baseCover}% → final ${finalCover}%)
-- Best overall suppression: ${minObs.weedCover ?? '?'}% at DAA ${minObs.daa ?? '?'}
+- Overall ${primaryMetricKey}: ${wce.toFixed(1)}% (initial ${baseCover}${primaryMetricUnit} → final ${finalCover}${primaryMetricUnit})
+- Best overall suppression: ${minObs[primaryField] ?? minObs.weedCover ?? '?'}% at DAA ${minObs.daa ?? '?'}
 
-FULL OBSERVATION TIMELINE (Days After Application → total weed cover %):
+FULL OBSERVATION TIMELINE (Days After Application → total ${targetLabel.toLowerCase()} level):
 ${obsLines || '  No observations recorded yet.'}
 
-PER-SPECIES BREAKDOWN:
+PER-SPECIES/TARGET BREAKDOWN:
 ${speciesAnalysis}
 
-HERBICIDE CONTROL DURATION BENCHMARKS (use these exact thresholds):
+${cConf.name.toUpperCase()} CONTROL DURATION BENCHMARKS (use these exact thresholds):
 - ≤7 days of effective suppression = Poor
 - 8–17 days = Fair
 - 18–27 days = Good
 - 28+ days = Excellent
-- "Effective suppression" means cover stayed below 30% of initial level before significant regrowth.
-- If cover INCREASES at later DAAs after an initial drop, regrowth is occurring — note the regrowth DAA.
-- If cover never drops meaningfully (<20% reduction), the product had no measurable control on that species.
+- "Effective suppression" means level stayed below 30% of initial level (or was maintained above 80% for positive nutrition/biostimulant metrics) before significant regrowth/decline.
+- If target levels increase/decrease negatively at later DAAs after an initial response, regrowth or performance decline is occurring — note the regrowth DAA.
 
 LANGUAGE AND TONE RULES — follow strictly:
-1. Regulatory-neutral tone. Do NOT use aggressive or emotive language (avoid: "complete lack of efficacy", "product failed", "unacceptable", "benchmark for effective suppression"). Use neutral, factual phrasing: "inadequate weed control under the evaluated conditions", "no measurable suppression was observed", "no observable response attributable to the treatment", "indicating insufficient weed control performance".
-2. Do NOT speculate beyond observed data. Do not write "active growth and proliferation" unless biomass data supports it. Use cover % data only.
-3. Do NOT write "best or worst performance" comparisons — only state observed cover values objectively.
+1. Regulatory-neutral tone. Do NOT use aggressive or emotive language (avoid: "complete lack of efficacy", "product failed", "unacceptable", "benchmark for effective suppression"). Use neutral, factual phrasing: "inadequate control under the evaluated conditions", "no measurable suppression was observed", "no observable response attributable to the treatment", "indicating insufficient performance".
+2. Do NOT speculate beyond observed data. Use level % data only.
+3. Do NOT write "best or worst performance" comparisons — only state observed values objectively.
 4. Do NOT use any markdown formatting (no **, no *, no #, no bullet dashes, no hyphens as bullets). Plain text only.
 5. Section headings as plain numbered text: "1. Application & Setup" on its own line.
-6. SPECIES HEADING RULE: Each species heading must be written as "Common Name (Scientific Name)" — e.g. "Bermuda Grass (Cynodon dactylon)". NEVER write the same name twice like "Cynodon dactylon (Cynodon dactylon)". If no common name is known, write only the scientific name. Use the common names from the target weed field or weed details if available.
-6a. SCIENTIFIC NAME CAPITALISATION: Always format scientific names as "Genus species" — Genus is capitalised, species epithet is fully lowercase. E.g. "Medicago polymorpha" not "medicago Polymorpha" or "Medicago Polymorpha".
+6. SPECIES/TARGET HEADING RULE: Each target heading must be written as "Common Name (Scientific Name)" if scientific name is available. If no common name is known, write only the scientific name.
+6a. SCIENTIFIC NAME CAPITALISATION: Always format scientific names as "Genus species" — Genus is capitalised, species epithet is fully lowercase.
 7. Application date must be formatted as DD-Mon-YYYY (e.g. 19-Apr-2026). Dosage units: write "mL" not "ml". Write coordinates as provided. Use "at coordinates X, Y" — never "at location X, Y".
-8. Do NOT use the word "phytotoxic" or "phytotoxicity". Use "herbicidal injury symptoms" instead.
+8. Do NOT use herbicide-only terminology like "phytotoxic" or "weed control efficiency" unless this is a herbicide trial. Use generic equivalents like "treatment injury symptoms" or "${primaryMetricLabel}" respectively.
 9. Write in third person. Past tense for finalized trials, present tense for ongoing.
-10. Include a detailed, scientific conclusion in Section 5. If individual species baseline covers are recorded as 0% but overall weed cover drops significantly (e.g. from 100% to 5%), do NOT conclude that the treatment failed to control those species or that the data is an anomaly inside the main narrative sections. Simply state that target weeds were successfully controlled based on the overall cover reduction. Keep all comments about observation anomalies, data mismatch, suggestions, recommendations, or potential incorrect uploads completely out of the 5 main sections.
+10. Include a detailed, scientific conclusion in Section 5. If overall level dropped significantly, do NOT conclude that the treatment failed. Keep all comments about observation anomalies, data mismatch, suggestions, recommendations, or potential incorrect uploads completely out of the 5 main sections.
 
-OUTPUT STRUCTURE — write exactly these 5 sections, nothing else (no other intro/outro text, and no delimiters inside the 5 sections):
+OUTPUT STRUCTURE — write exactly these 5 sections, nothing else:
 
 1. Application & Setup
-One sentence. Start directly with the product name (no "Product X was applied" prefix — just "[Product name] was applied…"). Include dosage (with proper units), application date (DD-Mon-YYYY), coordinates, and all target weed species with scientific names in parentheses.
+One sentence. Start directly with the product name (no "Product X was applied" prefix — just "[Product name] was applied…"). Include dosage (with proper units), application date (DD-Mon-YYYY), coordinates, and all target species with scientific names in parentheses.
 
 2. Overall Efficacy Trajectory
 Exactly 3 sentences. Follow this structure precisely:
-- Sentence 1: "At DAA [first], total weed cover was recorded at X%."
-- Sentence 2: Dynamically describe the final weed cover and its control interpretation based on the actual data.
-- Sentence 3: Dynamically describe the presence, progression, or absence of herbicidal injury symptoms and physical weed responses observed in the timeline notes.
+- Sentence 1: "At DAA [first], total ${targetLabel.toLowerCase()} level was recorded at X%."
+- Sentence 2: Dynamically describe the final level and its control interpretation based on the actual data.
+- Sentence 3: Dynamically describe the presence, progression, or absence of treatment injury symptoms observed in the timeline notes.
 
-3. Species-wise Performance
-For EACH species in the per-species breakdown — write the species heading (Common Name + Scientific Name), then 1-2 sentences:
-- Begin each species paragraph with "At DAA X," — never "At X Days After Application".
-- State cover value at each observed DAA factually.
-- For no-control cases use: "No measurable suppression or reduction in cover was observed for this species." or "No observable reduction in cover attributable to the treatment was detected."
-- For partial control only: "Minimal to no observable control was evident for this species."
-- After ALL species, write ONE closing summary sentence on its own line: State a clean summary of the overall species-wise control trajectory based on the actual observed data. If overall weed cover decreased significantly (e.g. by 70% or more), do NOT say evaluated species demonstrated negligible control. Instead, state that the target weed population was successfully suppressed overall.
+3. Species-wise / Target Performance
+For EACH target in the breakdown — write the heading, then 1-2 sentences:
+- Begin each paragraph with "At DAA X,".
+- State value at each observed DAA factually.
+- For no-control cases use: "No measurable suppression or reduction was observed for this target."
+- After ALL targets, write ONE closing summary sentence on its own line summarizing the overall control trajectory.
 
 4. Control Duration Interpretation
 Exactly 2 sentences. Follow this structure:
-- Sentence 1: Dynamically describe the change or reduction in weed cover over the observation period based on the data.
-- Sentence 2: "Treatment performance was classified as [Poor/Fair/Good/Excellent], indicating [sufficient/highly effective/moderate/insufficient] weed control performance under the evaluated field conditions."
+- Sentence 1: Dynamically describe the change or reduction in target level over the observation period based on the data.
+- Sentence 2: "Treatment performance was classified as [Poor/Fair/Good/Excellent], indicating [sufficient/highly effective/moderate/insufficient] control performance under the evaluated field conditions."
 
-5. Agronomic Conclusion & Weed Control Assessment
+5. Agronomic Conclusion & Performance Assessment
 Write 3 to 4 detailed sentences providing a proper scientific conclusion:
-- Sentence 1: Detail the duration of effective control and peak control percentage.
-- Sentence 2: Detail which weed species were successfully addressed (controlled/suppressed) and to what maximum efficacy percentage. If individual species baseline covers were recorded as 0% but overall weed cover dropped significantly, clarify that since the overall weed cover was reduced by X%, the target weeds were successfully suppressed.
-- Sentence 3: Detail which weed species re-emerged or regrew during the trial and at which DAA the re-emergence or regrowth was detected.
+- Sentence 1: Detail the duration of effective control and peak control percentage/level.
+- Sentence 2: Detail which targets were successfully addressed.
+- Sentence 3: Detail which targets re-emerged or regrew during the trial and at which DAA.
 - Sentence 4: Conclude with a final factual agronomic performance assessment statement for the treatment under the evaluated conditions. Do NOT include future trial recommendations, suggestions for further evaluations, or speculative remarks.
 
 DETAILED ANOMALIES & SUGGESTIONS (APPEND SEPARATELY):
 At the very end of your response, after the 5 sections, write a delimiter line: "---ANOMALIES---"
 Following this delimiter, perform:
-1. Chronological and biological anomaly detection check (such as 0% baseline target weeds, photo mismatch, or incorrect uploads).
+1. Chronological and biological anomaly detection check.
 2. Factual recommendations, suggestions for future trials, and comments regarding further monitoring or evaluations.
 If none are present, write "None".`;
 
@@ -2520,9 +2546,19 @@ If none are present, write "None".`;
     setAiGenRunning(true);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Generating AI efficacy report for ${trial.FormulationName}...`, type: 'info' } }));
     try {
-      const weedSpecies = [...new Set(efficacy.flatMap(o => (o.weedDetails||[]).map(w=>w.species).filter(Boolean)))];
-      const obsText = efficacy.map(o => `DAA ${o.daa}: cover=${o.weedCover}% [${(o.weedDetails||[]).map(w=>`${w.species} ${w.cover}% ${w.status}`).join(', ')}]`).join('; ');
-      const prompt = `You are an expert agricultural scientist. Write a concise scientific narrative (3-5 paragraphs) for this herbicide efficacy trial:\n\nFormulation: ${trial.FormulationName}\nDosage: ${trial.Dosage}\nTarget Weeds: ${trial.WeedSpecies}\nLocation: ${trial.Location}\nDate Applied: ${trial.Date}\nResult Rating: ${trial.Result}\nObservations: ${obsText}\nWeather: Temp ${trial.Temperature}°C, Humidity ${trial.Humidity}%, Wind ${trial.Windspeed} km/h\n\nAddress: initial cover, response trajectory, final efficacy, species-specific outcomes, and recommendation.`;
+      const trialCat = trial.Category || 'herbicide';
+      const cConf = getCategoryConfig(trialCat);
+      const targetLabel = cConf.targetLabel || 'Weed Species';
+      const targetField = cConf.targetField || 'WeedSpecies';
+      const targetValue = trial[targetField] || trial.WeedSpecies || 'Not specified';
+      const primaryField = getPrimaryObservationField(trialCat);
+      const primaryMetricLabel = cConf.primaryMetric?.label || 'Efficacy';
+      const obsText = efficacy.map(o => {
+        const val = o[primaryField] ?? o.weedCover ?? 0;
+        const details = (o.weedDetails || []).map(w => `${w.species} ${w.cover}% ${w.status}`).join(', ');
+        return `DAA ${o.daa}: value=${val} [${details}]`;
+      }).join('; ');
+      const prompt = `You are an expert agricultural scientist. Write a concise scientific narrative (3-5 paragraphs) for this ${cConf.name} efficacy trial:\n\nFormulation: ${trial.FormulationName}\nDosage: ${trial.Dosage}\nTarget ${targetLabel}: ${targetValue}\nLocation: ${trial.Location}\nDate Applied: ${trial.Date}\nResult Rating: ${trial.Result}\nObservations: ${obsText}\nWeather: Temp ${trial.Temperature}°C, Humidity ${trial.Humidity}%, Wind ${trial.Windspeed} km/h\n\nAddress: initial ${cConf.observationFields?.[0]?.label || 'level'}, response trajectory, final efficacy (${primaryMetricLabel}), and recommendation.`;
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }] }) });
       const d = await r.json();
       const text = d.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
