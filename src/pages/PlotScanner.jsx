@@ -26,6 +26,7 @@ import {
   uploadPhoto as uploadPhotoToDrive,
   updateTrial,
 } from "../services/dataLayer.js";
+import { getCategoryConfig } from "../utils/categoryConfig.js";
 
 function parseQrData(raw) {
   if (!raw) return null;
@@ -99,8 +100,13 @@ function formatDate(str) {
 
 // ─── Quick-Action Modal ────────────────────────────────────────────────────────
 
-function QuickActionModal({ trial, rawQr, onClose, onAction }) {
+function QuickActionModal({ trial, rawQr, onClose, onAction, activeCategory = 'herbicide' }) {
   if (!trial && !rawQr) return null;
+
+  const categoryId = trial?.Category || activeCategory;
+  const catConfig = getCategoryConfig(categoryId);
+  const targetField = catConfig.targetField || 'WeedSpecies';
+  const targetVal = trial ? (trial[targetField] || trial.WeedSpecies || trial.DiseaseTarget || trial.PestTarget || trial.NutrientType || trial.BiostimulantType) : '';
 
   const actions = [
     {
@@ -113,8 +119,8 @@ function QuickActionModal({ trial, rawQr, onClose, onAction }) {
     },
     {
       id: "weed",
-      label: "Identify Weeds",
-      sub: "AI Weed Analysis",
+      label: categoryId === 'herbicide' ? "Identify Weeds" : categoryId === 'fungicide' ? "Identify Diseases" : categoryId === 'pesticide' ? "Identify Pests" : "Analyze Health & Vigor",
+      sub: `AI ${catConfig.name} Analysis`,
       icon: <Sprout className="w-6 h-6" />,
       bg: "bg-emerald-50 hover:bg-emerald-100 border-emerald-200",
       iconBg: "bg-emerald-500",
@@ -182,9 +188,9 @@ function QuickActionModal({ trial, rawQr, onClose, onAction }) {
                   {trial.Dosage}
                 </span>
               )}
-              {trial.WeedSpecies && (
+              {targetVal && (
                 <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full truncate max-w-[180px]">
-                  {trial.WeedSpecies}
+                  {targetVal}
                 </span>
               )}
               <span
@@ -681,8 +687,8 @@ export default function PlotScanner({ onMenuClick }) {
             {
               icon: <Sprout className="w-5 h-5 text-emerald-500" />,
               bg: "bg-emerald-50",
-              title: "Weed ID",
-              desc: "AI-powered weed identification from photo",
+              title: (state.activeCategory || 'herbicide') === 'herbicide' ? "Weed ID" : (state.activeCategory || 'herbicide') === 'fungicide' ? "Disease ID" : (state.activeCategory || 'herbicide') === 'pesticide' ? "Pest ID" : "Plant Health",
+              desc: (state.activeCategory || 'herbicide') === 'herbicide' ? "AI-powered weed identification from photo" : (state.activeCategory || 'herbicide') === 'fungicide' ? "AI-powered disease identification from photo" : (state.activeCategory || 'herbicide') === 'pesticide' ? "AI-powered pest identification from photo" : "AI-powered plant health and vigor analysis",
             },
             {
               icon: <Image className="w-5 h-5 text-purple-500" />,
@@ -764,6 +770,7 @@ export default function PlotScanner({ onMenuClick }) {
           rawQr={quickModal.raw}
           onClose={() => setQuickModal(null)}
           onAction={handleAction}
+          activeCategory={state.activeCategory || 'herbicide'}
         />
       )}
 
