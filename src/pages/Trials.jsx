@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import QRCodeLib from 'qrcode';
+import { jStat } from 'jstat';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
@@ -21,6 +22,7 @@ import { validateEfficacyData } from '../utils/analysisUtils.js';
 import CameraCapture from '../components/CameraCapture.jsx';
 import CropperModal from '../components/CropperModal.jsx';
 import GridWeedCoverTool from '../components/GridWeedCoverTool.jsx';
+import PhotoAnalyzerView from '../components/PhotoAnalyzerView.jsx';
 import { analyzePhoto, analyzePhotosBatch } from '../services/multiProviderAI.js';
 import TrialCard from '../components/TrialCard.jsx';
 import {
@@ -188,6 +190,12 @@ export default function Trials({ onMenuClick }) {
   const [weedIdLoading, setWeedIdLoading] = useState(false);
   const [weedIdResult, setWeedIdResult] = useState(null);
   const weedIdInputRef = useRef(null);
+
+  // --- Photo Analyzer (bounding box overlay) ---
+  const [photoAnalyzerOpen, setPhotoAnalyzerOpen] = useState(false);
+  const [photoAnalyzerUrl, setPhotoAnalyzerUrl] = useState(null);
+  const [photoAnalyzerResults, setPhotoAnalyzerResults] = useState([]);
+  const [photoAnalyzerLoading, setPhotoAnalyzerLoading] = useState(false);
 
   // --- AI Batch Photo Analysis ---
   const [aiBatchRunning, setAiBatchRunning] = useState(false);
@@ -628,13 +636,20 @@ export default function Trials({ onMenuClick }) {
   }, [activeTrial]);
 
   // ── Weed ID from photo ─────────────────────────────────────────────
-  const identifyWeedFromPhoto = useCallback(async (imageDataUrl) => {
+  const identifyWeedFromPhoto = useCallback(async (imageDataUrl, openAnalyzer = false) => {
+    if (openAnalyzer) {
+      setPhotoAnalyzerUrl(imageDataUrl);
+      setPhotoAnalyzerLoading(true);
+      setPhotoAnalyzerResults([]);
+      setPhotoAnalyzerOpen(true);
+    }
     setWeedIdLoading(true);
     setWeedIdResult(null);
     const apiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
     if (!apiKey) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings', type: 'error' } }));
       setWeedIdLoading(false);
+      if (openAnalyzer) setPhotoAnalyzerLoading(false);
       return;
     }
     try {
@@ -644,7 +659,7 @@ export default function Trials({ onMenuClick }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [
-          { text: 'Identify weed species in this field photo. For each weed, provide: 1) Scientific name, 2) Common name, 3) Estimated cover% of that species in the frame, 4) Growth stage. Format as JSON array: [{"name":"...","commonName":"...","cover":0,"growthStage":"...","confidence":0.0}]. Confidence 0-1.' },
+          { text: 'Identify weed species in this field photo. For each weed, provide: 1) Scientific name, 2) Common name, 3) Estimated cover% of that species in the frame, 4) Growth stage, 5) Bounding box coordinate in normalized 0-1000 format [ymin, xmin, ymax, xmax] if visible. Format as JSON array: [{"name":"...","commonName":"...","cover":0,"growthStage":"...","box_2d":[ymin, xmin, ymax, xmax],"confidence":0.0}]. Confidence 0-1.' },
           { inlineData: { mimeType, data: base64 } }
         ]}] })
       });
@@ -654,13 +669,17 @@ export default function Trials({ onMenuClick }) {
       if (jsonMatch) {
         const weeds = JSON.parse(jsonMatch[0]);
         setWeedIdResult(weeds);
+        if (openAnalyzer) setPhotoAnalyzerResults(weeds);
       } else {
-        setWeedIdResult([{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }]);
+        const fallback = [{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }];
+        setWeedIdResult(fallback);
+        if (openAnalyzer) setPhotoAnalyzerResults(fallback);
       }
     } catch(e) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weed ID failed: ' + e.message, type: 'error' } }));
     } finally {
       setWeedIdLoading(false);
+      if (openAnalyzer) setPhotoAnalyzerLoading(false);
     }
   }, [state.settings]);
 
@@ -981,14 +1000,135 @@ export default function Trials({ onMenuClick }) {
       const sp = (obs.weedDetails || []).map(w => w.species).filter(Boolean).join(', ') || (detailTrial[targetField] || 'Mixed');
       return { species: sp, initialCover: baseVal.toFixed(1), finalCover: val.toFixed(1), wce: wce !== null ? parseFloat(wce.toFixed(1)) : null, controlRating: rating, daa: obs.daa };
     });
-    const wces = wceRows.map(r => r.wce).filter(v => v !== null);
-    const meanWce = wces.length ? wces.reduce((s, v) => s + v, 0) / wces.length : 0;
-    const ssTreat = wces.reduce((s, v) => s + Math.pow(v - meanWce, 2), 0);
-    const df = wces.length - 1;
-    const ms = df > 0 ? ssTreat / df : 0;
+
+    // Run RCBD ANOVA
+    const trtGroups = {};
+    const repGroups = {};
+    const values = [];
+
+    efficacy.forEach(obs => {
+      const val = parseFloat(obs[primaryObsField]);
+      const trt = parseInt(obs.treatmentNumber || obs.treatment || 1);
+      const rep = parseInt(obs.replication || obs.rep || 1);
+      if (!isNaN(val)) {
+        values.push(val);
+        if (!trtGroups[trt]) trtGroups[trt] = [];
+        trtGroups[trt].push(val);
+        if (!repGroups[rep]) repGroups[rep] = [];
+        repGroups[rep].push(val);
+      }
+    });
+
+    const N = values.length;
+    const t = Object.keys(trtGroups).length;
+    const b = Object.keys(repGroups).length;
+
+    let anovaResults = null;
+    let lsdResults = null;
+
+    if (N >= 4 && t >= 2 && b >= 2) {
+      const grandMean = values.reduce((a, b) => a + b, 0) / N;
+      let ssTotal = 0;
+      values.forEach(y => { ssTotal += Math.pow(y - grandMean, 2); });
+
+      let ssTreat = 0;
+      Object.keys(trtGroups).forEach(trt => {
+        const trtVals = trtGroups[trt];
+        const trtMean = trtVals.reduce((a, b) => a + b, 0) / trtVals.length;
+        ssTreat += trtVals.length * Math.pow(trtMean - grandMean, 2);
+      });
+
+      let ssBlock = 0;
+      Object.keys(repGroups).forEach(rep => {
+        const repVals = repGroups[rep];
+        const repMean = repVals.reduce((a, b) => a + b, 0) / repVals.length;
+        ssBlock += repVals.length * Math.pow(repMean - grandMean, 2);
+      });
+
+      const ssError = Math.max(0, ssTotal - ssTreat - ssBlock);
+      const dfTreat = t - 1;
+      const dfBlock = b - 1;
+      const dfError = dfTreat * dfBlock;
+      const dfTotal = N - 1;
+
+      const msTreat = ssTreat / dfTreat;
+      const msBlock = ssBlock / dfBlock;
+      const msError = ssError / dfError;
+
+      const fVal = msError > 0 ? msTreat / msError : 0;
+      const fBlock = msError > 0 ? msBlock / msError : 0;
+
+      const pVal = (msError > 0 && typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fVal, dfTreat, dfError) : 1;
+      const pBlock = (msError > 0 && typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fBlock, dfBlock, dfError) : 1;
+
+      const cVals = trtGroups[1] || [];
+      const tVals = trtGroups[2] || [];
+      const cMean = cVals.length ? cVals.reduce((a, b) => a + b, 0) / cVals.length : 0;
+      const tMean = tVals.length ? tVals.reduce((a, b) => a + b, 0) / tVals.length : 0;
+
+      const tValCrit = (typeof jStat !== 'undefined') ? jStat.studentt.inv(1 - (0.05 / 2), dfError) : 2.05;
+      const lsd = tValCrit * Math.sqrt((2 * msError) / b);
+      const sem = Math.sqrt(msError / b);
+      const cv = grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0;
+
+      const diff = Math.abs(tMean - cMean);
+      let control_group = 'a';
+      let treatment_group = 'a';
+      if (diff > lsd) {
+        if (tMean > cMean) {
+          control_group = 'b';
+          treatment_group = 'a';
+        } else {
+          control_group = 'a';
+          treatment_group = 'b';
+        }
+      }
+
+      anovaResults = {
+        anovaTable: {
+          treatment: { source: 'Treatment', df: dfTreat, ss: parseFloat(ssTreat.toFixed(2)), ms: parseFloat(msTreat.toFixed(2)), f: parseFloat(fVal.toFixed(2)), p: parseFloat(pVal.toFixed(4)), sig: pVal < 0.01 ? '**' : pVal < 0.05 ? '*' : 'ns' },
+          block: { source: 'Replications (Block)', df: dfBlock, ss: parseFloat(ssBlock.toFixed(2)), ms: parseFloat(msBlock.toFixed(2)), f: parseFloat(fBlock.toFixed(2)), p: parseFloat(pBlock.toFixed(4)), sig: pBlock < 0.01 ? '**' : pBlock < 0.05 ? '*' : 'ns' },
+          error: { source: 'Error', df: dfError, ss: parseFloat(ssError.toFixed(2)), ms: parseFloat(msError.toFixed(2)), f: null, p: null, sig: '' },
+          total: { source: 'Total', df: dfTotal, ss: parseFloat(ssTotal.toFixed(2)), ms: null, f: null, p: null, sig: '' }
+        },
+        diagnostics: {
+          cv: parseFloat(cv.toFixed(2)),
+          r_squared: parseFloat((1 - (ssError / (ssTotal || 1))).toFixed(4)),
+          sem: parseFloat(sem.toFixed(4)),
+          lsd: parseFloat(lsd.toFixed(4))
+        }
+      };
+
+      lsdResults = {
+        alpha: 0.05,
+        lsd: parseFloat(lsd.toFixed(4)),
+        groupings: [
+          { name: 'Control (Trt 1)', mean: cMean, grouping: control_group },
+          { name: 'Treated (Trt 2)', mean: tMean, grouping: treatment_group }
+        ]
+      };
+    } else {
+      // Fallback simple 1-treatment ANOVA on WCE values
+      const wces = wceRows.map(r => r.wce).filter(v => v !== null);
+      const meanWce = wces.length ? wces.reduce((s, v) => s + v, 0) / wces.length : 0;
+      const ssTreat = wces.reduce((s, v) => s + Math.pow(v - meanWce, 2), 0);
+      const df = wces.length - 1;
+      const ms = df > 0 ? ssTreat / df : 0;
+      anovaResults = {
+        anovaTable: {
+          treatment: { source: 'Treatment', df, ss: parseFloat(ssTreat.toFixed(2)), ms: parseFloat(ms.toFixed(2)), f: null, p: null, sig: 'N/A' }
+        },
+        diagnostics: {
+          cv: df > 0 ? parseFloat((100 * Math.sqrt(ms) / (meanWce || 1)).toFixed(2)) : 0,
+          r_squared: df > 0 ? parseFloat((ssTreat / (ssTreat + 0.001)).toFixed(4)) : 0
+        }
+      };
+    }
+
     const result = {
       wce: wceRows,
-      anovaResults: { anovaTable: { treatment: { source: 'Treatment', df, ss: parseFloat(ssTreat.toFixed(2)), ms: parseFloat(ms.toFixed(2)), f: null, p: null, sig: 'N/A' } }, diagnostics: { cv: df > 0 ? parseFloat((100 * Math.sqrt(ms) / (meanWce || 1)).toFixed(2)) : 0, r_squared: df > 0 ? parseFloat((ssTreat / (ssTreat + 0.001)).toFixed(4)) : 0 } },
+      anovaResults,
+      lsdResults,
       calculatedAt: new Date().toISOString()
     };
     const updated = { ...detailTrial, StatisticsJSON: JSON.stringify(result) };
@@ -996,7 +1136,7 @@ export default function Trials({ onMenuClick }) {
     setActiveTrial(updated);
     try { await updateTrial({ ID: updated.ID, StatisticsJSON: updated.StatisticsJSON }, getAppState); } catch(e) {}
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Statistics calculated', type: 'success' } }));
-  }, [detailTrial, updateState, trials, getAppState]);
+  }, [detailTrial, updateState, trials, getAppState, activeCategory, catConfig]);
 
   // Stats data parsing
   const statsData = useMemo(() => {
@@ -3696,6 +3836,10 @@ If none are present, write "None".`;
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100">
                                 <Leaf className="w-3 h-3" />Weed ID
                               </button>
+                              <button onClick={() => identifyWeedFromPhoto(src, true)} title="AI Bounding Box Analysis"
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-cyan-50 text-cyan-700 rounded-lg hover:bg-cyan-100">
+                                <Eye className="w-3 h-3" />Bounds
+                              </button>
                               <button onClick={() => detectWeedCoverAI(src)} title="Detect Weed Cover"
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100">
                                 <ScanLine className="w-3 h-3" />Cover
@@ -3914,14 +4058,24 @@ If none are present, write "None".`;
                               </tbody>
                             </table>
                           </div>
-                          <div className="mt-2 grid grid-cols-3 gap-3">
+                          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div className="bg-slate-50 rounded-lg p-2 text-xs">
-                              <span className="font-semibold text-slate-500">CV: </span>
+                              <span className="font-semibold text-slate-500 block">CV:</span>
                               <span className="font-bold text-slate-700">{Number.isFinite(statsData.stats.anovaResults.diagnostics?.cv) ? statsData.stats.anovaResults.diagnostics.cv.toFixed(2) : '—'}%</span>
                               {Number.isFinite(statsData.stats.anovaResults.diagnostics?.cv) && <span className={`ml-1 text-[10px] font-semibold ${ statsData.stats.anovaResults.diagnostics.cv <= 10 ? 'text-emerald-600' : statsData.stats.anovaResults.diagnostics.cv <= 20 ? 'text-blue-600' : statsData.stats.anovaResults.diagnostics.cv <= 30 ? 'text-amber-600' : 'text-red-600' }`}>({interpretCV(statsData.stats.anovaResults.diagnostics.cv)})</span>}
                             </div>
-                            <div className="bg-slate-50 rounded-lg p-2 text-xs"><span className="font-semibold text-slate-500">R²: </span><span className="font-bold text-slate-700">{Number.isFinite(statsData.stats.anovaResults.diagnostics?.r_squared) ? statsData.stats.anovaResults.diagnostics.r_squared.toFixed(4) : '—'}</span></div>
-                            <div className="bg-slate-50 rounded-lg p-2 text-xs"><span className="font-semibold text-slate-500">Mean WCE: </span><span className="font-bold text-slate-700">{statsData.renderWces.length ? statsData.renderMeanWce.toFixed(1) : '—'}%</span></div>
+                            <div className="bg-slate-50 rounded-lg p-2 text-xs">
+                              <span className="font-semibold text-slate-500 block">R²:</span>
+                              <span className="font-bold text-slate-700">{Number.isFinite(statsData.stats.anovaResults.diagnostics?.r_squared) ? statsData.stats.anovaResults.diagnostics.r_squared.toFixed(4) : '—'}</span>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-2 text-xs">
+                              <span className="font-semibold text-slate-500 block">Trial SEM:</span>
+                              <span className="font-bold text-slate-700">{Number.isFinite(statsData.stats.anovaResults.diagnostics?.sem) ? statsData.stats.anovaResults.diagnostics.sem.toFixed(4) : '—'}</span>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-2 text-xs">
+                              <span className="font-semibold text-slate-500 block">LSD (p=0.05):</span>
+                              <span className="font-bold text-slate-700">{Number.isFinite(statsData.stats.anovaResults.diagnostics?.lsd) ? statsData.stats.anovaResults.diagnostics.lsd.toFixed(4) : '—'}</span>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -5124,6 +5278,16 @@ If none are present, write "None".`;
           </div>
         );
       })()}
+
+      {/* Photo Analyzer – AI bounding box overlay */}
+      <PhotoAnalyzerView
+        isOpen={photoAnalyzerOpen}
+        onClose={() => { setPhotoAnalyzerOpen(false); setPhotoAnalyzerResults([]); setPhotoAnalyzerUrl(null); }}
+        imageUrl={photoAnalyzerUrl}
+        loading={photoAnalyzerLoading}
+        results={photoAnalyzerResults}
+        onApplyValue={(val) => setObsForm(prev => ({ ...prev, weedCover: val }))}
+      />
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
     </div>

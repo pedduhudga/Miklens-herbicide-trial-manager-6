@@ -568,7 +568,7 @@ export async function identifyWeedFromPhoto(imageDataUrl) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contents: [{ parts: [
-      { text: 'Identify weed species in this field photo. For each weed, provide: 1) Scientific name, 2) Common name, 3) Estimated cover% of that species in the frame, 4) Growth stage. Format as JSON array: [{"name":"...","commonName":"...","cover":0,"growthStage":"...","confidence":0.0}]. Confidence 0-1.' },
+      { text: 'Identify weed species in this field photo. For each weed, provide: 1) Scientific name, 2) Common name, 3) Estimated cover% of that species in the frame, 4) Growth stage, 5) Bounding box coordinate in normalized 0-1000 format [ymin, xmin, ymax, xmax] if visible. Format as JSON array: [{"name":"...","commonName":"...","cover":0,"growthStage":"...","box_2d":[ymin, xmin, ymax, xmax],"confidence":0.0}]. Confidence 0-1.' },
       { inlineData: { mimeType, data: base64 } }
     ]}] })
   });

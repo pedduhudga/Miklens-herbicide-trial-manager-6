@@ -24,6 +24,8 @@ import Sidebar from './components/Sidebar.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import Toast from './components/Toast.jsx';
 import LoadingOverlay from './components/LoadingOverlay.jsx';
+import ConflictResolverModal from './components/ConflictResolverModal.jsx';
+
 
 import Setup from './pages/Setup.jsx';
 import Login from './pages/Login.jsx';
@@ -51,6 +53,36 @@ function AppLayout() {
 
   const { state, updateState, getAppState } = useAppState();
   const { isAuthenticated } = useAuth();
+
+  const handleResolveConflict = (resolvedItem) => {
+    updateState({
+      trials: state.trials.map(t => String(t.ID) === String(resolvedItem.ID) ? resolvedItem : t)
+    });
+    const syncItem = state.activeConflict?.syncItem;
+    if (syncItem) {
+      const updatedQueue = state.syncQueue.map(item => {
+        if (item.id === syncItem.id) {
+          return {
+            ...item,
+            status: 'pending',
+            attempts: 0,
+            payload: {
+              ...item.payload,
+              EfficacyDataJSON: resolvedItem.EfficacyDataJSON,
+              IsLive: resolvedItem.IsLive
+            }
+          };
+        }
+        return item;
+      });
+      updateState({ syncQueue: updatedQueue });
+      localStorage.setItem('syncQueue', JSON.stringify(updatedQueue));
+    }
+    updateState({ activeConflict: null });
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('app:sync-status-update'));
+    }, 100);
+  };
 
   // Mount the sync loop hook
   useSync();
@@ -203,6 +235,15 @@ function AppLayout() {
       <BottomNav onMoreClick={toggleSidebar} />
       <Toast />
       <LoadingOverlay />
+      
+      {state.activeConflict && (
+        <ConflictResolverModal
+          isOpen={!!state.activeConflict}
+          onClose={() => updateState({ activeConflict: null })}
+          conflict={state.activeConflict}
+          onResolve={handleResolveConflict}
+        />
+      )}
     </div>
   );
 }

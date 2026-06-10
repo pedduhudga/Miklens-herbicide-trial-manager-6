@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 export default function GridWeedCoverTool({ imageUrl, initialSelected = [], initialGridSize = 10, onUpdate }) {
   const canvasRef = useRef(null);
@@ -10,6 +10,8 @@ export default function GridWeedCoverTool({ imageUrl, initialSelected = [], init
   const imgObjectRef = useRef(null);
 
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [exgBaseline, setExgBaseline] = useState(null); // { cover, greenCells, totalCells }
 
   // Load Image and initialize canvas
   useEffect(() => {
@@ -97,6 +99,77 @@ export default function GridWeedCoverTool({ imageUrl, initialSelected = [], init
     const percentage = Math.round((selectedCells.size / totalCells) * 100);
     onUpdate({ cover: percentage, cells: Array.from(selectedCells), size: gridSize });
   }, [selectedCells, gridSize]); // eslint-disable-line
+
+  // ── ExG (Excess Green Index) Auto-Detect ───────────────────────────
+  const computeExGBaseline = useCallback(() => {
+    if (!imgObjectRef.current || canvasDimensions.width === 0) return;
+    setAutoDetecting(true);
+
+    // Use a setTimeout so the UI can render the loading indicator first
+    setTimeout(() => {
+      try {
+        const img = imgObjectRef.current;
+        const { width, height } = canvasDimensions;
+
+        // Create an off-screen canvas to sample pixels
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = width;
+        offCanvas.height = height;
+        const offCtx = offCanvas.getContext('2d');
+        offCtx.drawImage(img, 0, 0, width, height);
+
+        const cellWidth = width / gridSize;
+        const cellHeight = height / gridSize;
+        const greenThreshold = 0; // ExG > 0 means green dominance
+        const greenRatioRequired = 0.25; // ≥25% of cell pixels must be green
+
+        const newSelected = new Set();
+
+        for (let row = 0; row < gridSize; row++) {
+          for (let col = 0; col < gridSize; col++) {
+            const cx = Math.floor(col * cellWidth);
+            const cy = Math.floor(row * cellHeight);
+            const cw = Math.ceil(cellWidth);
+            const ch = Math.ceil(cellHeight);
+
+            // Clamp to canvas bounds
+            const safeW = Math.min(cw, width - cx);
+            const safeH = Math.min(ch, height - cy);
+            if (safeW <= 0 || safeH <= 0) continue;
+
+            const imageData = offCtx.getImageData(cx, cy, safeW, safeH);
+            const data = imageData.data;
+            const pixelCount = safeW * safeH;
+            let greenPixels = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              // Excess Green Index: ExG = 2*G - R - B
+              const exg = 2 * g - r - b;
+              if (exg > greenThreshold) {
+                greenPixels++;
+              }
+            }
+
+            if (greenPixels / pixelCount >= greenRatioRequired) {
+              newSelected.add(row * gridSize + col);
+            }
+          }
+        }
+
+        setSelectedCells(newSelected);
+        const totalCells = gridSize * gridSize;
+        const coverPct = Math.round((newSelected.size / totalCells) * 100);
+        setExgBaseline({ cover: coverPct, greenCells: newSelected.size, totalCells });
+      } catch (err) {
+        console.error('ExG auto-detect failed:', err);
+      } finally {
+        setAutoDetecting(false);
+      }
+    }, 50);
+  }, [canvasDimensions, gridSize]);
 
   // Interaction handlers
   const getCellIndexFromEvent = (e) => {
@@ -200,11 +273,12 @@ export default function GridWeedCoverTool({ imageUrl, initialSelected = [], init
   const handleGridSizeChange = (e) => {
     setGridSize(Number(e.target.value));
     setSelectedCells(new Set()); // Reset selections on size change to avoid bad mapping
+    setExgBaseline(null);
   };
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200">
+      <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <label className="text-sm font-semibold text-slate-700">Grid Detail:</label>
           <select
@@ -219,16 +293,41 @@ export default function GridWeedCoverTool({ imageUrl, initialSelected = [], init
           </select>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             type="button"
-            onClick={() => setSelectedCells(new Set())}
+            onClick={computeExGBaseline}
+            disabled={autoDetecting || !imageUrl}
+            className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            {autoDetecting ? (
+              <><span className="w-3 h-3 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin inline-block"></span> Detecting...</>
+            ) : (
+              <>🌿 ExG Auto-Detect</>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSelectedCells(new Set()); setExgBaseline(null); }}
             className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100"
           >
             Clear Grid
           </button>
         </div>
       </div>
+
+      {/* ExG Baseline result banner */}
+      {exgBaseline && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-emerald-700">ExG Auto-Detect Baseline</span>
+            <span className="text-xs text-emerald-600 ml-2">
+              {exgBaseline.greenCells}/{exgBaseline.totalCells} cells ({exgBaseline.cover}% green canopy)
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-400 italic">Adjust manually as needed</span>
+        </div>
+      )}
 
       <div
         ref={containerRef}
@@ -258,9 +357,6 @@ export default function GridWeedCoverTool({ imageUrl, initialSelected = [], init
           {Math.round((selectedCells.size / (gridSize * gridSize)) * 100)}%
         </span>
       </div>
-
-      {/* Expose autoFill method via a ref if needed by parent, but for now we provide a direct prop trigger or button */}
-      {/* If parent provides a suggested percentage, we could show an autofill button here */}
     </div>
   );
 }

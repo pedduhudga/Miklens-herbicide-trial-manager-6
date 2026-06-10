@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import { initFirebase, isFirebaseReady } from '../services/firebase.js';
+import { saveOfflineData, loadOfflineData } from '../services/offlineStorage.js';
 
 const initialState = {
   auth: {
@@ -153,10 +154,60 @@ export function AppStateProvider({ children }) {
       if (savedCategory) {
         dispatch({ type: 'SET_STATE', payload: { activeCategory: savedCategory } });
       }
+
+      // Load cached datasets from IndexedDB
+      Promise.all([
+        loadOfflineData('trials'),
+        loadOfflineData('projects'),
+        loadOfflineData('formulations'),
+        loadOfflineData('ingredients'),
+        loadOfflineData('blocks')
+      ]).then(([trials, projects, formulations, ingredients, blocks]) => {
+        const payload = {};
+        if (trials?.length) payload.trials = trials;
+        if (projects?.length) payload.projects = projects;
+        if (formulations?.length) payload.formulations = formulations;
+        if (ingredients?.length) payload.ingredients = ingredients;
+        if (blocks?.length) payload.blocks = blocks;
+        if (Object.keys(payload).length > 0) {
+          dispatch({ type: 'SET_STATE', payload });
+        }
+      }).catch(err => console.warn('Offline cache load failed:', err));
     } catch (e) {
       console.error('Failed to parse local storage data', e);
     }
   }, []);
+
+  // Auto-persist datasets to IndexedDB when they change in state
+  useEffect(() => {
+    if (state.trials && state.trials.length > 0) {
+      saveOfflineData('trials', state.trials);
+    }
+  }, [state.trials]);
+
+  useEffect(() => {
+    if (state.projects && state.projects.length > 0) {
+      saveOfflineData('projects', state.projects);
+    }
+  }, [state.projects]);
+
+  useEffect(() => {
+    if (state.formulations && state.formulations.length > 0) {
+      saveOfflineData('formulations', state.formulations);
+    }
+  }, [state.formulations]);
+
+  useEffect(() => {
+    if (state.ingredients && state.ingredients.length > 0) {
+      saveOfflineData('ingredients', state.ingredients);
+    }
+  }, [state.ingredients]);
+
+  useEffect(() => {
+    if (state.blocks && state.blocks.length > 0) {
+      saveOfflineData('blocks', state.blocks);
+    }
+  }, [state.blocks]);
 
   const updateState = useCallback((payload) => {
     dispatch({ type: 'SET_STATE', payload });

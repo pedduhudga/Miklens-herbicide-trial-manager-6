@@ -1,4 +1,6 @@
 import { apiCall } from './db.js';
+import { safeJsonParse } from '../utils/helpers.js';
+
 let _isSyncProcessing = false;
 
 export async function processSyncQueue(getAppState, updateAppState, showToast, renderSyncStatus) {
@@ -65,6 +67,30 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                             item.status = 'uploading';
                             updateAppState({ syncQueue: getAppState().syncQueue });
                             renderSyncStatus();
+
+                            if (item.action === 'updateTrialRecord' && item.payload.ID) {
+                                console.log('[HighTechSync] Checking conflict for trial:', item.payload.ID);
+                                const cloudTrials = await apiCall('getTrials', { ID: item.payload.ID }, false);
+                                const cloudRecord = Array.isArray(cloudTrials) ? cloudTrials.find(t => String(t.ID) === String(item.payload.ID)) : null;
+                                
+                                if (cloudRecord) {
+                                    const localObs = safeJsonParse(item.payload.EfficacyDataJSON, []);
+                                    const cloudObs = safeJsonParse(cloudRecord.EfficacyDataJSON, []);
+                                    if (cloudObs.length > 0 && localObs.length > 0 && cloudObs.length !== localObs.length) {
+                                        console.warn('[HighTechSync] Conflict detected on trial:', item.payload.ID);
+                                        item.status = 'failed';
+                                        item.lastError = 'Conflict detected';
+                                        updateAppState({
+                                            activeConflict: {
+                                                localItem: item.payload,
+                                                cloudItem: cloudRecord,
+                                                syncItem: item
+                                            }
+                                        });
+                                        break;
+                                    }
+                                }
+                            }
 
                             console.log(`[HighTechSync] [INFO] Syncing Action: ${item.action}`);
                             const result = await apiCall(item.action, item.payload, false);

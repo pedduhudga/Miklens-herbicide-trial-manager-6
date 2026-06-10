@@ -5,6 +5,7 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import Chart from 'chart.js/auto';
+import { jStat } from 'jstat';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { getAPIKeys } from './multiProviderAI.js';
 
@@ -278,6 +279,25 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
   const cSE = cSD / Math.sqrt(cVals.length || 1);
   const tSE = tSD / Math.sqrt(tVals.length || 1);
 
+  // Advanced post-hoc statistics: CV, SEM, LSD
+  const tVal = (typeof jStat !== 'undefined') ? jStat.studentt.inv(1 - (0.05 / 2), dfError) : 2.05;
+  const lsd = tVal * Math.sqrt((2 * msError) / (b || 1));
+  const sem = Math.sqrt(msError / (b || 1));
+  const cv = grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0;
+
+  const diff = Math.abs(tMean - cMean);
+  let control_group = 'a';
+  let treatment_group = 'a';
+  if (diff > lsd) {
+    if (tMean > cMean) {
+      control_group = 'b';
+      treatment_group = 'a';
+    } else {
+      control_group = 'a';
+      treatment_group = 'b';
+    }
+  }
+
   return {
     ss_treatment: ssTreatments,
     df_treatment: dfTreatments,
@@ -298,6 +318,12 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
     ss_total: ssTotal,
     df_total: dfTotal,
 
+    cv,
+    sem,
+    lsd,
+    control_group,
+    treatment_group,
+
     control_mean: cMean,
     control_sd: cSD,
     control_se: cSE,
@@ -317,7 +343,7 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
           const baselineDate = sortedDates[0];
           const baselineObs = data.filter(o => o.date === baselineDate);
           const cBaseline = baselineObs.filter(o => parseInt(o.treatmentNumber || o.treatment || 1) === 1).map(o => parseFloat(o[metricKey])).filter(v => !isNaN(v));
-          const tBaseline = baselineObs.filter(o => parseInt(o.treatmentNumber || o.treatment || 1) === 2).map(o => parseFloat(o[metricKey])).filter(v => !isNaN(v));
+          const tBaseline = baselineObs.filter(o => parseInt(o.treatmentNumber || o.treatment || 2) === 2).map(o => parseFloat(o[metricKey])).filter(v => !isNaN(v));
           
           const cb = cBaseline.length ? cBaseline.reduce((s,v) => s+v, 0)/cBaseline.length : 0;
           const tb = tBaseline.length ? tBaseline.reduce((s,v) => s+v, 0)/tBaseline.length : 0;
@@ -331,6 +357,7 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
       return cMean > 0 ? (isReductionMetric(metricKey, category) ? ((cMean - tMean) / cMean) * 100 : ((tMean - cMean) / cMean) * 100) : 0;
     })()
   };
+
 }
 
 // Local helper to calculate Excess Green (ExG) index from a base64 image (NDVI surrogate)
@@ -894,13 +921,14 @@ export class AdvancedReportGenerator {
       ws.getCell(`A${r}`).font = { bold: true };
       r++;
 
-      ws.getRow(r).values = ['Treatment', 'Mean', 'Std Dev', 'SE', '95% CI Lower', '95% CI Upper'];
+      ws.getRow(r).values = ['Treatment', 'Mean', 'LSD Group', 'Std Dev', 'SE', '95% CI Lower', '95% CI Upper'];
       ws.getRow(r).font = { bold: true };
       r++;
 
       ws.getRow(r).values = [
         'Control (Trt 1)',
         parseFloat(anova.control_mean.toFixed(2)),
+        anova.control_group || 'a',
         parseFloat(anova.control_sd.toFixed(2)),
         parseFloat(anova.control_se.toFixed(2)),
         parseFloat(anova.control_ci_lower.toFixed(2)),
@@ -911,6 +939,7 @@ export class AdvancedReportGenerator {
       ws.getRow(r).values = [
         'Treated (Trt 2)',
         parseFloat(anova.treatment_mean.toFixed(2)),
+        anova.treatment_group || 'a',
         parseFloat(anova.treatment_sd.toFixed(2)),
         parseFloat(anova.treatment_se.toFixed(2)),
         parseFloat(anova.treatment_ci_lower.toFixed(2)),
@@ -921,9 +950,21 @@ export class AdvancedReportGenerator {
       ws.getRow(r).values = [
         'Difference / Efficacy',
         parseFloat((anova.treatment_mean - anova.control_mean).toFixed(2)),
+        '',
         '', '', '', 
         `${anova.efficacy_percent.toFixed(1)}%`
       ];
+      r++;
+
+      ws.getRow(r).values = [
+        'LSD (p=0.05)',
+        anova.lsd ? parseFloat(anova.lsd.toFixed(4)) : 'N/A',
+        'CV (%)',
+        anova.cv ? parseFloat(anova.cv.toFixed(2)) + '%' : 'N/A',
+        'Trial SEM',
+        anova.sem ? parseFloat(anova.sem.toFixed(4)) : 'N/A'
+      ];
+      ws.getRow(r).font = { italic: true };
 
       r += 4;
     });
