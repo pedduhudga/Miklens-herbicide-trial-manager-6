@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
-import { addProject, deleteProject, addBlock, updateProject, addBatchTrials } from '../services/dataLayer.js';
+import { addProject, deleteProject, addBlock, deleteBlock, updateProject, addBatchTrials } from '../services/dataLayer.js';
 import {
   Plus, Trash2, Layers, Beaker, Activity, ChevronRight, ArrowLeft,
   Lock, Unlock, Download, FileText, RefreshCw, BarChart2, Shuffle,
@@ -101,7 +101,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
 }
 
 // ── Block card ─────────────────────────────────────────────────────────────
-function BlockCard({ block, trials, activeCategory, onPlotClick }) {
+function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, onAddPlot, isLocked }) {
   const projectConfig = getCategoryConfig(activeCategory);
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
   const hasControl = controls.length > 0;
@@ -122,7 +122,25 @@ function BlockCard({ block, trials, activeCategory, onPlotClick }) {
           <span className="font-bold text-slate-800 text-sm">{block.Name}</span>
           {icon}
         </div>
-        <span className="text-xs text-slate-400">{trials.length} plot{trials.length !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">{trials.length} plot{trials.length !== 1 ? 's' : ''}</span>
+          {!isLocked && onAddPlot && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddPlot(block.ID); }}
+              className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition" title="Add plot to this block"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!isLocked && onDeleteBlock && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteBlock(block.ID, block.Name); }}
+              className="p-1 rounded hover:bg-red-100 text-red-400 hover:text-red-600 transition" title="Delete block"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       <div className="p-3 overflow-x-auto">
         {trials.length > 0 ? (
@@ -665,6 +683,7 @@ export default function Projects({ onMenuClick }) {
       Name: blockForm.Name.trim(),
       ReplicationNum: blockForm.ReplicationNum || String((state.blocks || []).filter(b => String(b.ProjectID) === String(activeProjectId)).length + 1),
       CreatedAt: new Date().toISOString(),
+      Category: activeCategory,
     };
     updateState({ blocks: [...(state.blocks || []), payload] });
     setBlockForm({ Name: '', ReplicationNum: '' });
@@ -673,6 +692,38 @@ export default function Projects({ onMenuClick }) {
       await addBlock(payload, getAppState);
       toast('Block added');
     } catch { toast('Failed to save block', 'error'); }
+  };
+
+  // ── Delete block ────────────────────────────────────────────────────────
+  const handleDeleteBlock = async (blockId, blockName) => {
+    if (!activeProjectId) return;
+    const blockTrials = (state.trials || []).filter(t => String(t.BlockID) === String(blockId));
+    const confirmMsg = blockTrials.length > 0
+      ? `Delete block "${blockName}" and its ${blockTrials.length} plot(s)? This cannot be undone.`
+      : `Delete block "${blockName}"? This cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    // Remove block and its trials from state
+    const updatedBlocks = (state.blocks || []).filter(b => String(b.ID) !== String(blockId));
+    const updatedTrials = (state.trials || []).filter(t => String(t.BlockID) !== String(blockId));
+    updateState({ blocks: updatedBlocks, trials: updatedTrials });
+
+    try {
+      await deleteBlock({ ID: blockId }, getAppState);
+      // Also delete associated trials from Firebase
+      for (const t of blockTrials) {
+        try {
+          const { deleteTrial } = await import('../services/dataLayer.js');
+          await deleteTrial({ ID: t.ID }, getAppState);
+        } catch { /* best effort */ }
+      }
+      toast(`Block "${blockName}" deleted`);
+    } catch { toast('Failed to delete block', 'error'); }
+  };
+
+  // ── Add plot to block (navigate to Trials page with block pre-selected) ──
+  const handleAddPlotToBlock = (blockId) => {
+    navigate(`/trials?addNew=true&projectId=${activeProjectId}&blockId=${blockId}`);
   };
 
   // ── Lock / Unlock ───────────────────────────────────────────────────────
@@ -1561,7 +1612,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   {projectBlocks.length > 0 ? (
                     <div className="space-y-4">
                       {projectBlocks.map(b => (
-                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} />
+                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} />
                       ))}
                     </div>
                   ) : (

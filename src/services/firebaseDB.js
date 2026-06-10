@@ -402,6 +402,12 @@ export async function fbCatGetBlocks(category, userId) {
 export async function fbCatAddBlock(category, data, userId) {
   return fbAdd(getCategoryCollection(category, 'blocks'), data, userId);
 }
+export async function fbCatUpdateBlock(category, data) {
+  return fbUpdate(getCategoryCollection(category, 'blocks'), data);
+}
+export async function fbCatDeleteBlock(category, id) {
+  return fbDelete(getCategoryCollection(category, 'blocks'), id);
+}
 
 export async function fbCatBatchWrite(category, collectionType, records, userId) {
   return fbBatchWrite(getCategoryCollection(category, collectionType), records, userId);

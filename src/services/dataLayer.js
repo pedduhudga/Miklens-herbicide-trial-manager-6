@@ -269,6 +269,17 @@ export async function addBlock(payload, getAppState) {
   return sheetDB.addBlock(payload, getAppState);
 }
 
+export async function deleteBlock(payload, getAppState) {
+  const { useFirebase } = getConfig(getAppState);
+  if (useFirebase) {
+    const category = getCategory(getAppState);
+    const result = await fbDB.fbCatDeleteBlock(category, payload.id || payload.ID);
+    mirror('deleteBlock', payload, getAppState);
+    return result;
+  }
+  return sheetDB.apiCall('deleteBlock', payload, false, getAppState);
+}
+
 // ─── Organisations ───────────────────────────────────────────────────────────
 
 export async function getOrganisations(payload, getAppState) {
