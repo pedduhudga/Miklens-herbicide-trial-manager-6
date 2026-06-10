@@ -7,9 +7,16 @@ import { exportCSV, exportZIP, importCSV } from '../utils/exportUtils.js';
 import { updateTrial, updateProject, updateFormulation } from '../services/dataLayer.js'; // Adjust as needed
 import { calculateDAA } from '../utils/dateUtils.js';
 import { analyzePhoto } from '../services/multiProviderAI.js';
+import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
+
 
 export default function DataManagement({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const activeCategory = state.activeCategory || 'herbicide';
+  const catConfig = getCategoryConfig(activeCategory);
+  const primaryObsField = getPrimaryObservationField(activeCategory);
+  const targetField = catConfig.targetField || 'WeedSpecies';
+  const targetLabel = catConfig.targetLabel || 'Weed Species';
   const importRef = useRef(null);
   const csvImportRef = useRef(null);
   const [csvImportEntity, setCsvImportEntity] = useState('');
@@ -101,10 +108,10 @@ export default function DataManagement({ onMenuClick }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `herbicide_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `${activeCategory}_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('JSON backup exported');
+    toast(`${catConfig.name} JSON backup exported`);
   };
 
   const handleExportStandaloneHTML = () => {
@@ -207,6 +214,7 @@ export default function DataManagement({ onMenuClick }) {
     toast(`${taskName} complete: ${updatedCount} updated`, 'success');
   };
 
+
   const handleScanTrials = async () => {
     const trials = state.trials || [];
     if (!trials.length) {
@@ -224,7 +232,7 @@ export default function DataManagement({ onMenuClick }) {
       currentTrialName: ''
     });
 
-    let missingWeedDetails = 0, stringDaa = 0, missingWeedSpecies = 0;
+    let missingObsDetails = 0, stringDaa = 0, missingTarget = 0;
 
     for (let i = 0; i < trials.length; i++) {
       const t = trials[i];
@@ -238,9 +246,13 @@ export default function DataManagement({ onMenuClick }) {
       const eff = safeJsonParse(t.EfficacyDataJSON, []);
       eff.forEach(o => {
         if (typeof o.daa === 'string') stringDaa++;
-        if (!o.weedDetails || o.weedDetails.length === 0) missingWeedDetails++;
+        if (activeCategory === 'herbicide') {
+          if (!o.weedDetails || o.weedDetails.length === 0) missingObsDetails++;
+        } else {
+          if (o[primaryObsField] === undefined || o[primaryObsField] === null) missingObsDetails++;
+        }
       });
-      if (!t.WeedSpecies) missingWeedSpecies++;
+      if (!t[targetField]) missingTarget++;
     }
 
     setRepairState({
@@ -253,24 +265,35 @@ export default function DataManagement({ onMenuClick }) {
 
     setScanSummary(
       `Scanned ${trials.length} trials — ` +
-      `${missingWeedDetails} observations missing weedDetails, ` +
+      `${missingObsDetails} observations missing details/primary metric, ` +
       `${stringDaa} observations with string DAA format, ` +
-      `${missingWeedSpecies} trials missing WeedSpecies property.`
+      `${missingTarget} trials missing ${targetLabel} property.`
     );
     toast('Scan complete', 'success');
   };
 
   const handleAutoFixWeedLinking = () => {
-    runAsynchronousRepair('Auto-Fix Weed Linking', (t) => {
+    runAsynchronousRepair(`Auto-Fix ${targetLabel} Linking`, (t) => {
       const eff = safeJsonParse(t.EfficacyDataJSON, []);
       if (!eff.length) return { updatedTrial: t, isChanged: false };
       let changed = false;
       const newEff = eff.map(o => {
         const newO = { ...o };
         if (typeof newO.daa === 'string') { newO.daa = parseFloat(newO.daa) || 0; changed = true; }
-        if (!newO.weedDetails || newO.weedDetails.length === 0) {
-          newO.weedDetails = [{ species: t.WeedSpecies || 'Unknown', cover: newO.weedCover ?? 0 }];
-          changed = true;
+        if (activeCategory === 'herbicide') {
+          if (!newO.weedDetails || newO.weedDetails.length === 0) {
+            newO.weedDetails = [{ species: t[targetField] || 'Unknown', cover: newO.weedCover ?? 0 }];
+            changed = true;
+          }
+        } else {
+          if (newO[primaryObsField] === undefined || newO[primaryObsField] === null) {
+            newO[primaryObsField] = 0;
+            changed = true;
+          }
+          if (!newO.weedDetails || newO.weedDetails.length === 0) {
+            newO.weedDetails = [{ species: t[targetField] || 'Unknown', cover: newO[primaryObsField] || 0 }];
+            changed = true;
+          }
         }
         return newO;
       });
@@ -282,14 +305,14 @@ export default function DataManagement({ onMenuClick }) {
   };
 
   const handleRepairSpeciesTracking = () => {
-    runAsynchronousRepair('Repair Species Tracking', (t) => {
+    runAsynchronousRepair(`Repair ${targetLabel} Tracking`, (t) => {
       const eff = safeJsonParse(t.EfficacyDataJSON, []);
-      if (!eff.length || t.WeedSpecies) return { updatedTrial: t, isChanged: false };
+      if (!eff.length || t[targetField]) return { updatedTrial: t, isChanged: false };
       const species = new Set();
       eff.forEach(o => (o.weedDetails || []).forEach(w => { if (w.species) species.add(w.species); }));
       if (species.size > 0) {
         return {
-          updatedTrial: { ...t, WeedSpecies: [...species].join(', ') },
+          updatedTrial: { ...t, [targetField]: [...species].join(', ') },
           isChanged: true
         };
       }
@@ -297,8 +320,9 @@ export default function DataManagement({ onMenuClick }) {
     });
   };
 
+
   const handleForceFullRerepair = async () => {
-    if (!window.confirm('This will sequentially re-run all Weed Linking and Species Tracking repair steps on every trial. Continue?')) return;
+    if (!window.confirm(`This will sequentially re-run all ${targetLabel} Linking and Tracking repair steps on every trial. Continue?`)) return;
     setRepairProgress('');
     setScanSummary('');
 
@@ -310,7 +334,7 @@ export default function DataManagement({ onMenuClick }) {
 
     setRepairState({
       isRunning: true,
-      taskName: 'Force Full Re-repair (Weed Linking & Species)',
+      taskName: `Force Full Re-repair (${targetLabel} & Tracking)`,
       progress: 0,
       total: trials.length,
       currentTrialName: ''
@@ -337,20 +361,31 @@ export default function DataManagement({ onMenuClick }) {
         newEff = eff.map(o => {
           const newO = { ...o };
           if (typeof newO.daa === 'string') { newO.daa = parseFloat(newO.daa) || 0; changed = true; }
-          if (!newO.weedDetails || newO.weedDetails.length === 0) {
-            newO.weedDetails = [{ species: t.WeedSpecies || 'Unknown', cover: newO.weedCover ?? 0 }];
-            changed = true;
+          if (activeCategory === 'herbicide') {
+            if (!newO.weedDetails || newO.weedDetails.length === 0) {
+              newO.weedDetails = [{ species: t[targetField] || 'Unknown', cover: newO.weedCover ?? 0 }];
+              changed = true;
+            }
+          } else {
+            if (newO[primaryObsField] === undefined || newO[primaryObsField] === null) {
+              newO[primaryObsField] = 0;
+              changed = true;
+            }
+            if (!newO.weedDetails || newO.weedDetails.length === 0) {
+              newO.weedDetails = [{ species: t[targetField] || 'Unknown', cover: newO[primaryObsField] || 0 }];
+              changed = true;
+            }
           }
           return newO;
         });
       }
 
-      let weedSpecies = t.WeedSpecies;
-      if (!weedSpecies && newEff.length > 0) {
+      let trackingVal = t[targetField];
+      if (!trackingVal && newEff.length > 0) {
         const species = new Set();
         newEff.forEach(o => (o.weedDetails || []).forEach(w => { if (w.species) species.add(w.species); }));
         if (species.size > 0) {
-          weedSpecies = [...species].join(', ');
+          trackingVal = [...species].join(', ');
           changed = true;
         }
       }
@@ -359,7 +394,7 @@ export default function DataManagement({ onMenuClick }) {
         const updatedTrial = {
           ...t,
           EfficacyDataJSON: JSON.stringify(newEff),
-          WeedSpecies: weedSpecies
+          [targetField]: trackingVal
         };
         currentTrials[i] = updatedTrial;
         repairedCount++;
@@ -453,8 +488,9 @@ export default function DataManagement({ onMenuClick }) {
     });
   };
 
+
   const handleRecalculateWceAll = () => {
-    runAsynchronousRepair('Recalculate Efficacy (WCE%)', (t) => {
+    runAsynchronousRepair(`Recalculate Efficacy (${catConfig.primaryMetric?.key || 'Efficacy'}%)`, (t) => {
       const eff = safeJsonParse(t.EfficacyDataJSON, []);
       if (!eff.length) return { updatedTrial: t, isChanged: false };
       
@@ -465,30 +501,32 @@ export default function DataManagement({ onMenuClick }) {
       });
       
       const baseline = sortedEff.find(o => (o.daa ?? o.day ?? o.DAA ?? 0) === 0) || sortedEff[0];
-      const baselineCover = baseline ? (baseline.weedCover ?? baseline.cover ?? null) : null;
+      const baselineCover = baseline ? (baseline[primaryObsField] ?? baseline.weedCover ?? baseline.cover ?? null) : null;
       
       if (baselineCover === null || baselineCover <= 0) return { updatedTrial: t, isChanged: false };
       
       let changed = false;
       const newEff = eff.map(obs => {
         const daa = obs.daa ?? obs.day ?? obs.DAA ?? 0;
-        const weedCover = obs.weedCover ?? obs.cover ?? null;
+        const currentVal = obs[primaryObsField] ?? obs.weedCover ?? obs.cover ?? null;
         
-        const currentWce = obs.wce ?? obs.WCE ?? null;
+        const currentWce = obs.wce ?? obs.WCE ?? obs.dce ?? obs.pre ?? obs.controlPct ?? null;
         const currentControlPct = obs.controlPct ?? obs.control ?? obs.efficacy ?? null;
         
         let computedWce = null;
         if (daa === 0) {
           computedWce = 0;
-        } else if (weedCover !== null) {
-          computedWce = ((baselineCover - weedCover) / baselineCover) * 100;
+        } else if (currentVal !== null) {
+          computedWce = calculateEfficacy(activeCategory, currentVal, baselineCover);
           computedWce = Math.max(-100, Math.min(200, Math.round(computedWce * 10) / 10));
         }
         
         if (computedWce !== null && (currentWce !== computedWce || currentControlPct !== computedWce)) {
           changed = true;
+          const metricKey = (catConfig.primaryMetric?.key || 'WCE').toLowerCase();
           return {
             ...obs,
+            [metricKey]: computedWce,
             wce: computedWce,
             controlPct: computedWce
           };
@@ -562,8 +600,9 @@ export default function DataManagement({ onMenuClick }) {
     });
   };
 
+
   const handleOneClickRepairAll = async () => {
-    if (!window.confirm("⚠️ This will run a complete sequential data repair on ALL trials in your database. It will sync Dates, DAAs, Weed Species, %Cover, WCE%, Grid Covers, and Efficacy Ratings in one go.\n\nWould you like to proceed?")) return;
+    if (!window.confirm(`⚠️ This will run a complete sequential data repair on ALL trials in your database. It will sync Dates, DAAs, ${targetLabel}, Primary Metrics, Efficacy, Grid Covers, and Ratings in one go.\n\nWould you like to proceed?`)) return;
 
     const trials = [...(state.trials || [])];
     if (!trials.length) {
@@ -575,7 +614,7 @@ export default function DataManagement({ onMenuClick }) {
     setScanSummary('');
     setRepairState({
       isRunning: true,
-      taskName: 'Complete Legacy Data Repair (One-Click)',
+      taskName: `Complete Data Repair (One-Click - ${catConfig.name})`,
       progress: 0,
       total: trials.length,
       currentTrialName: ''
@@ -639,32 +678,43 @@ export default function DataManagement({ onMenuClick }) {
         });
       }
       
-      // 3. Auto-Fix Weed Linking (text DAA & missing species details)
+      // 3. Auto-Fix Target Linking (text DAA & missing target details)
       if (eff.length > 0) {
         eff = eff.map(obs => {
           const newO = { ...obs };
           if (typeof newO.daa === 'string') { newO.daa = parseFloat(newO.daa) || 0; changed = true; }
-          if (!newO.weedDetails || newO.weedDetails.length === 0) {
-            newO.weedDetails = [{ species: t.WeedSpecies || 'Unknown', cover: newO.weedCover ?? 0 }];
-            changed = true;
+          if (activeCategory === 'herbicide') {
+            if (!newO.weedDetails || newO.weedDetails.length === 0) {
+              newO.weedDetails = [{ species: t[targetField] || 'Unknown', cover: newO.weedCover ?? 0 }];
+              changed = true;
+            }
+          } else {
+            if (newO[primaryObsField] === undefined || newO[primaryObsField] === null) {
+              newO[primaryObsField] = 0;
+              changed = true;
+            }
+            if (!newO.weedDetails || newO.weedDetails.length === 0) {
+              newO.weedDetails = [{ species: t[targetField] || 'Unknown', cover: newO[primaryObsField] || 0 }];
+              changed = true;
+            }
           }
           return newO;
         });
       }
       
-      // 4. Repair Species Tracking (trial WeedSpecies property)
-      let weedSpecies = t.WeedSpecies;
-      if (!weedSpecies && eff.length > 0) {
+      // 4. Repair Target Tracking (trial targetField property)
+      let trackingVal = t[targetField];
+      if (!trackingVal && eff.length > 0) {
         const species = new Set();
         eff.forEach(o => (o.weedDetails || []).forEach(w => { if (w.species) species.add(w.species); }));
         if (species.size > 0) {
-          weedSpecies = [...species].join(', ');
+          trackingVal = [...species].join(', ');
           changed = true;
         }
       }
       
-      // 5. Rebuild %Cover (All observations)
-      if (eff.length > 0) {
+      // 5. Rebuild %Cover / Primary Metric (All observations, herbicide only)
+      if (activeCategory === 'herbicide' && eff.length > 0) {
         eff = eff.map(obs => {
           if (obs.weedDetails && obs.weedDetails.length > 0) {
             const total = obs.weedDetails.reduce((s, w) => s + (parseFloat(w.cover) || 0), 0);
@@ -678,8 +728,8 @@ export default function DataManagement({ onMenuClick }) {
         });
       }
       
-      // 6. Recalculate Grid Covers
-      if (eff.length > 0) {
+      // 6. Recalculate Grid Covers (herbicide only)
+      if (activeCategory === 'herbicide' && eff.length > 0) {
         eff = eff.map(obs => {
           const mode = String(obs?.weedCoverMode || '').toLowerCase();
           const cells = Array.isArray(obs?.weedCoverGridCells) ? obs.weedCoverGridCells : null;
@@ -703,26 +753,28 @@ export default function DataManagement({ onMenuClick }) {
         });
       }
       
-      // 7. Recalculate Efficacy (WCE%)
+      // 7. Recalculate Efficacy (WCE% or primary metric)
       if (eff.length > 0) {
         const sortedEff = [...eff].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
         const baseline = sortedEff.find(o => (o.daa ?? 0) === 0) || sortedEff[0];
-        const baselineCover = baseline ? (baseline.weedCover ?? baseline.cover ?? null) : null;
+        const baselineVal = baseline ? (baseline[primaryObsField] ?? baseline.weedCover ?? baseline.cover ?? null) : null;
         
-        if (baselineCover !== null && baselineCover > 0) {
+        if (baselineVal !== null && baselineVal > 0) {
           eff = eff.map(obs => {
             const daa = obs.daa ?? 0;
-            const weedCover = obs.weedCover ?? obs.cover ?? null;
+            const currentVal = obs[primaryObsField] ?? obs.weedCover ?? obs.cover ?? null;
             let computedWce = null;
             if (daa === 0) {
               computedWce = 0;
-            } else if (weedCover !== null) {
-              computedWce = ((baselineCover - weedCover) / baselineCover) * 100;
+            } else if (currentVal !== null) {
+              computedWce = calculateEfficacy(activeCategory, currentVal, baselineVal);
               computedWce = Math.max(-100, Math.min(200, Math.round(computedWce * 10) / 10));
             }
-            if (computedWce !== null && (obs.wce !== computedWce || obs.controlPct !== computedWce)) {
+            const currentWce = obs.wce ?? obs.WCE ?? obs.dce ?? obs.pre ?? obs.controlPct ?? null;
+            if (computedWce !== null && (currentWce !== computedWce || obs.controlPct !== computedWce)) {
               changed = true;
-              return { ...obs, wce: computedWce, controlPct: computedWce };
+              const metricKey = (catConfig.primaryMetric?.key || 'WCE').toLowerCase();
+              return { ...obs, [metricKey]: computedWce, wce: computedWce, controlPct: computedWce };
             }
             return obs;
           });
@@ -732,18 +784,26 @@ export default function DataManagement({ onMenuClick }) {
       // 8. Recalculate Rating Result (Qualitative Efficacy Rating)
       let resultRating = t.Result || 'Unrated';
       if (eff.length > 0) {
-        const latestObs = [...eff].sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
-        const remainingCover = latestObs.weedCover || 0;
+        const sorted = [...eff].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+        const baseline = sorted[0];
+        const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+        const latest = sorted[sorted.length - 1];
+        const val = parseFloat(latest?.[primaryObsField] ?? 0) || 0;
+        const efficacy = calculateEfficacy(activeCategory, val, baseVal);
+
         let newRating = 'Unrated';
-        if (remainingCover <= 10) {
-          newRating = 'Excellent';
-        } else if (remainingCover <= 25) {
-          newRating = 'Good';
-        } else if (remainingCover <= 50) {
-          newRating = 'Fair';
+        if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+          if (efficacy >= 15) newRating = 'Excellent';
+          else if (efficacy >= 8) newRating = 'Good';
+          else if (efficacy >= 3) newRating = 'Fair';
+          else newRating = 'Poor';
         } else {
-          newRating = 'Poor';
+          if (efficacy >= 85) newRating = 'Excellent';
+          else if (efficacy >= 70) newRating = 'Good';
+          else if (efficacy >= 50) newRating = 'Fair';
+          else newRating = 'Poor';
         }
+
         if (resultRating !== newRating) {
           resultRating = newRating;
           changed = true;
@@ -754,7 +814,7 @@ export default function DataManagement({ onMenuClick }) {
         const updatedTrial = {
           ...t,
           EfficacyDataJSON: JSON.stringify(eff),
-          WeedSpecies: weedSpecies,
+          [targetField]: trackingVal,
           Result: resultRating
         };
         currentTrials[i] = updatedTrial;
@@ -772,6 +832,8 @@ export default function DataManagement({ onMenuClick }) {
     setRepairProgress(`One-Click Complete Repair successfully finished! ${updatedCount} trial(s) fully repaired and synchronized to database.`);
     toast(`One-Click Repair complete`, 'success');
   };
+
+
 
   const handleForceAiReanalysisAll = async () => {
     const hasKeys = (state.settings?.apiKeys || []).length > 0 || state.settings?.geminiApiKey;
@@ -796,10 +858,10 @@ export default function DataManagement({ onMenuClick }) {
         trialsToProcess = allTrials.filter(t => selectedTrials.includes(t.ID));
         isSubset = true;
       } else {
-        if (!window.confirm(`⚠️ This will sequentially re-analyze all photos in ALL ${allTrials.length} trials using Gemini AI to correct the weed cover estimates. This will consume a lot of Gemini API key credits. Do you want to proceed?`)) return;
+        if (!window.confirm(`⚠️ This will sequentially re-analyze all photos in ALL ${allTrials.length} trials using Gemini AI to correct the estimates. This will consume a lot of Gemini API key credits. Do you want to proceed?`)) return;
       }
     } else {
-      if (!window.confirm(`⚠️ This will sequentially re-analyze all photos in ALL ${allTrials.length} trials using Gemini AI to correct the weed cover estimates. This will consume a lot of Gemini API key credits. Do you want to proceed?`)) return;
+      if (!window.confirm(`⚠️ This will sequentially re-analyze all photos in ALL ${allTrials.length} trials using Gemini AI to correct the estimates. This will consume a lot of Gemini API key credits. Do you want to proceed?`)) return;
     }
 
     setRepairProgress('');
@@ -842,7 +904,8 @@ export default function DataManagement({ onMenuClick }) {
           const result = await analyzePhoto(photoUrl, {
             treatment: trial.FormulationName || 'Unknown',
             daa: daa,
-            rep: trial.Replication || 1
+            rep: trial.Replication || 1,
+            category: activeCategory
           }, (progressMsg) => {
             setRepairState(prev => ({
               ...prev,
@@ -853,30 +916,58 @@ export default function DataManagement({ onMenuClick }) {
           if (!result.success) throw new Error(result.error || 'AI analysis failed');
           const aiData = result.data;
 
-          const normalizedWeeds = (aiData.weeds || []).map(w => ({
-            species: w.species || 'Unknown',
-            cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || 0),
-            status: String(w.status || '').trim(),
-            growthStage: String(w.growthStage || '').trim(),
-            notes: String(w.notes || '').trim()
-          }));
-
-          const totalWeedCover = typeof aiData.totalWeedCover === 'number'
-            ? aiData.totalWeedCover
-            : normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
-
           const newObs = {
             date: photoDate,
             daa: Number(daa),
-            weedCover: totalWeedCover,
-            weedDetails: normalizedWeeds.length > 0 ? normalizedWeeds : [{ species: 'No weeds detected', cover: 0, status: '', notes: aiData.notes || 'AI-analyzed' }],
-            notes: aiData.efficacyAssessment || `AI-analyzed on ${new Date().toLocaleDateString()}`,
+            notes: aiData.overallAssessment || aiData.efficacyAssessment || `AI-analyzed on ${new Date().toLocaleDateString()}`,
             aiConfidence: aiData.confidence || 'HIGH',
-            aiEfficacyAssessment: aiData.efficacyAssessment || '',
+            aiEfficacyAssessment: aiData.overallAssessment || aiData.efficacyAssessment || '',
             status: 'Analyzed',
             source: 'AI',
             photoUrl: photoUrl
           };
+
+          if (activeCategory === 'herbicide') {
+            const normalizedWeeds = (aiData.weeds || []).map(w => ({
+              species: w.species || 'Unknown',
+              cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || 0),
+              status: String(w.status || '').trim(),
+              growthStage: String(w.growthStage || '').trim(),
+              notes: String(w.notes || '').trim()
+            }));
+
+            const totalWeedCover = typeof aiData.totalWeedCover === 'number'
+              ? aiData.totalWeedCover
+              : normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+
+            newObs.weedCover = totalWeedCover;
+            newObs.weedDetails = normalizedWeeds.length > 0 ? normalizedWeeds : [{ species: 'No weeds detected', cover: 0, status: '', notes: aiData.notes || 'AI-analyzed' }];
+          } else {
+            // Non-herbicide categories
+            if (aiData.metrics && typeof aiData.metrics === 'object') {
+              Object.keys(aiData.metrics).forEach(k => {
+                const val = parseFloat(aiData.metrics[k]);
+                if (!isNaN(val)) {
+                  newObs[k] = val;
+                }
+              });
+            }
+            if (newObs[primaryObsField] === undefined || newObs[primaryObsField] === null) {
+              if (aiData.metrics && typeof aiData.metrics === 'object') {
+                const firstVal = parseFloat(Object.values(aiData.metrics)[0]);
+                newObs[primaryObsField] = !isNaN(firstVal) ? firstVal : 0;
+              } else {
+                newObs[primaryObsField] = 0;
+              }
+            }
+            newObs.weedCover = newObs[primaryObsField];
+            newObs.weedDetails = (aiData.targets || []).map(t => ({
+              species: t.name || 'Unknown',
+              cover: typeof t.value === 'number' ? t.value : parseFloat(t.value || 0),
+              status: t.status || '',
+              notes: t.notes || ''
+            }));
+          }
 
           // Find index of existing observation for this photo or DAA
           const existingIdx = efficacyData.findIndex(o => o.photoUrl === photoUrl || o.daa === Number(daa));
@@ -900,12 +991,24 @@ export default function DataManagement({ onMenuClick }) {
         // Recalculate rating Result
         let resultRating = trial.Result || 'Unrated';
         if (efficacyData.length > 0) {
-          const latestObs = [...efficacyData].sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
-          const remainingCover = latestObs.weedCover || 0;
-          if (remainingCover <= 10) resultRating = 'Excellent';
-          else if (remainingCover <= 25) resultRating = 'Good';
-          else if (remainingCover <= 50) resultRating = 'Fair';
-          else resultRating = 'Poor';
+          const sorted = [...efficacyData].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+          const baseline = sorted[0];
+          const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+          const latest = sorted[sorted.length - 1];
+          const val = parseFloat(latest?.[primaryObsField] ?? 0) || 0;
+          const efficacy = calculateEfficacy(activeCategory, val, baseVal);
+
+          if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+            if (efficacy >= 15) resultRating = 'Excellent';
+            else if (efficacy >= 8) resultRating = 'Good';
+            else if (efficacy >= 3) resultRating = 'Fair';
+            else resultRating = 'Poor';
+          } else {
+            if (efficacy >= 85) resultRating = 'Excellent';
+            else if (efficacy >= 70) resultRating = 'Good';
+            else if (efficacy >= 50) resultRating = 'Fair';
+            else resultRating = 'Poor';
+          }
         }
 
         const updatedTrial = {
@@ -1132,6 +1235,7 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
   // ── Recalculate Efficacy Ratings ──────────────────────────────────────────
   const [isRecalculating, setIsRecalculating] = useState(false);
 
+
   const handleRecalculateAllRatings = async () => {
     if (isRecalculating) return;
     setIsRecalculating(true);
@@ -1147,19 +1251,24 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
       for (const trial of currentTrials) {
         const efficacyData = safeJsonParse(trial.EfficacyDataJSON, []);
         if (efficacyData.length > 0) {
-          // Find latest observation by DAA
-          const latestObs = [...efficacyData].sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
-          const remainingCover = latestObs.weedCover || 0;
-          
+          const sorted = [...efficacyData].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+          const baseline = sorted[0];
+          const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+          const latest = sorted[sorted.length - 1];
+          const val = parseFloat(latest?.[primaryObsField] ?? 0) || 0;
+          const efficacy = calculateEfficacy(activeCategory, val, baseVal);
+
           let resultRating = 'Unrated';
-          if (remainingCover <= 10) {
-            resultRating = 'Excellent';
-          } else if (remainingCover <= 25) {
-            resultRating = 'Good';
-          } else if (remainingCover <= 50) {
-            resultRating = 'Fair';
+          if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+            if (efficacy >= 15) resultRating = 'Excellent';
+            else if (efficacy >= 8) resultRating = 'Good';
+            else if (efficacy >= 3) resultRating = 'Fair';
+            else resultRating = 'Poor';
           } else {
-            resultRating = 'Poor';
+            if (efficacy >= 85) resultRating = 'Excellent';
+            else if (efficacy >= 70) resultRating = 'Good';
+            else if (efficacy >= 50) resultRating = 'Fair';
+            else resultRating = 'Poor';
           }
 
           if (trial.Result !== resultRating) {
@@ -1216,10 +1325,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
       <div className="flex-1 overflow-y-auto p-4 max-w-5xl mx-auto w-full space-y-6">
 
         {/* ── Data Summary ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-          <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-            <Database className="w-4 h-4 text-slate-500" /> Local Data Summary
-          </h3>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <Database className="w-5 h-5 text-gray-500" /> Local Data Summary ({catConfig.name})
+          </h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {dataSummary.map(({ key, label, count }) => (
               <div key={key} className="bg-slate-50 rounded-lg p-3 text-center">
@@ -1280,13 +1389,12 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
             </div>
           </div>
         </div>
-
-        {/* ── Efficacy Repair & Weed Linking ── */}
+        {/* ── Efficacy Repair & Target Linking ── */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-semibold text-gray-700 mb-2 flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-gray-500" /> Efficacy Repair &amp; Weed Linking
+            <Wrench className="w-5 h-5 text-gray-500" /> Efficacy Repair &amp; {targetLabel} Linking
           </h2>
-          <p className="text-gray-600 mb-4 text-sm">Fix common issues that block weed–formulation insights: string DAA values, missing weedDetails, and missing WeedSpecies field.</p>
+          <p className="text-gray-600 mb-4 text-sm">Fix common issues that block {activeCategory} insights: string DAA values, missing details/primary metric, and missing {targetLabel} field.</p>
           <div className="flex flex-wrap gap-3 items-center">
             <button onClick={handleScanTrials}
               className="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition">
@@ -1294,27 +1402,31 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
             </button>
             <button onClick={handleAutoFixWeedLinking}
               className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition">
-              Auto-Fix Weed Linking
+              Auto-Fix {targetLabel} Linking
             </button>
             <button onClick={handleRepairSpeciesTracking}
               className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-700 transition">
-              Repair Species Tracking
+              Repair {targetLabel} Tracking
             </button>
             <button onClick={handleForceFullRerepair}
               className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition">
               Force Full Re-repair
             </button>
-            <button onClick={handleRecalcGridCovers}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
-              Recalculate Grid Covers
-            </button>
-            <button onClick={handleRebuildCoverAll}
-              className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 transition">
-              Rebuild %Cover (All Trials)
-            </button>
+            {activeCategory === 'herbicide' && (
+              <>
+                <button onClick={handleRecalcGridCovers}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
+                  Recalculate Grid Covers
+                </button>
+                <button onClick={handleRebuildCoverAll}
+                  className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 transition">
+                  Rebuild %Cover (All Trials)
+                </button>
+              </>
+            )}
             <button onClick={handleRecalculateWceAll}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
-              Recalculate Efficacy (WCE%)
+              Recalculate Efficacy ({catConfig.primaryMetric?.key || 'Efficacy'}%)
             </button>
             <button onClick={handleSyncObsDatesWithPhotos}
               className="bg-sky-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-sky-700 transition">
@@ -1333,6 +1445,7 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
               Force AI Re-analysis of Photos
             </button>
           </div>
+
           {repairState.isRunning && (
             <div className="mt-4 space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
               <div className="flex justify-between items-center text-sm font-bold text-slate-700">
@@ -1567,7 +1680,7 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
             <RefreshCw className="w-4 h-4 text-emerald-600" /> Recalculate Efficacy Ratings
           </h3>
           <p className="text-xs text-slate-500">
-            Updates the overall trial control efficacy rating (Excellent, Good, Fair, Poor) for all legacy trials. This recalculates using the latest observation's weed cover percentage according to the new visual rules (e.g. 0-10% remaining cover = Excellent control).
+            Updates the overall trial efficacy rating (Excellent, Good, Fair, Poor) for all legacy trials. This recalculates using the latest observation's primary metric value according to the category-specific visual rules.
           </p>
           <button
             onClick={handleRecalculateAllRatings}
