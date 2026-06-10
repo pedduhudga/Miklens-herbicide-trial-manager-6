@@ -758,13 +758,30 @@ export class AnalysisEngine {
                 calculateANOVA(groups) {
                     // groups is array of arrays: [[r1, r2, ...], [r1, r2, ...]]
                     // Handle both balanced and unbalanced RCBD
+                    if (!groups || groups.length === 0 || groups.every(g => g.length === 0)) {
+                        return {
+                            ssTreat: 0, ssBlock: 0, ssError: 0, ssTotal: 0,
+                            dfTreat: 0, dfBlock: 0, dfError: 0, dfTotal: 0,
+                            msTreat: 0, msBlock: 0, msError: 0,
+                            fVal: 0, pVal: 1, grandMean: 0, cv: 0
+                        };
+                    }
+
                     const t = groups.length;
                     const lens = groups.map(g => g.length);
-                    const isBalanced = lens.every(l => l === lens[0]);
+                    const isBalanced = lens.length > 0 && lens.every(l => l === lens[0]);
 
                     if (isBalanced) {
-                        const r = lens[0];
+                        const r = lens[0] || 0;
                         const N = t * r;
+                        if (N === 0) {
+                            return {
+                                ssTreat: 0, ssBlock: 0, ssError: 0, ssTotal: 0,
+                                dfTreat: 0, dfBlock: 0, dfError: 0, dfTotal: 0,
+                                msTreat: 0, msBlock: 0, msError: 0,
+                                fVal: 0, pVal: 1, grandMean: 0, cv: 0
+                            };
+                        }
                         const flat = groups.flat();
                         const grandTotal = flat.reduce((a, b) => a + b, 0);
                         const grandMean = grandTotal / N;
@@ -777,7 +794,7 @@ export class AnalysisEngine {
                         let ssTreat = 0;
                         groups.forEach(g => {
                             const trTotal = g.reduce((a, b) => a + b, 0);
-                            ssTreat += (trTotal * trTotal) / r;
+                            ssTreat += (trTotal * trTotal) / (r || 1);
                         });
                         ssTreat -= CF;
 
@@ -785,8 +802,8 @@ export class AnalysisEngine {
                         let ssBlock = 0;
                         for (let j = 0; j < r; j++) {
                             let blTotal = 0;
-                            for (let i = 0; i < t; i++) blTotal += groups[i][j];
-                            ssBlock += (blTotal * blTotal) / t;
+                            for (let i = 0; i < t; i++) blTotal += groups[i][j] || 0;
+                            ssBlock += (blTotal * blTotal) / (t || 1);
                         }
                         ssBlock -= CF;
 
@@ -794,45 +811,53 @@ export class AnalysisEngine {
                         const ssError = Math.max(0, ssTotal - ssTreat - ssBlock);
 
                         // DF
-                        const dfTreat = t - 1;
-                        const dfBlock = r - 1;
-                        const dfError = (t - 1) * (r - 1);
-                        const dfTotal = N - 1;
+                        const dfTreat = Math.max(0, t - 1);
+                        const dfBlock = Math.max(0, r - 1);
+                        const dfError = dfTreat * dfBlock;
+                        const dfTotal = Math.max(0, N - 1);
 
                         // MS
-                        const msTreat = ssTreat / dfTreat;
-                        const msBlock = ssBlock / dfBlock;
-                        const msError = ssError / dfError;
+                        const msTreat = dfTreat > 0 ? ssTreat / dfTreat : 0;
+                        const msBlock = dfBlock > 0 ? ssBlock / dfBlock : 0;
+                        const msError = dfError > 0 ? ssError / dfError : 0;
 
                         // F & P
-                        const fVal = msTreat / msError;
-                        const pVal = (typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fVal, dfTreat, dfError) : 0.05;
+                        const fVal = msError > 0 ? msTreat / msError : 0;
+                        const pVal = (msError > 0 && typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fVal, dfTreat, dfError) : 1;
 
                         return {
                             ssTreat, ssBlock, ssError, ssTotal,
                             dfTreat, dfBlock, dfError, dfTotal,
                             msTreat, msBlock, msError,
                             fVal, pVal, grandMean,
-                            cv: (Math.sqrt(msError) / grandMean) * 100
+                            cv: grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0
                         };
                     }
 
                     // Unbalanced fallback (robust RCBD without interaction)
                     // Flatten and compute grand mean
                     const flatVals = [];
-                    groups.forEach(g => g.forEach(v => { if (!isNaN(v)) flatVals.push(v); }));
+                    groups.forEach(g => g.forEach(v => { if (v !== undefined && !isNaN(v)) flatVals.push(v); }));
                     const N = flatVals.length;
+                    if (N === 0) {
+                        return {
+                            ssTreat: 0, ssBlock: 0, ssError: 0, ssTotal: 0,
+                            dfTreat: 0, dfBlock: 0, dfError: 0, dfTotal: 0,
+                            msTreat: 0, msBlock: 0, msError: 0,
+                            fVal: 0, pVal: 1, grandMean: 0, cv: 0
+                        };
+                    }
                     const grandMean = flatVals.reduce((a, b) => a + b, 0) / (N || 1);
 
                     // Treatment means and counts
                     const trMeans = groups.map(g => {
-                        const vals = g.filter(v => !isNaN(v));
+                        const vals = g.filter(v => v !== undefined && !isNaN(v));
                         return vals.length ? jStat.mean(vals) : 0;
                     });
-                    const trCounts = groups.map(g => g.filter(v => !isNaN(v)).length);
+                    const trCounts = groups.map(g => g.filter(v => v !== undefined && !isNaN(v)).length);
 
                     // Block means across available treatments
-                    const rUnique = Math.max(...lens);
+                    const rUnique = Math.max(...lens) || 0;
                     const blMeans = [];
                     const blCounts = [];
                     for (let j = 0; j < rUnique; j++) {
@@ -863,24 +888,24 @@ export class AnalysisEngine {
 
                     const ssError = Math.max(0, ssTotal - ssTreat - ssBlock);
 
-                    const dfTreat = t - 1;
-                    const dfBlock = rUnique - 1;
+                    const dfTreat = Math.max(0, t - 1);
+                    const dfBlock = Math.max(0, rUnique - 1);
                     const dfError = Math.max(1, N - t - rUnique + 1);
-                    const dfTotal = N - 1;
+                    const dfTotal = Math.max(0, N - 1);
 
-                    const msTreat = ssTreat / dfTreat;
-                    const msBlock = ssBlock / dfBlock;
-                    const msError = ssError / dfError;
+                    const msTreat = dfTreat > 0 ? ssTreat / dfTreat : 0;
+                    const msBlock = dfBlock > 0 ? ssBlock / dfBlock : 0;
+                    const msError = dfError > 0 ? ssError / dfError : 0;
 
-                    const fVal = msTreat / msError;
-                    const pVal = (typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fVal, dfTreat, dfError) : 0.05;
+                    const fVal = msError > 0 ? msTreat / msError : 0;
+                    const pVal = (msError > 0 && typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fVal, dfTreat, dfError) : 1;
 
                     return {
                         ssTreat, ssBlock, ssError, ssTotal,
                         dfTreat, dfBlock, dfError, dfTotal,
                         msTreat, msBlock, msError,
                         fVal, pVal, grandMean,
-                        cv: (Math.sqrt(msError) / grandMean) * 100
+                        cv: grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0
                     };
                 }
 
