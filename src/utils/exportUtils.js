@@ -92,8 +92,8 @@ export async function exportRegulatoryReportAsDOC(project, state, options = {}) 
 
     try {
         // Gather project data
-        const projectTrials = (state.trials || []).filter(t => t.ProjectID === project.ID);
-        const blocks = (state.blocks || []).filter(b => b.ProjectID === project.ID);
+        const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(project.ID));
+        const blocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(project.ID));
         const treatments = [...new Set(projectTrials.map(t => t.FormulationName).filter(Boolean))];
 
         // Parse analysis results

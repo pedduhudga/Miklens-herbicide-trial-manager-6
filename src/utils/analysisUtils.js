@@ -585,9 +585,9 @@ export class AnalysisEngine {
                     this.projectId = projectId;
                     this.state = state; // Global state reference
                     this.getAppState = getAppState; // Function to retrieve live app state for apiCall
-                    this.trials = state.trials.filter(t => t.ProjectID === projectId);
-                    this.blocks = state.blocks.filter(b => b.ProjectID === projectId);
-                    this.project = (state.projects || []).find(p => p.ID === projectId);
+                    this.trials = state.trials.filter(t => String(t.ProjectID) === String(projectId));
+                    this.blocks = state.blocks.filter(b => String(b.ProjectID) === String(projectId));
+                    this.project = (state.projects || []).find(p => String(p.ID) === String(projectId));
                     this.category = this.project?.Category || 'herbicide';
 
                     // Identify treatments (Formulations)

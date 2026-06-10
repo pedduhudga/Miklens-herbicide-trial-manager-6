@@ -324,6 +324,7 @@ export default function Projects({ onMenuClick }) {
     date: new Date().toISOString().split('T')[0]
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
+  const [randomizeTreatments, setRandomizeTreatments] = useState([]);
 
   const activeFormulations = useMemo(() => {
     return (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'));
@@ -964,18 +965,20 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     if (pBlocks.length === 0) { toast('No blocks to randomize. Please add at least one block first.', 'error'); return; }
     
-    // Initialize formulation selections
-    const initialSelections = {};
-    activeFormulations.forEach(f => {
-      // Auto-detect control/untreated to pre-assign control role
-      const fName = f.Name || '';
-      const isControl = fName.toLowerCase().includes('control') || fName.toLowerCase().includes('untreated') || fName.toLowerCase().includes('check');
-      initialSelections[f.ID] = {
-        selected: isControl, // select control by default
-        role: isControl ? 'control' : 'experimental'
-      };
+    // Auto-populate treatments list scientifically
+    const initialTreatments = [
+      { id: 'control_' + Date.now(), name: 'Untreated Control', formulationId: '', dosage: '', role: 'control' }
+    ];
+    activeFormulations.forEach((f, idx) => {
+      initialTreatments.push({
+        id: f.ID + '_' + idx,
+        name: f.Name,
+        formulationId: f.ID,
+        dosage: '',
+        role: f.Name.toLowerCase().includes('check') || f.Name.toLowerCase().includes('standard') ? 'standard' : 'experimental'
+      });
     });
-    setSelectedTreatments(initialSelections);
+    setRandomizeTreatments(initialTreatments);
     
     setRandomizeForm({
       investigatorName: activeProject.Investigator || '',
@@ -987,29 +990,64 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     setIsRandomizeModalOpen(true);
   };
 
+  const addTreatmentRow = () => {
+    setRandomizeTreatments(prev => [
+      ...prev,
+      {
+        id: 'trt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        name: '',
+        formulationId: '',
+        dosage: '',
+        role: 'experimental'
+      }
+    ]);
+  };
+
+  const updateTreatmentRow = (id, field, value) => {
+    setRandomizeTreatments(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const updated = { ...t, [field]: value };
+      
+      if (field === 'formulationId') {
+        const form = activeFormulations.find(f => String(f.ID) === String(value));
+        if (form) {
+          updated.name = form.Name;
+          updated.role = form.Name.toLowerCase().includes('check') || form.Name.toLowerCase().includes('standard') ? 'standard' : 'experimental';
+        } else if (value === '') {
+          updated.name = 'Untreated Control';
+          updated.role = 'control';
+        }
+      }
+      return updated;
+    }));
+  };
+
+  const deleteTreatmentRow = (id) => {
+    setRandomizeTreatments(prev => prev.filter(t => t.id !== id));
+  };
+
   const applyRandomization = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     
-    // Get list of selected treatments
-    const trtList = Object.entries(selectedTreatments)
-      .filter(([_, value]) => value.selected)
-      .map(([fid, value]) => {
-        const f = activeFormulations.find(form => form.ID === fid);
-        return {
-          fid,
-          name: f?.Name || 'Unknown',
-          role: value.role
-        };
-      });
+    // Get list of treatments
+    const trtList = randomizeTreatments.map(t => {
+      const f = activeFormulations.find(form => String(form.ID) === String(t.formulationId));
+      return {
+        fid: t.formulationId || '',
+        name: t.name.trim() || f?.Name || 'Unnamed Treatment',
+        role: t.role,
+        dosage: t.dosage || ''
+      };
+    });
       
     if (trtList.length === 0) {
-      toast('Please select at least one treatment.', 'error');
+      toast('Please add at least one treatment.', 'error');
       return;
     }
     
     const controls = trtList.filter(t => t.role === 'control');
     if (controls.length !== 1) {
-      toast('You must select exactly ONE Untreated Control.', 'error');
+      toast('You must have exactly ONE Untreated Control.', 'error');
       return;
     }
     
@@ -1026,7 +1064,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
         FormulationID: t.fid,
         FormulationName: t.name,
         IsControl: t.role === 'control',
-        IsStandardCheck: t.role === 'standard'
+        IsStandardCheck: t.role === 'standard',
+        dosage: t.dosage
       }));
       
       // Fisher-Yates Shuffle
@@ -1049,7 +1088,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
           FormulationID: t.FormulationID,
           FormulationName: t.FormulationName,
           InvestigatorName: randomizeForm.investigatorName || '',
-          Dosage: randomizeForm.dosage || '',
+          Dosage: t.dosage || randomizeForm.dosage || '',
           Date: randomizeForm.date || new Date().toISOString().split('T')[0],
           Replication: block.ReplicationNum || '1',
           RandomizationOrder: index + 1,
@@ -2088,92 +2127,147 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 })()}
 
                 {/* ── Randomize Layout Modal ── */}
-                <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout">
+                <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
                   <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
                     <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
                       <p className="text-xs font-bold text-emerald-600 uppercase">Target Project</p>
                       <p className="text-base font-bold text-emerald-900">{activeProject?.Name}</p>
                     </div>
-                    <p className="text-xs text-slate-500">Select treatments to distribute across all blocks in this project. Plots will be generated for every block. One treatment must be tagged as "Untreated Control" to enable calculations later.</p>
+                    <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Treatments Selection */}
+                    {/* Default Plot Info Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border">
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Select Treatments</label>
-                        <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1 bg-slate-50">
-                          {activeFormulations.map(f => {
-                            const selection = selectedTreatments[f.ID] || { selected: false, role: 'experimental' };
-                            return (
-                              <div key={f.ID} className="flex items-center gap-2 p-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">
-                                <input 
-                                  type="checkbox" 
-                                  checked={selection.selected} 
-                                  onChange={e => setSelectedTreatments(prev => ({
-                                    ...prev,
-                                    [f.ID]: { ...selection, selected: e.target.checked }
-                                  }))} 
-                                  className="h-4 w-4 rounded text-emerald-600"
-                                />
-                                <span className="flex-grow pl-1 text-xs font-medium text-slate-700 truncate" title={f.Name}>{f.Name}</span>
-                                <select 
-                                  value={selection.role} 
-                                  onChange={e => setSelectedTreatments(prev => ({
-                                    ...prev,
-                                    [f.ID]: { selected: true, role: e.target.value }
-                                  }))} 
-                                  className="text-[10px] border border-slate-300 rounded px-1 py-0.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                >
-                                  <option value="experimental">Experimental</option>
-                                  <option value="standard">Standard Check</option>
-                                  <option value="control">Untreated Control</option>
-                                </select>
-                              </div>
-                            );
-                          })}
-                          {activeFormulations.length === 0 && (
-                            <p className="text-xs text-slate-400 italic p-3 text-center">No formulations found in this category.</p>
-                          )}
-                        </div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Investigator</label>
+                        <input 
+                          type="text" 
+                          placeholder="Investigator" 
+                          value={randomizeForm.investigatorName} 
+                          onChange={e => setRandomizeForm(p => ({ ...p, investigatorName: e.target.value }))} 
+                          className={INPUT} 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Default Dosage</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. 100 mL/ha" 
+                          value={randomizeForm.dosage} 
+                          onChange={e => setRandomizeForm(p => ({ ...p, dosage: e.target.value }))} 
+                          className={INPUT} 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Target {config.targetLabel}</label>
+                        <input 
+                          type="text" 
+                          placeholder={`Target ${config.targetLabel}`} 
+                          value={randomizeForm.weedSpecies} 
+                          onChange={e => setRandomizeForm(p => ({ ...p, weedSpecies: e.target.value }))} 
+                          className={INPUT} 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Start Date</label>
+                        <input 
+                          type="date" 
+                          value={randomizeForm.date} 
+                          onChange={e => setRandomizeForm(p => ({ ...p, date: e.target.value }))} 
+                          className={INPUT} 
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tabular Treatments Setup */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-sm font-semibold text-slate-700">Treatments Setup</label>
+                        <button
+                          type="button"
+                          onClick={addTreatmentRow}
+                          className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Treatment Row
+                        </button>
                       </div>
                       
-                      {/* Default Plot Info */}
-                      <div className="space-y-3">
-                        <label className="block text-sm font-semibold text-slate-700">Default Plot Info</label>
-                        <div>
-                          <input 
-                            type="text" 
-                            placeholder="Investigator" 
-                            value={randomizeForm.investigatorName} 
-                            onChange={e => setRandomizeForm(p => ({ ...p, investigatorName: e.target.value }))} 
-                            className={INPUT} 
-                          />
-                        </div>
-                        <div>
-                          <input 
-                            type="text" 
-                            placeholder="Default Dosage (e.g. 100 mL/ha)" 
-                            value={randomizeForm.dosage} 
-                            onChange={e => setRandomizeForm(p => ({ ...p, dosage: e.target.value }))} 
-                            className={INPUT} 
-                          />
-                        </div>
-                        <div>
-                          <input 
-                            type="text" 
-                            placeholder={`Target ${config.targetLabel}`} 
-                            value={randomizeForm.weedSpecies} 
-                            onChange={e => setRandomizeForm(p => ({ ...p, weedSpecies: e.target.value }))} 
-                            className={INPUT} 
-                          />
-                        </div>
-                        <div>
-                          <input 
-                            type="date" 
-                            value={randomizeForm.date} 
-                            onChange={e => setRandomizeForm(p => ({ ...p, date: e.target.value }))} 
-                            className={INPUT} 
-                          />
-                        </div>
+                      <div className="overflow-x-auto border rounded-xl bg-slate-50">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
+                            <tr>
+                              <th className="p-3">Treatment Name *</th>
+                              <th className="p-3">Active Formulation</th>
+                              <th className="p-3">Dosage / Rate</th>
+                              <th className="p-3">Role</th>
+                              <th className="p-3 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 bg-white">
+                            {randomizeTreatments.map((t) => (
+                              <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-2">
+                                  <input
+                                    required
+                                    type="text"
+                                    placeholder="Treatment Name (e.g. UTC, T1, T2)"
+                                    value={t.name}
+                                    onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <select
+                                    value={t.formulationId}
+                                    onChange={e => updateTreatmentRow(t.id, 'formulationId', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                  >
+                                    <option value="">None (Untreated Control)</option>
+                                    {activeFormulations.map(f => (
+                                      <option key={f.ID} value={f.ID}>{f.Name}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="p-2">
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. 100 mL/ha"
+                                    value={t.dosage}
+                                    onChange={e => updateTreatmentRow(t.id, 'dosage', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <select
+                                    value={t.role}
+                                    onChange={e => updateTreatmentRow(t.id, 'role', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                  >
+                                    <option value="experimental">Experimental</option>
+                                    <option value="standard">Standard Check</option>
+                                    <option value="control">Untreated Control</option>
+                                  </select>
+                                </td>
+                                <td className="p-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTreatmentRow(t.id)}
+                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                    title="Delete row"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {randomizeTreatments.length === 0 && (
+                              <tr>
+                                <td colSpan="5" className="text-center py-6 text-slate-400 italic bg-white animate-pulse">
+                                  No treatments added yet. Click "+ Add Treatment Row" to begin.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                     
@@ -2484,92 +2578,147 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
       </Modal>
 
       {/* ── Randomize Layout Modal ── */}
-      <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout">
+      <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
         <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
           <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
             <p className="text-xs font-bold text-emerald-600 uppercase">Target Project</p>
             <p className="text-base font-bold text-emerald-900">{activeProject?.Name}</p>
           </div>
-          <p className="text-xs text-slate-500">Select treatments to distribute across all blocks in this project. Plots will be generated for every block. One treatment must be tagged as "Untreated Control" to enable calculations later.</p>
+          <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Treatments Selection */}
+          {/* Default Plot Info Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Select Treatments</label>
-              <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1 bg-slate-50">
-                {activeFormulations.map(f => {
-                  const selection = selectedTreatments[f.ID] || { selected: false, role: 'experimental' };
-                  return (
-                    <div key={f.ID} className="flex items-center gap-2 p-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">
-                      <input 
-                        type="checkbox" 
-                        checked={selection.selected} 
-                        onChange={e => setSelectedTreatments(prev => ({
-                          ...prev,
-                          [f.ID]: { ...selection, selected: e.target.checked }
-                        }))} 
-                        className="h-4 w-4 rounded text-emerald-600"
-                      />
-                      <span className="flex-grow pl-1 text-xs font-medium text-slate-700 truncate" title={f.Name}>{f.Name}</span>
-                      <select 
-                        value={selection.role} 
-                        onChange={e => setSelectedTreatments(prev => ({
-                          ...prev,
-                          [f.ID]: { selected: true, role: e.target.value }
-                        }))} 
-                        className="text-[10px] border border-slate-300 rounded px-1 py-0.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      >
-                        <option value="experimental">Experimental</option>
-                        <option value="standard">Standard Check</option>
-                        <option value="control">Untreated Control</option>
-                      </select>
-                    </div>
-                  );
-                })}
-                {activeFormulations.length === 0 && (
-                  <p className="text-xs text-slate-400 italic p-3 text-center">No formulations found in this category.</p>
-                )}
-              </div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Investigator</label>
+              <input 
+                type="text" 
+                placeholder="Investigator" 
+                value={randomizeForm.investigatorName} 
+                onChange={e => setRandomizeForm(p => ({ ...p, investigatorName: e.target.value }))} 
+                className={INPUT} 
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Default Dosage</label>
+              <input 
+                type="text" 
+                placeholder="e.g. 100 mL/ha" 
+                value={randomizeForm.dosage} 
+                onChange={e => setRandomizeForm(p => ({ ...p, dosage: e.target.value }))} 
+                className={INPUT} 
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Target {config.targetLabel}</label>
+              <input 
+                type="text" 
+                placeholder={`Target ${config.targetLabel}`} 
+                value={randomizeForm.weedSpecies} 
+                onChange={e => setRandomizeForm(p => ({ ...p, weedSpecies: e.target.value }))} 
+                className={INPUT} 
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Start Date</label>
+              <input 
+                type="date" 
+                value={randomizeForm.date} 
+                onChange={e => setRandomizeForm(p => ({ ...p, date: e.target.value }))} 
+                className={INPUT} 
+              />
+            </div>
+          </div>
+
+          {/* Tabular Treatments Setup */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-semibold text-slate-700">Treatments Setup</label>
+              <button
+                type="button"
+                onClick={addTreatmentRow}
+                className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Treatment Row
+              </button>
             </div>
             
-            {/* Default Plot Info */}
-            <div className="space-y-3">
-              <label className="block text-sm font-semibold text-slate-700">Default Plot Info</label>
-              <div>
-                <input 
-                  type="text" 
-                  placeholder="Investigator" 
-                  value={randomizeForm.investigatorName} 
-                  onChange={e => setRandomizeForm(p => ({ ...p, investigatorName: e.target.value }))} 
-                  className={INPUT} 
-                />
-              </div>
-              <div>
-                <input 
-                  type="text" 
-                  placeholder="Default Dosage (e.g. 100 mL/ha)" 
-                  value={randomizeForm.dosage} 
-                  onChange={e => setRandomizeForm(p => ({ ...p, dosage: e.target.value }))} 
-                  className={INPUT} 
-                />
-              </div>
-              <div>
-                <input 
-                  type="text" 
-                  placeholder={`Target ${config.targetLabel}`} 
-                  value={randomizeForm.weedSpecies} 
-                  onChange={e => setRandomizeForm(p => ({ ...p, weedSpecies: e.target.value }))} 
-                  className={INPUT} 
-                />
-              </div>
-              <div>
-                <input 
-                  type="date" 
-                  value={randomizeForm.date} 
-                  onChange={e => setRandomizeForm(p => ({ ...p, date: e.target.value }))} 
-                  className={INPUT} 
-                />
-              </div>
+            <div className="overflow-x-auto border rounded-xl bg-slate-50">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">Treatment Name *</th>
+                    <th className="p-3">Active Formulation</th>
+                    <th className="p-3">Dosage / Rate</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {randomizeTreatments.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-2">
+                        <input
+                          required
+                          type="text"
+                          placeholder="Treatment Name (e.g. UTC, T1, T2)"
+                          value={t.name}
+                          onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
+                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <select
+                          value={t.formulationId}
+                          onChange={e => updateTreatmentRow(t.id, 'formulationId', e.target.value)}
+                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                        >
+                          <option value="">None (Untreated Control)</option>
+                          {activeFormulations.map(f => (
+                            <option key={f.ID} value={f.ID}>{f.Name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. 100 mL/ha"
+                          value={t.dosage}
+                          onChange={e => updateTreatmentRow(t.id, 'dosage', e.target.value)}
+                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <select
+                          value={t.role}
+                          onChange={e => updateTreatmentRow(t.id, 'role', e.target.value)}
+                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                        >
+                          <option value="experimental">Experimental</option>
+                          <option value="standard">Standard Check</option>
+                          <option value="control">Untreated Control</option>
+                        </select>
+                      </td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => deleteTreatmentRow(t.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Delete row"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {randomizeTreatments.length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="text-center py-6 text-slate-400 italic bg-white animate-pulse">
+                        No treatments added yet. Click "+ Add Treatment Row" to begin.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
           

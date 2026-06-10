@@ -51,8 +51,8 @@ export default function PlotMap({ projectId, onClose }) {
   const [copied, setCopied] = useState(false);
 
   // Get project trials
-  const projectTrials = state.trials?.filter(t => t.ProjectID === projectId) || [];
-  const project = state.projects?.find(p => p.ID === projectId);
+  const projectTrials = state.trials?.filter(t => String(t.ProjectID) === String(projectId)) || [];
+  const project = state.projects?.find(p => String(p.ID) === String(projectId));
 
   // Initialize map
   useEffect(() => {
