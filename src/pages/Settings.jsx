@@ -119,6 +119,7 @@ export default function Settings({ onMenuClick }) {
   };
 
   const handleRemoveKey = (index) => {
+    if (!window.confirm("Remove this API key?")) return;
     const updatedKeys = [...(s.apiKeys || [])];
     updatedKeys.splice(index, 1);
     let newIndex = s.currentApiKeyIndex || 0;

@@ -51,6 +51,9 @@ export default function Formulations({ onMenuClick }) {
 
   const handleRemoveIngredientRow = (index) => {
     if (ingredients.length > 1) {
+      const ing = ingredients[index];
+      const name = ing && ing.name ? `"${ing.name}"` : 'this ingredient';
+      if (!window.confirm(`Remove ${name} from formulation?`)) return;
       setIngredients(ingredients.filter((_, i) => i !== index));
     }
   };

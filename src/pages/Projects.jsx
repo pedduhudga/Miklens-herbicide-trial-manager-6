@@ -1024,6 +1024,9 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   };
 
   const deleteTreatmentRow = (id) => {
+    const row = randomizeTreatments.find(t => t.id === id);
+    const rowName = row && row.name ? `"${row.name}"` : 'this row';
+    if (!window.confirm(`Delete ${rowName}?`)) return;
     setRandomizeTreatments(prev => prev.filter(t => t.id !== id));
   };
 
