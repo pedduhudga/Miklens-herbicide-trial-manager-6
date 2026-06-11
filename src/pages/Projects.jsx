@@ -456,6 +456,7 @@ export default function Projects({ onMenuClick }) {
   const [blockForm, setBlockForm] = useState({ Name: '', ReplicationNum: '' });
   const [showMap, setShowMap] = useState(false);
   const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'report'
+  const [blocksViewMode, setBlocksViewMode] = useState('list'); // 'list' | 'grid'
 
   const wceChartRef = useRef(null);
   const perfChartRef = useRef(null);
@@ -482,6 +483,14 @@ export default function Projects({ onMenuClick }) {
   }, [state.projects, activeCategory]);
 
   const activeProject = activeProjectId ? projects.find(p => String(p.ID) === String(activeProjectId)) : null;
+
+  const meansChartData = useMemo(() => {
+    if (!analysisResults?.grouping) return [];
+    return analysisResults.grouping.map(g => ({
+      label: g.name,
+      value: isFinite(g.mean) ? g.mean : 0
+    }));
+  }, [analysisResults]);
 
   // ── Design completeness ─────────────────────────────────────────────────
   const designCheck = useMemo(() => {
@@ -1205,8 +1214,12 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     }
     
     const controls = trtList.filter(t => t.role === 'control');
-    if (controls.length !== 1) {
-      toast('You must have exactly ONE Untreated Control.', 'error');
+    if (controls.length === 0) {
+      if (!window.confirm("You have not selected an Untreated Control. Do you want to proceed with generating the layout anyway?")) {
+        return;
+      }
+    } else if (controls.length > 1) {
+      toast('You cannot have more than one Untreated Control.', 'error');
       return;
     }
     
@@ -1988,11 +2001,29 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <h3 className={`font-bold text-slate-800 flex items-center gap-2`}><Layers className={`w-4 h-4 ${theme.text}`} /> Blocks & Plots</h3>
-                    {!isLocked && (
-                      <button onClick={() => setIsAddingBlock(v => !v)} className={`flex items-center gap-1.5 text-xs ${theme.bg} text-white px-3 py-1.5 rounded-lg font-bold transition`}>
-                        <Plus className="w-3.5 h-3.5" /> Add Block
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <div className="inline-flex border rounded-lg overflow-hidden text-xs bg-slate-50 p-0.5 border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setBlocksViewMode('list')}
+                          className={`px-3 py-1 font-bold rounded-md transition ${blocksViewMode === 'list' ? `${theme.bg} text-white` : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                          List
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBlocksViewMode('grid')}
+                          className={`px-3 py-1 font-bold rounded-md transition ${blocksViewMode === 'grid' ? `${theme.bg} text-white` : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                          Field Grid
+                        </button>
+                      </div>
+                      {!isLocked && (
+                        <button onClick={() => setIsAddingBlock(v => !v)} className={`flex items-center gap-1.5 text-xs ${theme.bg} text-white px-3 py-1.5 rounded-lg font-bold transition`}>
+                          <Plus className="w-3.5 h-3.5" /> Add Block
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {isAddingBlock && (
@@ -2011,7 +2042,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   )}
 
                   {projectBlocks.length > 0 ? (
-                    <div className="space-y-4">
+                    <div className={blocksViewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" : "space-y-4"}>
                       {projectBlocks.map(b => (
                         <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} />
                       ))}
@@ -2045,25 +2076,31 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           </select>
                         </div>
                       </div>
-                      <div className="overflow-x-auto -mx-5 px-5">
-                        <table className="w-full text-sm text-left min-w-[360px]">
-                          <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-                            <tr>
-                              <th className="p-3">Treatment</th>
-                              <th className="p-3 text-center">Mean</th>
-                              <th className="p-3 text-center">Group ({postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(analysisResults.grouping || []).map((g, i) => (
-                              <tr key={i} className="hover:bg-slate-50">
-                                <td className="p-3 font-medium text-slate-700">{g.name}</td>
-                                <td className="p-3 text-center">{isFinite(g.mean) ? g.mean.toFixed(2) : '—'}</td>
-                                <td className={`p-3 text-center font-bold ${theme.textDark}`}>{g.grouping}</td>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="overflow-x-auto -mx-5 px-5 md:mx-0 md:px-0">
+                          <table className="w-full text-sm text-left min-w-[300px]">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+                              <tr>
+                                <th className="p-3">Treatment</th>
+                                <th className="p-3 text-center">Mean</th>
+                                <th className="p-3 text-center">Group ({postHocMethod === 'tukey' ? 'Tukey' : 'LSD'})</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {(analysisResults.grouping || []).map((g, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  <td className="p-3 font-medium text-slate-700">{g.name}</td>
+                                  <td className="p-3 text-center">{isFinite(g.mean) ? g.mean.toFixed(2) : '—'}</td>
+                                  <td className={`p-3 text-center font-bold ${theme.textDark}`}>{g.grouping}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="flex flex-col justify-center bg-slate-50 p-4 rounded-xl border border-slate-100 min-h-[160px]">
+                          <h4 className="text-[10px] font-bold text-slate-500 mb-3 text-center uppercase tracking-wider">Visual Means Comparison ({config.primaryMetric.key || ''})</h4>
+                          <InlineBarChart data={meansChartData} color={config.color.hex} height={140} />
+                        </div>
                       </div>
                       <p className="mt-3 text-xs text-slate-400">
                         Means sharing the same letter are not significantly different ({postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05).
