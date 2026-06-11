@@ -837,11 +837,11 @@ export default function Projects({ onMenuClick }) {
     updateState({ blocks: updatedBlocks, trials: updatedTrials });
 
     try {
-      await deleteBlock({ ID: blockId }, getAppState);
-      // Also delete associated trials from Firebase in parallel
+      await deleteBlock({ ID: blockId }, getAppState, true); // Keep overlay for the single block deletion itself
+      // Also delete associated trials from Firebase in parallel without overlays
       const { deleteTrial } = await import('../services/dataLayer.js');
       await Promise.all(
-        blockTrials.map(t => deleteTrial({ ID: t.ID }, getAppState).catch(() => {}))
+        blockTrials.map(t => deleteTrial({ ID: t.ID }, getAppState, false).catch(() => {}))
       );
       toast(`Block "${blockName}" deleted`);
     } catch { toast('Failed to delete block', 'error'); }
@@ -1138,19 +1138,19 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const oldTrials = currentTrials.filter(t => String(t.ProjectID) === String(activeProject.ID));
 
     try {
-      // Run deletions in parallel
+      // Run deletions in parallel without blocking screen overlays
       await Promise.all([
-        ...oldTrials.map(t => deleteTrial({ ID: t.ID }, getAppState).catch(e => console.error(e))),
-        ...oldBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState).catch(e => console.error(e)))
+        ...oldTrials.map(t => deleteTrial({ ID: t.ID }, getAppState, false).catch(e => console.error(e))),
+        ...oldBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState, false).catch(e => console.error(e)))
       ]);
 
-      // Save new blocks in parallel
+      // Save new blocks in parallel without blocking screen overlays
       await Promise.all(
-        blocksToSave.map(b => addBlock(b, getAppState).catch(e => console.error(e)))
+        blocksToSave.map(b => addBlock(b, getAppState, false).catch(e => console.error(e)))
       );
 
-      // Save new trials in batch
-      await addBatchTrials({ trials: trialsToSave }, getAppState);
+      // Save new trials in batch without blocking screen overlays
+      await addBatchTrials({ trials: trialsToSave }, getAppState, false);
       toast('Randomized layout generated successfully!', 'success');
       runAnalysis(postHocMethod);
     } catch (err) {
@@ -1392,11 +1392,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     try {
       await deleteProject({ ID: id }, getAppState);
       
-      // Delete associated blocks and trials in parallel
+      // Delete associated blocks and trials in parallel without blocking screen overlays
       const { deleteTrial } = await import('../services/dataLayer.js');
       await Promise.all([
-        ...projectBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState).catch(err => console.error('Failed to delete block', b.ID, err))),
-        ...projectTrials.map(t => deleteTrial({ ID: t.ID }, getAppState).catch(err => console.error('Failed to delete trial', t.ID, err)))
+        ...projectBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState, false).catch(err => console.error('Failed to delete block', b.ID, err))),
+        ...projectTrials.map(t => deleteTrial({ ID: t.ID }, getAppState, false).catch(err => console.error('Failed to delete trial', t.ID, err)))
       ]);
       
       toast('Project and all associated blocks and trials deleted');

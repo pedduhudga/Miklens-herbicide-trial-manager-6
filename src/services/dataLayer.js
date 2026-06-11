@@ -86,7 +86,7 @@ export async function updateTrial(payload, getAppState) {
   return sheetDB.updateTrial(payload, getAppState);
 }
 
-export async function deleteTrial(payload, getAppState) {
+export async function deleteTrial(payload, getAppState, showOverlay = true) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const category = getCategory(getAppState);
@@ -94,10 +94,10 @@ export async function deleteTrial(payload, getAppState) {
     mirror('deleteTrialRecord', payload, getAppState);
     return result;
   }
-  return sheetDB.deleteTrial(payload, getAppState);
+  return sheetDB.deleteTrial(payload, getAppState, showOverlay);
 }
 
-export async function addBatchTrials(payload, getAppState) {
+export async function addBatchTrials(payload, getAppState, showOverlay = true) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const uid = getUserId(getAppState);
@@ -107,7 +107,7 @@ export async function addBatchTrials(payload, getAppState) {
     mirror('addBatchTrials', payload, getAppState);
     return result;
   }
-  return sheetDB.addBatchTrials(payload, getAppState);
+  return sheetDB.addBatchTrials(payload, getAppState, showOverlay);
 }
 
 export async function finalizeTrial(payload, getAppState) {
@@ -257,7 +257,7 @@ export async function deleteProject(payload, getAppState) {
 
 // ─── Blocks ──────────────────────────────────────────────────────────────────
 
-export async function addBlock(payload, getAppState) {
+export async function addBlock(payload, getAppState, showOverlay = true) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const uid = getUserId(getAppState);
@@ -266,10 +266,10 @@ export async function addBlock(payload, getAppState) {
     mirror('addBlock', payload, getAppState);
     return result;
   }
-  return sheetDB.addBlock(payload, getAppState);
+  return sheetDB.addBlock(payload, getAppState, showOverlay);
 }
 
-export async function deleteBlock(payload, getAppState) {
+export async function deleteBlock(payload, getAppState, showOverlay = true) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const category = getCategory(getAppState);
@@ -277,7 +277,7 @@ export async function deleteBlock(payload, getAppState) {
     mirror('deleteBlock', payload, getAppState);
     return result;
   }
-  return sheetDB.apiCall('deleteBlock', payload, false, getAppState);
+  return sheetDB.apiCall('deleteBlock', payload, showOverlay, getAppState);
 }
 
 // ─── Organisations ───────────────────────────────────────────────────────────

@@ -610,12 +610,20 @@ export class AnalysisEngine {
                         return null;
                     }
                     try {
-                        const result = await apiCall('getProjectAnalysisData', { projectId: this.projectId }, true, this.getAppState);
+                        const fetchPromise = apiCall('getProjectAnalysisData', { projectId: this.projectId }, false, this.getAppState);
+                        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ _timeout: true }), 800));
+                        
+                        const result = await Promise.race([fetchPromise, timeoutPromise]);
+                        if (result && result._timeout) {
+                            console.warn('[AnalysisEngine] Backend fetch timed out (800ms limit), falling back to local data');
+                            return null;
+                        }
+
                         if (result && result.success) {
                             this.backendData = result;
                             return result;
                         }
-                        throw new Error(result.message || 'Failed to fetch backend data');
+                        throw new Error(result?.message || 'Failed to fetch backend data');
                     } catch (e) {
                         console.error('[AnalysisEngine] Backend fetch failed, falling back to local:', e);
                         return null;
@@ -738,7 +746,7 @@ export class AnalysisEngine {
                                 await apiCall('saveAnalysisResults', {
                                     projectId: this.projectId,
                                     results: results
-                                }, true, this.getAppState);
+                                }, false, this.getAppState);
                                 await apiCall('logAnalysisRun', {
                                     projectId: this.projectId,
                                     metric: metric,
@@ -746,7 +754,7 @@ export class AnalysisEngine {
                                     pValue: anovaResults.pVal,
                                     significance: formatSignificance(anovaResults.pVal).symbol,
                                     results: results
-                                }, true, this.getAppState);
+                                }, false, this.getAppState);
                                 console.log('[AnalysisEngine] Results persisted to sheet');
                             } catch (e) {
                                 console.error('[AnalysisEngine] Failed to persist results:', e);

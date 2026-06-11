@@ -17,7 +17,14 @@ export function clearWeatherCache() {
 }
 
 async function fetchWeatherForecast(lat, lon, days = 3, startDate = null, endDate = null) {
-  const cacheKey = startDate && endDate ? `${lat}|${lon}|${startDate}|${endDate}` : `${lat}|${lon}|${days}`;
+  const latNum = parseFloat(lat);
+  const lonNum = parseFloat(lon);
+  if (lat === undefined || lon === undefined || lat === null || lon === null || isNaN(latNum) || isNaN(lonNum)) {
+    console.warn('[SprayAdvisor] fetchWeatherForecast: Invalid latitude/longitude:', lat, lon);
+    return null;
+  }
+
+  const cacheKey = startDate && endDate ? `${latNum}|${lonNum}|${startDate}|${endDate}` : `${latNum}|${lonNum}|${days}`;
   const now = Date.now();
   const cacheEntry = weatherCache.get(cacheKey);
   // Use cached data if less than 10 minutes old
