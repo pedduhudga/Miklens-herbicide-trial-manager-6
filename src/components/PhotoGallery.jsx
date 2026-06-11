@@ -81,15 +81,17 @@ export default function PhotoGallery({
         <div className="flex gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 rounded-full bg-emerald-100 hover:bg-emerald-200 transition"
+            className="p-2 rounded-full bg-emerald-100 hover:bg-emerald-200 transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
             title="Upload from Gallery"
+            aria-label="Upload photo from gallery"
           >
             <ImageIcon className="w-5 h-5 text-emerald-600" />
           </button>
           <button
             onClick={triggerCamera}
-            className="p-2 rounded-full bg-emerald-100 hover:bg-emerald-200 transition"
+            className="p-2 rounded-full bg-emerald-100 hover:bg-emerald-200 transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
             title="Capture with Camera"
+            aria-label="Capture photo with camera"
           >
             <RefreshCw className="w-5 h-5 text-emerald-600" />
           </button>
@@ -107,7 +109,14 @@ export default function PhotoGallery({
         {photos.map(photo => (
           <div key={photo.id} className="relative group">
             <img src={photo.base64} alt="capture" className="w-full h-32 object-cover rounded-lg border border-emerald-200" />
-            <button onClick={() => removePhoto(photo.id)} className="absolute top-1 right-1 p-1 bg-white/80 rounded-full opacity-0 group-hover:opacity-100 transition" title="Remove"><X className="w-4 h-4 text-emerald-600" /></button>
+            <button
+              onClick={() => removePhoto(photo.id)}
+              className="absolute top-1 right-1 p-1 bg-white/80 rounded-full opacity-0 group-hover:opacity-100 transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none focus-visible:opacity-100"
+              title="Remove"
+              aria-label="Remove photo"
+            >
+              <X className="w-4 h-4 text-emerald-600" />
+            </button>
             {enableAI && (
               <div className="absolute inset-0 flex items-end justify-center p-2">
                 {photo.loading ? (
