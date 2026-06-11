@@ -583,9 +583,6 @@ export function getAIKey(providerId) {
 }
 
 export async function identifyWeedFromPhoto(imageDataUrl, category = 'herbicide') {
-  const mimeType = imageDataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
-  const base64 = imageDataUrl.split(',')[1];
-  
   const geminiKeys = getAPIKeys('gemini-3.5-flash');
   if (!geminiKeys.length) {
     throw new Error('No Gemini API key available in Settings');
@@ -613,7 +610,16 @@ Example output:
 ]
 JSON ONLY. Do not write any conversational text or explanation. Only output the JSON array.`;
 
-  const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  const driveId = getDriveFileId(imageDataUrl);
+  let imagePart;
+  if (driveId) {
+    imagePart = { fileData: { mimeType: 'image/jpeg', fileUri: `https://drive.google.com/uc?export=download&id=${driveId}` } };
+  } else {
+    const base64 = await imageToBase64(imageDataUrl);
+    imagePart = { inlineData: { mimeType: 'image/jpeg', data: base64 } };
+  }
+
+  const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash-latest'];
   let lastError = null;
 
   for (const model of models) {
@@ -624,7 +630,7 @@ JSON ONLY. Do not write any conversational text or explanation. Only output the 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [
             { text: promptText },
-            { inlineData: { mimeType, data: base64 } }
+            imagePart
           ]}] })
         });
 
