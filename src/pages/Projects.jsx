@@ -884,7 +884,8 @@ export default function Projects({ onMenuClick }) {
     if (!analysisResults) { toast('Run analysis first', 'error'); return; }
     setIsGeneratingNarrative(true);
     try {
-      const geminiKey = state.settings?.geminiApiKeys?.[0] || state.settings?.geminiApiKey || '';
+      const rawKey = state.settings?.geminiApiKeys?.[0] || state.settings?.geminiApiKey || (state.settings?.apiKeys || [])[0] || '';
+      const geminiKey = typeof rawKey === 'object' ? rawKey?.key : rawKey;
       if (!geminiKey) throw new Error('No Gemini API key configured in Settings');
       const groupingText = (analysisResults.grouping || [])
         .map(g => `- ${g.name}: mean=${isFinite(g.mean) ? g.mean.toFixed(2) : 'N/A'} (Group ${g.grouping})`)

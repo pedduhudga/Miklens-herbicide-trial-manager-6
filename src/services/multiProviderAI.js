@@ -99,6 +99,15 @@ function getAPIKeys(providerId) {
 
   const keys = [];
 
+  const extractKeyStr = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'object') {
+      return (val.key || val.apiKey || val.value || '').trim();
+    }
+    return '';
+  };
+
   const settingsKeys = [
     settings?.apiKeys,
     settings?.geminiApiKeys,
@@ -106,19 +115,38 @@ function getAPIKeys(providerId) {
   ];
   if (isGemini) {
     settingsKeys.forEach(k => {
-      if (Array.isArray(k)) keys.push(...k.filter(Boolean));
-      else if (typeof k === 'string' && k.trim()) keys.push(k.trim());
+      if (Array.isArray(k)) {
+        k.forEach(item => {
+          const raw = extractKeyStr(item);
+          if (raw) keys.push(raw);
+        });
+      } else {
+        const raw = extractKeyStr(k);
+        if (raw) keys.push(raw);
+      }
     });
   }
-  if (isGroq && settings?.groqApiKey) keys.push(settings.groqApiKey);
-  if (baseId === 'pixtral' && settings?.mistralApiKey) keys.push(settings.mistralApiKey);
+  if (isGroq) {
+    const raw = extractKeyStr(settings?.groqApiKey);
+    if (raw) keys.push(raw);
+  }
+  if (baseId === 'pixtral') {
+    const raw = extractKeyStr(settings?.mistralApiKey);
+    if (raw) keys.push(raw);
+  }
 
   // Also check localStorage directly
   const lsBase = localStorage.getItem(`AI_KEY_${baseId.toUpperCase()}`);
-  if (lsBase) keys.push(lsBase);
+  if (lsBase) {
+    const raw = extractKeyStr(lsBase);
+    if (raw) keys.push(raw);
+  }
   for (let i = 1; i <= 5; i++) {
     const k = localStorage.getItem(`AI_KEY_${baseId.toUpperCase()}_${i}`);
-    if (k) keys.push(k);
+    if (k) {
+      const raw = extractKeyStr(k);
+      if (raw) keys.push(raw);
+    }
   }
 
   return [...new Set(keys.filter(Boolean))];

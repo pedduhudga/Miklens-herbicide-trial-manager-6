@@ -645,7 +645,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
     setDetectingCover(true);
     setCoverDetectResult(null);
     try {
-      const apiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+      const rawApiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+      const apiKey = typeof rawApiKey === 'object' ? rawApiKey?.key : rawApiKey;
       let dataUrl = imageUrl;
       if (typeof imageUrl === 'string' && !imageUrl.startsWith('data:')) {
         const blob = await fetch(imageUrl, { mode: 'cors' }).then(r => r.blob());
@@ -729,7 +730,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const identifyWeedFromPhoto = useCallback(async (imageDataUrl) => {
     setWeedIdLoading(true);
     setWeedIdResult(null);
-    const apiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+    const rawApiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+    const apiKey = typeof rawApiKey === 'object' ? rawApiKey?.key : rawApiKey;
     if (!apiKey) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings', type: 'error' } }));
       setWeedIdLoading(false);

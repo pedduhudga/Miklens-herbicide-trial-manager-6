@@ -523,7 +523,8 @@ export default function Trials({ onMenuClick }) {
     setDetectingCover(true);
     setCoverDetectResult(null);
     try {
-      const apiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+      const rawApiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+      const apiKey = typeof rawApiKey === 'object' ? rawApiKey?.key : rawApiKey;
 
       // Extract Drive file ID if this is a Google Drive URL
       const driveMatch = typeof imageUrl === 'string' && imageUrl.includes('drive.google.com') && imageUrl.match(/(?:[?&]id=|\/d\/)([a-zA-Z0-9_-]{10,})/);
@@ -658,7 +659,8 @@ export default function Trials({ onMenuClick }) {
     }
     setWeedIdLoading(true);
     setWeedIdResult(null);
-    const apiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+    const rawApiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
+    const apiKey = typeof rawApiKey === 'object' ? rawApiKey?.key : rawApiKey;
     if (!apiKey) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings', type: 'error' } }));
       setWeedIdLoading(false);
