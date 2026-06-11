@@ -829,6 +829,19 @@ export default function LargeScaleTrials({ onMenuClick }) {
   
   const buildPrintableTrialUrl = (trial) => {
     const appBase = window.location.origin + window.location.pathname;
+    const settings = state.settings;
+    if (settings?.firebaseEnabled && settings?.firebaseConfig?.apiKey) {
+      const config = settings.firebaseConfig;
+      const params = new URLSearchParams({
+        apiKey: config.apiKey || '',
+        authDomain: config.authDomain || '',
+        projectId: config.projectId || '',
+        storageBucket: config.storageBucket || '',
+        messagingSenderId: config.messagingSenderId || '',
+        appId: config.appId || ''
+      }).toString();
+      return `${appBase}#/live/${trial.ID}?${params}`;
+    }
     return `${appBase}#/live/${trial.ID}`;
   };
 

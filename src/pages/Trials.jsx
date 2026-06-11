@@ -1995,8 +1995,21 @@ export default function Trials({ onMenuClick }) {
 
   const buildPrintableTrialUrl = useCallback((trial) => {
     const appBase = window.location.origin + window.location.pathname;
+    const settings = state.settings;
+    if (settings?.firebaseEnabled && settings?.firebaseConfig?.apiKey) {
+      const config = settings.firebaseConfig;
+      const params = new URLSearchParams({
+        apiKey: config.apiKey || '',
+        authDomain: config.authDomain || '',
+        projectId: config.projectId || '',
+        storageBucket: config.storageBucket || '',
+        messagingSenderId: config.messagingSenderId || '',
+        appId: config.appId || ''
+      }).toString();
+      return `${appBase}#/live/${trial.ID}?${params}`;
+    }
     return `${appBase}#/live/${trial.ID}`;
-  }, []);
+  }, [state.settings]);
 
   const syncTrialToQrScript = useCallback(async (trialPatch) => {
     const scriptUrl = String(state.settings?.scriptUrl || '').trim();

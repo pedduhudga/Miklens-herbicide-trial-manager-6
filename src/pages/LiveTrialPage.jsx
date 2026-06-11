@@ -113,9 +113,31 @@ export default function LiveTrialPage() {
       return;
     }
 
-    // 1. Try Vite env vars baked in at build time (works for any visitor)
+    // 1. Try URL query parameters first (passed in QR code link so anyone can load without env variables)
+    const hash = window.location.hash || "";
+    const qIndex = hash.indexOf("?");
+    const searchParams = qIndex !== -1 
+      ? new URLSearchParams(hash.substring(qIndex))
+      : new URLSearchParams(window.location.search);
+      
+    const qApiKey = searchParams.get("apiKey");
+    const qProjectId = searchParams.get("projectId");
+
     let firebaseConfig = null;
+    if (qApiKey && qProjectId) {
+      firebaseConfig = {
+        apiKey: qApiKey,
+        authDomain: searchParams.get("authDomain") || "",
+        projectId: qProjectId,
+        storageBucket: searchParams.get("storageBucket") || "",
+        messagingSenderId: searchParams.get("messagingSenderId") || "",
+        appId: searchParams.get("appId") || "",
+      };
+    }
+
+    // 2. Try Vite env vars baked in at build time (works for any visitor)
     if (
+      !firebaseConfig &&
       import.meta.env.VITE_FIREBASE_API_KEY &&
       import.meta.env.VITE_FIREBASE_PROJECT_ID
     ) {
@@ -129,7 +151,7 @@ export default function LiveTrialPage() {
       };
     }
 
-    // 2. Fall back to localStorage (works when opened on the same device as the app)
+    // 3. Fall back to localStorage (works when opened on the same device as the app)
     if (!firebaseConfig) {
       try {
         const saved = localStorage.getItem("appSettings");
