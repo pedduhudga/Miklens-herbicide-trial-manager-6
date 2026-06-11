@@ -121,10 +121,7 @@ function appReducer(state, action) {
 export function AppStateProvider({ children }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const stateRef = useRef(state);
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  stateRef.current = state;
 
   useEffect(() => {
     try {
