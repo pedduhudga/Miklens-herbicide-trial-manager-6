@@ -16,8 +16,8 @@ export function clearWeatherCache() {
   weatherCache.clear();
 }
 
-async function fetchWeatherForecast(lat, lon, days = 3) {
-  const cacheKey = `${lat}|${lon}|${days}`;
+async function fetchWeatherForecast(lat, lon, days = 3, startDate = null, endDate = null) {
+  const cacheKey = startDate && endDate ? `${lat}|${lon}|${startDate}|${endDate}` : `${lat}|${lon}|${days}`;
   const now = Date.now();
   const cacheEntry = weatherCache.get(cacheKey);
   // Use cached data if less than 10 minutes old
@@ -27,7 +27,18 @@ async function fetchWeatherForecast(lat, lon, days = 3) {
 
   const hourlyVars = 'temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,precipitation_probability';
   const dailyVars = 'temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean';
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${hourlyVars}&daily=${dailyVars}&forecast_days=${days}&timezone=auto&wind_speed_unit=kmh`;
+  
+  let url;
+  if (startDate && endDate) {
+    const isPast = new Date(startDate) < new Date(new Date().setHours(0,0,0,0));
+    const baseUrl = isPast ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+    const hourly = isPast 
+      ? 'temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation' 
+      : hourlyVars;
+    url = `${baseUrl}?latitude=${lat}&longitude=${lon}&hourly=${hourly}&daily=${dailyVars}&start_date=${startDate}&end_date=${endDate}&timezone=auto&wind_speed_unit=kmh`;
+  } else {
+    url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${hourlyVars}&daily=${dailyVars}&forecast_days=${days}&timezone=auto&wind_speed_unit=kmh`;
+  }
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Weather API error: ${res.status}`);
@@ -144,26 +155,32 @@ function getRiskLevel(score) {
 /**
  * Analyze spray conditions for a specific time
  */
-export async function analyzeSprayWindow(lat, lon, targetTime = null) {
+export async function analyzeSprayWindow(lat, lon, targetDate = null) {
   try {
-    const forecast = await fetchWeatherForecast(lat, lon, 3);
+    const isToday = !targetDate || targetDate === new Date().toISOString().split('T')[0];
+    const isPast = targetDate && new Date(targetDate) < new Date(new Date().setHours(0,0,0,0));
+    const forecast = targetDate 
+      ? await fetchWeatherForecast(lat, lon, 1, targetDate, targetDate)
+      : await fetchWeatherForecast(lat, lon, 3);
     
     if (!forecast || !forecast.hourly) {
       return { error: 'Unable to fetch weather data' };
     }
     
     const { hourly } = forecast;
-    const currentHour = new Date().getHours();
+    const currentHour = isToday ? new Date().getHours() : 12; // default to midday for custom dates
     
-    // Find best windows in next 72 hours
+    // Find best windows
     const windows = [];
     
     for (let i = 0; i < hourly.time.length; i++) {
       const hourTime = new Date(hourly.time[i]);
       const hour = hourTime.getHours();
       const now = new Date();
-      // Skip past hours and nighttime hours (typically not spraying hours)
-      if (hourTime <= now || hour < 6 || hour > 20) continue;
+      // Skip past hours only if it is today
+      if (!isPast && isToday && hourTime <= now) continue;
+      // Skip nighttime hours (typically not spraying hours)
+      if (hour < 6 || hour > 20) continue;
 
       const conditions = {
         temperature: hourly.temperature_2m[i],
@@ -190,12 +207,12 @@ export async function analyzeSprayWindow(lat, lon, targetTime = null) {
       }
     }
     
-    // Capture upcoming hourly forecasts for UI (next 12 future hours)
+    // Capture upcoming hourly forecasts for UI
     const futureHours = [];
     const nowMs = Date.now();
-    for (let i = 0; i < hourly.time.length && futureHours.length < 12; i++) {
+    for (let i = 0; i < hourly.time.length; i++) {
       const hourTime = new Date(hourly.time[i]);
-      if (hourTime <= nowMs) continue;
+      if (isToday && hourTime <= nowMs) continue;
       futureHours.push({
         time: hourTime,
         temperature: hourly.temperature_2m[i],
@@ -222,7 +239,7 @@ export async function analyzeSprayWindow(lat, lon, targetTime = null) {
       groupedByDay,
       location: forecast.location,
       recommendation: generateRecommendation(bestWindow, windows),
-      futureHours // array of next 12 hourly forecasts for UI
+      futureHours // array of forecasts for UI
     };
     
   } catch (error) {
@@ -296,7 +313,7 @@ function groupWindowsByDay(windows) {
 function generateRecommendation(bestWindow, allWindows) {
   if (!bestWindow) {
     return {
-      summary: 'No suitable spray windows found in the next 72 hours.',
+      summary: 'No suitable spray windows found.',
       advice: 'Weather conditions are unfavorable. Consider postponing application or consult local weather forecasts.',
       urgency: 'low'
     };
@@ -340,9 +357,19 @@ function generateRecommendation(bestWindow, allWindows) {
 /**
  * Get extended spray forecast (7 days)
  */
-export async function getExtendedSprayForecast(lat, lon) {
+export async function getExtendedSprayForecast(lat, lon, targetDate = null) {
   try {
-    const forecast = await fetchWeatherForecast(lat, lon, 7);
+    let forecast;
+    if (targetDate) {
+      const start = new Date(targetDate);
+      const end = new Date(targetDate);
+      end.setDate(end.getDate() + 6);
+      const startStr = start.toISOString().split('T')[0];
+      const endStr = end.toISOString().split('T')[0];
+      forecast = await fetchWeatherForecast(lat, lon, 7, startStr, endStr);
+    } else {
+      forecast = await fetchWeatherForecast(lat, lon, 7);
+    }
     
     if (!forecast || !forecast.daily) {
       return { error: 'Unable to fetch extended forecast' };

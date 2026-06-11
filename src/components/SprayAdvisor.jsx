@@ -14,6 +14,7 @@ import {
 export default function SprayAdvisor({ lat, lon, locationName = 'Current Location' }) {
   const [analysis, setAnalysis] = useState(null);
   const [extendedForecast, setExtendedForecast] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('current');
@@ -28,8 +29,8 @@ export default function SprayAdvisor({ lat, lon, locationName = 'Current Locatio
     
     try {
       const [sprayAnalysis, extended] = await Promise.all([
-        analyzeSprayWindow(lat, lon),
-        getExtendedSprayForecast(lat, lon)
+        analyzeSprayWindow(lat, lon, selectedDate),
+        getExtendedSprayForecast(lat, lon, selectedDate)
       ]);
       
       if (sprayAnalysis.error) {
@@ -46,7 +47,7 @@ export default function SprayAdvisor({ lat, lon, locationName = 'Current Locatio
     } finally {
       setLoading(false);
     }
-  }, [lat, lon]);
+  }, [lat, lon, selectedDate]);
 
   useEffect(() => {
     loadAnalysis();
@@ -99,17 +100,29 @@ export default function SprayAdvisor({ lat, lon, locationName = 'Current Locatio
             <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
-        <p className="text-emerald-100 text-sm mt-1 flex items-center gap-1">
-          <MapPin className="w-3 h-3" /> {locationName}
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2 pt-2 border-t border-emerald-500/30">
+          <p className="text-emerald-100 text-xs flex items-center gap-1">
+            <MapPin className="w-3.5 h-3.5" /> {locationName}
+          </p>
+          <div className="flex items-center gap-1.5 text-xs text-white">
+            <Calendar className="w-3.5 h-3.5 text-emerald-100" />
+            <span className="text-emerald-100">Target Date:</span>
+            <input 
+              type="date" 
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-emerald-700/50 hover:bg-emerald-700/80 border border-emerald-500/50 rounded px-2 py-0.5 text-white outline-none focus:border-emerald-300 transition text-xs cursor-pointer font-medium"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200">
         {[
-          { id: 'current', label: 'Current', icon: Clock },
+          { id: 'current', label: selectedDate === new Date().toISOString().split('T')[0] ? 'Current' : 'Conditions', icon: Clock },
           { id: 'best', label: 'Best Windows', icon: CheckCircle },
-          { id: 'forecast', label: '7-Day Forecast', icon: Calendar }
+          { id: 'forecast', label: selectedDate === new Date().toISOString().split('T')[0] ? '7-Day Forecast' : '7-Day Trend', icon: Calendar }
         ].map(tab => (
           <button
             key={tab.id}
