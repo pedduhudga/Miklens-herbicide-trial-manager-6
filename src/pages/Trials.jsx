@@ -40,6 +40,9 @@ import {
 } from '../services/trialReports.js';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 import { fetchWeather } from '../services/weather.js';
+import { EPPO_CODES, BBCH_STAGES, lookupEPPO } from '../utils/eppoBBCHData.js';
+import { exportToARM, importARMCSV } from '../services/armExporter.js';
+import SprayCalculatorModal from '../components/SprayCalculatorModal.jsx';
 
 const RESULT_COLORS = {
   'Excellent': 'bg-emerald-100 text-emerald-700',
@@ -137,6 +140,46 @@ export default function Trials({ onMenuClick }) {
   // --- Export menu ---
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
+  const armFileInputRef = useRef(null);
+
+  const handleARMImportClick = () => {
+    armFileInputRef.current?.click();
+  };
+
+  const handleARMImportChange = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const csvText = evt.target?.result;
+      if (typeof csvText !== 'string') return;
+      try {
+        const importedTrials = importARMCSV(csvText);
+        if (importedTrials.length === 0) {
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No trials found in the CSV file or invalid format.', type: 'error' } }));
+          return;
+        }
+
+        const updatedTrials = [...trials];
+        for (const payload of importedTrials) {
+          updatedTrials.push(payload);
+          try {
+            await addTrial(payload, getAppState);
+          } catch (dbErr) {
+            console.error('Failed to add trial in DB:', dbErr);
+          }
+        }
+        updateState({ trials: updatedTrials });
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Successfully imported ${importedTrials.length} trials!`, type: 'success' } }));
+      } catch (err) {
+        console.error(err);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to import ARM CSV: ' + err.message, type: 'error' } }));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, [trials, updateState, getAppState]);
+
 
   // --- Card 3-dot menus ---
   const [openCardMenu, setOpenCardMenu] = useState(null);
@@ -208,6 +251,62 @@ export default function Trials({ onMenuClick }) {
     state.settings?.cardSize === 'A4' ? 'a4' : state.settings?.cardSize === 'A6' ? 'a6' : 'id-card'
   );
   const bulkQrRef = useRef(null);
+
+  // --- Sprayer Calculator & Standardized Autocomplete ---
+  const [isSprayCalcOpen, setIsSprayCalcOpen] = useState(false);
+  const [eppoSearchQuery, setEppoSearchQuery] = useState('');
+  const [showEppoDropdown, setShowEppoDropdown] = useState(false);
+
+  const renderTargetFieldAutocomplete = (fieldKey, label, ringColor = 'focus:ring-emerald-400', eppoType = 'weed') => {
+    return (
+      <div className="relative">
+        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">{label} (EPPO)</label>
+        <input 
+          type="text" 
+          value={formData[fieldKey] || ''} 
+          onChange={e => {
+            setFormData(prev => ({...prev, [fieldKey]: e.target.value}));
+            setEppoSearchQuery(e.target.value);
+            setShowEppoDropdown(fieldKey);
+          }} 
+          onFocus={() => {
+            setEppoSearchQuery(formData[fieldKey] || '');
+            setShowEppoDropdown(fieldKey);
+          }}
+          className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${ringColor}`} 
+          placeholder={`Search EPPO code or type...`} 
+        />
+        {showEppoDropdown === fieldKey && (
+          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+            {EPPO_CODES.filter(item => 
+              item.type === eppoType && 
+              (item.commonName.toLowerCase().includes(eppoSearchQuery.toLowerCase()) || 
+               item.scientificName.toLowerCase().includes(eppoSearchQuery.toLowerCase()) ||
+               item.code.toLowerCase().includes(eppoSearchQuery.toLowerCase()))
+            ).map(item => (
+              <div 
+                key={item.code} 
+                onClick={() => {
+                  setFormData(prev => ({...prev, [fieldKey]: `${item.commonName} (${item.scientificName}) [${item.code}]`}));
+                  setShowEppoDropdown(false);
+                }}
+                className="px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between dark:text-slate-300"
+              >
+                <span className="font-semibold">{item.commonName}</span>
+                <span className="text-slate-400 italic text-[10px]">{item.scientificName} ({item.code})</span>
+              </div>
+            ))}
+            <div 
+              onClick={() => setShowEppoDropdown(false)}
+              className="px-3 py-1.5 text-[10px] text-center text-slate-400 bg-slate-50 dark:bg-slate-800 border-t cursor-pointer"
+            >
+              Close Options
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ── ROUTING EFFECT ─────────────────────────────────────────────────
   useEffect(() => {
@@ -350,6 +449,10 @@ export default function Trials({ onMenuClick }) {
         SoilTexture: trial.SoilTexture || '',
         ApplicationTiming: trial.ApplicationTiming || '',
         WeedGrowthStage: trial.WeedGrowthStage || '',
+        TrialDesign: trial.TrialDesign || 'RCBD',
+        MainFactor: trial.MainFactor || '',
+        SubFactor: trial.SubFactor || '',
+        SubBlockID: trial.SubBlockID || '',
       });
     } else {
       setFormData({ ...emptyForm(activeCategory), InvestigatorName: state.auth?.user?.Name || state.auth?.user?.Username || '' });
@@ -2907,6 +3010,16 @@ If none are present, write "None".`;
             <button onClick={exportAllCsv} title="Export all trials to CSV" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition">
               <FileDown className="w-4 h-4" />
             </button>
+            <input 
+              type="file" 
+              ref={armFileInputRef} 
+              onChange={handleARMImportChange} 
+              accept=".csv" 
+              className="hidden" 
+            />
+            <button onClick={handleARMImportClick} title="Import trials from ARM CSV" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition">
+              <FolderPlus className="w-4 h-4" />
+            </button>
             <button onClick={() => handleOpenModal()} className="btn-primary text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap">
               <Plus className="w-4 h-4" /> New Trial
             </button>
@@ -3163,12 +3276,40 @@ If none are present, write "None".`;
               <datalist id="form-list">{formulations.map(f => <option key={f.ID} value={f.Name} />)}</datalist>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Project (RCBD)</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Project (Layout Group)</label>
               <select value={formData.ProjectID} onChange={e => setFormData({...formData, ProjectID: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
                 <option value="">— Standard Trial —</option>
                 {projects.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Trial Design Type</label>
+              <select value={formData.TrialDesign || 'RCBD'} onChange={e => setFormData({...formData, TrialDesign: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <option value="RCBD">RCBD (Randomized Complete Block)</option>
+                <option value="CRD">CRD (Completely Randomized Design)</option>
+                <option value="Split-Plot">Split-Plot Design</option>
+                <option value="Lattice">Alpha-Lattice Design</option>
+                <option value="Factorial">Factorial Design</option>
+              </select>
+            </div>
+            {(formData.TrialDesign === 'Split-Plot' || formData.TrialDesign === 'Factorial') && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Main Factor / Factor A</label>
+                  <input type="text" value={formData.MainFactor || ''} onChange={e => setFormData({...formData, MainFactor: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. Irrigation" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Sub Factor / Factor B</label>
+                  <input type="text" value={formData.SubFactor || ''} onChange={e => setFormData({...formData, SubFactor: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. Nitrogen Rate" />
+                </div>
+              </>
+            )}
+            {formData.TrialDesign === 'Lattice' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Sub-Block ID</label>
+                <input type="text" value={formData.SubBlockID || ''} onChange={e => setFormData({...formData, SubBlockID: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. Block A1" />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Investigator *</label>
               <input type="text" required value={formData.InvestigatorName} onChange={e => setFormData({...formData, InvestigatorName: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
@@ -3180,13 +3321,15 @@ If none are present, write "None".`;
             {activeCategory === 'herbicide' ? (
               <>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Dosage / Treatment</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Dosage / Treatment</label>
+                    <button type="button" onClick={() => setIsSprayCalcOpen(true)} className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <Calculator size={10} /> Spray Mix Calc
+                    </button>
+                  </div>
                   <input type="text" value={formData.Dosage} onChange={e => setFormData({...formData, Dosage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 1500 ml/ha" />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Target Weed Species</label>
-                  <input type="text" value={formData.WeedSpecies} onChange={e => setFormData({...formData, WeedSpecies: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Comma separated" />
-                </div>
+                {renderTargetFieldAutocomplete('WeedSpecies', 'Target Weed Species', 'focus:ring-emerald-400', 'weed')}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Yield (t/ha)</label>
                   <input type="number" step="0.01" min="0" value={formData.YieldValue} onChange={e => setFormData({...formData, YieldValue: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 3.5" />
@@ -3206,14 +3349,22 @@ If none are present, write "None".`;
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weed Growth Stage</label>
-                  <input type="text" value={formData.WeedGrowthStage} onChange={e => setFormData({...formData, WeedGrowthStage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. 2-4 leaf stage, tillering" />
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weed Growth Stage (BBCH)</label>
+                  <select value={formData.WeedGrowthStage} onChange={e => setFormData({...formData, WeedGrowthStage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="">— Select Growth Stage —</option>
+                    {BBCH_STAGES.map(s => <option key={s.value} value={s.label}>{s.label}</option>)}
+                  </select>
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Dosage / Treatment</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Dosage / Treatment</label>
+                    <button type="button" onClick={() => setIsSprayCalcOpen(true)} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                      <Calculator size={10} /> Spray Mix Calc
+                    </button>
+                  </div>
                   <input type="text" value={formData.Dosage} onChange={e => setFormData({...formData, Dosage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="e.g. 1500 ml/ha" />
                 </div>
                 <div>
@@ -3231,19 +3382,40 @@ If none are present, write "None".`;
                     {catConfig.applicationTimings.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
-                {catConfig.specificFields.map(field => (
-                  <div key={field.key}>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">{field.label}</label>
-                    {field.type === 'select' ? (
-                      <select value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                        <option value="">— Select {field.label} —</option>
-                        {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    ) : (
-                      <input type={field.type} step={field.type === 'number' ? 'any' : undefined} value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder={field.placeholder || ''} />
-                    )}
-                  </div>
-                ))}
+                {catConfig.specificFields.map(field => {
+                  if (field.key === 'WeedSpecies' || field.key === 'DiseaseTarget' || field.key === 'PestTarget') {
+                    const eppoType = field.key === 'WeedSpecies' ? 'weed' : field.key === 'DiseaseTarget' ? 'disease' : 'pest';
+                    return (
+                      <div key={field.key}>
+                        {renderTargetFieldAutocomplete(field.key, field.label, 'focus:ring-indigo-400', eppoType)}
+                      </div>
+                    );
+                  }
+                  if (field.key === 'CropStageAtApplication' || field.key === 'WeedGrowthStage') {
+                    return (
+                      <div key={field.key}>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">{field.label} (BBCH)</label>
+                        <select value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                          <option value="">— Select Growth Stage —</option>
+                          {BBCH_STAGES.map(s => <option key={s.value} value={s.label}>{s.label}</option>)}
+                        </select>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={field.key} className="relative">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">{field.label}</label>
+                      {field.type === 'select' ? (
+                        <select value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                          <option value="">— Select {field.label} —</option>
+                          {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      ) : (
+                        <input type={field.type} step={field.type === 'number' ? 'any' : undefined} value={formData[field.key] || ''} onChange={e => setFormData({...formData, [field.key]: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder={field.placeholder || ''} />
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>
@@ -3383,6 +3555,13 @@ If none are present, write "None".`;
           </div>
         </form>
       </Modal>
+
+      <SprayCalculatorModal 
+        isOpen={isSprayCalcOpen} 
+        onClose={() => setIsSprayCalcOpen(false)} 
+        onApply={(recipe) => setFormData(prev => ({ ...prev, Dosage: recipe }))} 
+        initialFormulationName={formData.FormulationName}
+      />
 
       {/* ── DETAIL PANEL ── */}
       {detailTrial && (

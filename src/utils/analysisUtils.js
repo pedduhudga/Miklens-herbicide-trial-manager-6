@@ -802,14 +802,14 @@ export class AnalysisEngine {
                         const arr = dataMap[tName] || [];
                         counts[tName] = arr.filter(v => !isNaN(v)).length || anovaData[0]?.length || 1;
                     });
-                    const postHocMethod = (options.postHoc === 'tukey') ? 'tukey' : 'lsd';
+                    const postHocMethod = (options.postHoc === 'tukey') ? 'tukey' : ((options.postHoc === 'duncan') ? 'duncan' : 'lsd');
                     const alpha = (typeof options.alpha === 'number' && isFinite(options.alpha)) ? options.alpha : 0.05;
                     const postHoc = this.getLetterGrouping(means, anovaResults.msError, anovaResults.dfError, counts, { method: postHocMethod, alpha });
 
                     const formattedGrouping = treatments.map(t => ({
-                        name: t,
-                        mean: means[t],
-                        grouping: postHoc.letters[t] || '-'
+                         name: t,
+                         mean: means[t],
+                         grouping: postHoc.letters[t] || '-'
                     })).sort((a, b) => b.mean - a.mean);
 
                     const results = {
@@ -819,6 +819,7 @@ export class AnalysisEngine {
                         postHoc: postHoc,
                         lsdResults: postHoc.method === 'lsd' ? { ...postHoc, groupings: formattedGrouping } : null,
                         tukeyResults: postHoc.method === 'tukey' ? { ...postHoc, groupings: formattedGrouping } : null,
+                        duncanResults: postHoc.method === 'duncan' ? { ...postHoc, groupings: formattedGrouping } : null,
                         grouping: formattedGrouping,
                         raw: dataMap,
                         balance: {
@@ -1010,7 +1011,7 @@ export class AnalysisEngine {
                 }
 
                 getLetterGrouping(meansObj, mse, dfError, countsOrReps, options = {}) {
-                    const method = (options.method === 'tukey') ? 'tukey' : 'lsd';
+                    const method = options.method === 'tukey' ? 'tukey' : (options.method === 'duncan' ? 'duncan' : 'lsd');
                     const alpha = (typeof options.alpha === 'number' && isFinite(options.alpha)) ? options.alpha : 0.05;
                     const tVal = (typeof jStat !== 'undefined') ? jStat.studentt.inv(1 - (alpha / 2), dfError) : 2.05;
 
@@ -1028,6 +1029,44 @@ export class AnalysisEngine {
                     }
 
                     const minN = Math.max(1, Math.min(...Object.values(counts)));
+
+                    if (method === 'duncan') {
+                        const duncanTable = {
+                            5: [3.64, 3.74, 3.79, 3.83, 3.85, 3.86, 3.87, 3.88, 3.89],
+                            10: [3.15, 3.30, 3.37, 3.43, 3.46, 3.47, 3.48, 3.49, 3.50],
+                            15: [3.01, 3.16, 3.25, 3.31, 3.35, 3.37, 3.39, 3.40, 3.41],
+                            20: [2.95, 3.10, 3.18, 3.25, 3.29, 3.32, 3.34, 3.35, 3.36],
+                            30: [2.89, 3.04, 3.12, 3.18, 3.22, 3.25, 3.27, 3.28, 3.29],
+                            60: [2.83, 2.98, 3.06, 3.12, 3.16, 3.19, 3.21, 3.22, 3.23],
+                            "inf": [2.77, 2.92, 3.00, 3.06, 3.10, 3.13, 3.15, 3.17, 3.18]
+                        };
+                        const dfKey = dfError >= 120 ? "inf" : (dfError >= 60 ? 60 : (dfError >= 30 ? 30 : (dfError >= 20 ? 20 : (dfError >= 15 ? 15 : (dfError >= 10 ? 10 : 5)))));
+                        const dfEntry = duncanTable[dfKey] || duncanTable["inf"];
+
+                        const sortedTrts = [...treatmentStats].sort((a, b) => b.mean - a.mean);
+                        const sigPairs = new Set();
+                        for (let i = 0; i < k; i++) {
+                            for (let j = i + 1; j < k; j++) {
+                                const step = j - i + 1;
+                                const pIndex = Math.min(Math.max(step, 2), 10) - 2;
+                                const qVal = dfEntry[pIndex] || 3.0;
+                                const ni = counts[sortedTrts[i].treatmentId] || 1;
+                                const nj = counts[sortedTrts[j].treatmentId] || 1;
+                                const dsd = qVal * Math.sqrt(mse * 0.5 * (1 / ni + 1 / nj));
+                                if (Math.abs(sortedTrts[i].mean - sortedTrts[j].mean) > dsd) {
+                                    sigPairs.add(`${sortedTrts[i].treatmentId}_${sortedTrts[j].treatmentId}`);
+                                    sigPairs.add(`${sortedTrts[j].treatmentId}_${sortedTrts[i].treatmentId}`);
+                                }
+                            }
+                        }
+
+                        const isNonSignificant = (a, b) => !sigPairs.has(`${a.treatmentId}_${b.treatmentId}`);
+                        assignCLDByComparator(treatmentStats, isNonSignificant);
+
+                        const letters = {};
+                        treatmentStats.forEach(ts => { letters[ts.treatmentId] = ts.rank; });
+                        return { method: 'duncan', alpha, letters };
+                    }
 
                     if (method === 'tukey') {
                         // Proper studentized range critical value from q-table

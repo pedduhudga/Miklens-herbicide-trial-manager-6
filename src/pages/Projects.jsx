@@ -86,6 +86,15 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
       </div>
       <p className="font-bold text-xs text-slate-800 truncate mb-0.5" title={trial.FormulationName}>{trial.FormulationName || '—'}</p>
       <p className="text-[9px] text-slate-500 truncate">{trial.Dosage || '—'}</p>
+      {trial.TrialDesign === 'Split-Plot' && trial.SubFactor && (
+        <p className="text-[9px] font-semibold text-slate-500 truncate">Sub: {trial.SubFactor}</p>
+      )}
+      {trial.TrialDesign === 'Factorial' && (trial.MainFactor || trial.SubFactor) && (
+        <p className="text-[8px] font-semibold text-slate-500 truncate">Fac: {trial.MainFactor || 'A'} x {trial.SubFactor || 'B'}</p>
+      )}
+      {trial.TrialDesign === 'Lattice' && trial.SubBlockID && (
+        <p className="text-[9px] font-semibold text-slate-500 truncate">Blk: {trial.SubBlockID}</p>
+      )}
       {metricVal !== undefined && metricVal !== null && (
         <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-[8px]">
           <span className="font-bold text-green-700">{metricVal}{projectConfig.primaryMetric.unit || ''} {projectConfig.primaryMetric.key}</span>
@@ -111,6 +120,65 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
     : hasControl
       ? <CheckCircle2 className="w-4 h-4 text-emerald-500" title="Control present" />
       : <AlertTriangle className="w-4 h-4 text-amber-500" title="Missing control!" />;
+
+  const designType = trials[0]?.TrialDesign || 'RCBD';
+
+  const renderPlotsContent = () => {
+    if (trials.length === 0) {
+      return <p className="text-xs text-slate-400 italic py-3">No plots in this block.</p>;
+    }
+
+    if (designType === 'Split-Plot') {
+      const groups = {};
+      trials.forEach(t => {
+        const key = t.MainFactor || 'No Main Factor';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(t);
+      });
+      return (
+        <div className="space-y-4">
+          {Object.entries(groups).map(([mainFactor, groupTrials]) => (
+            <div key={mainFactor} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
+              <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Main Factor: {mainFactor}</div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
+                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (designType === 'Lattice') {
+      const groups = {};
+      trials.forEach(t => {
+        const key = t.SubBlockID || 'No Sub-Block';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(t);
+      });
+      return (
+        <div className="space-y-4">
+          {Object.entries(groups).map(([subBlock, groupTrials]) => (
+            <div key={subBlock} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
+              <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Sub-Block: {subBlock}</div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
+                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex gap-3 min-w-max pb-1">
+        {[...trials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
+          .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
+      </div>
+    );
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -143,14 +211,7 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
         </div>
       </div>
       <div className="p-3 overflow-x-auto">
-        {trials.length > 0 ? (
-          <div className="flex gap-3 min-w-max pb-1">
-            {[...trials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-              .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
-          </div>
-        ) : (
-          <p className="text-xs text-slate-400 italic py-3">No plots in this block.</p>
-        )}
+        {renderPlotsContent()}
       </div>
     </div>
   );

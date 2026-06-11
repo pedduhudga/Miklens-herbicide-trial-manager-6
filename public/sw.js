@@ -56,6 +56,36 @@ self.addEventListener('fetch', (e) => {
     const requestUrl = new URL(e.request.url);
     if (!['http:', 'https:'].includes(requestUrl.protocol)) return;
 
+    // Detect if this is a map tile request
+    const isMapTile = requestUrl.hostname.includes('tile.openstreetmap') || 
+                      requestUrl.hostname.includes('arcgisonline.com') ||
+                      requestUrl.hostname.includes('tile.opentopomap');
+
+    if (isMapTile) {
+      e.respondWith(
+        caches.open('map-tiles-cache').then((tileCache) => {
+          return tileCache.match(e.request).then((cachedResponse) => {
+            if (cachedResponse) {
+              // Fetch fresh tile in background and update cache (Stale-While-Revalidate)
+              fetch(e.request).then((networkResponse) => {
+                if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
+                  tileCache.put(e.request, networkResponse);
+                }
+              }).catch(() => {});
+              return cachedResponse;
+            }
+            return fetch(e.request).then((networkResponse) => {
+              if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
+                tileCache.put(e.request, networkResponse.clone());
+              }
+              return networkResponse;
+            });
+          });
+        })
+      );
+      return;
+    }
+
     e.respondWith(
         caches.match(e.request).then((response) => {
             if (response) return response;

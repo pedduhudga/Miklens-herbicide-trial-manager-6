@@ -210,10 +210,11 @@ const TrialCard = memo(function TrialCard({
               )}
               <span className="align-middle">{trial.FormulationName || 'Untitled'}</span>
             </h3>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {trial.IsControl && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Control</span>}
               {trial.IsStandardCheck && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Standard</span>}
               {trial.IsCompleted && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">Finalized</span>}
+              {trial.TrialDesign && trial.TrialDesign !== 'RCBD' && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">{trial.TrialDesign}</span>}
               {project && <span className="text-xs text-emerald-600 font-medium truncate block">{project.Name}</span>}
             </div>
           </div>
@@ -295,6 +296,23 @@ const TrialCard = memo(function TrialCard({
           )}
           <div className="flex items-center gap-1.5"><FlaskConical className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{trial.Dosage || '—'}</span></div>
           {trial.WeedSpecies && <div className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{trial.WeedSpecies}</span></div>}
+          {trial.TrialDesign === 'Split-Plot' && (trial.MainFactor || trial.SubFactor) && (
+            <div className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded p-1 pl-1.5 font-medium space-y-0.5">
+              <div>Main Factor: <span className="font-bold text-slate-700">{trial.MainFactor || 'N/A'}</span></div>
+              <div>Sub Factor: <span className="font-bold text-slate-700">{trial.SubFactor || 'N/A'}</span></div>
+            </div>
+          )}
+          {trial.TrialDesign === 'Factorial' && (trial.MainFactor || trial.SubFactor) && (
+            <div className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded p-1 pl-1.5 font-medium space-y-0.5">
+              <div>Factor A: <span className="font-bold text-slate-700">{trial.MainFactor || 'N/A'}</span></div>
+              <div>Factor B: <span className="font-bold text-slate-700">{trial.SubFactor || 'N/A'}</span></div>
+            </div>
+          )}
+          {trial.TrialDesign === 'Lattice' && trial.SubBlockID && (
+            <div className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded p-1 pl-1.5 font-medium">
+              <div>Sub-Block: <span className="font-bold text-slate-700">{trial.SubBlockID}</span></div>
+            </div>
+          )}
           {controlDays !== null && (
             <div className="flex items-center gap-1.5" onClick={stopPropagation}>
               <Clock className="w-3.5 h-3.5 shrink-0" />

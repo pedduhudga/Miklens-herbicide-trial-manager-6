@@ -550,11 +550,103 @@ function approximatePValue(f, df1, df2) {
 }
 
 /**
+ * Duncan's Multiple Range Test (MRT)
+ * For step-wise pairwise comparisons based on ranked distance
+ */
+export function performDuncanMRT(trials, options = {}) {
+  const { metric = 'controlPct', alpha = 0.05 } = options;
+  
+  const anova = performANOVA(trials, options);
+  if (anova.error) return anova;
+  
+  const { treatmentMeans, anovaTable } = anova;
+  const msError = anovaTable.ms[2];
+  const dfError = anovaTable.df[2];
+  const n = anovaTable.df[0] + 1;
+  const r = Math.round(anovaTable.df[1] + 1);
+  
+  const sortedTrts = Object.keys(treatmentMeans).sort((a, b) => treatmentMeans[b] - treatmentMeans[a]);
+  const k = sortedTrts.length;
+  
+  // Calculate critical ranges for steps p = 2 to k
+  const criticalRanges = {};
+  for (let p = 2; p <= Math.min(k, 10); p++) {
+    const qCrit = getDuncanCriticalRange(alpha, p, dfError);
+    criticalRanges[p] = qCrit * Math.sqrt(msError / r);
+  }
+
+  // Duncan's test logic: Treatments are compared step-wise
+  const significantPairs = new Set();
+  const comparisons = [];
+
+  for (let i = 0; i < k; i++) {
+    for (let j = i + 1; j < k; j++) {
+      const trtA = sortedTrts[i];
+      const trtB = sortedTrts[j];
+      const diff = treatmentMeans[trtA] - treatmentMeans[trtB];
+      const step = j - i + 1;
+      const rCrit = criticalRanges[step] || criticalRanges[Math.min(step, 10)] || 0;
+      
+      const sig = diff > rCrit;
+      if (sig) {
+        significantPairs.add(`${trtA}_${trtB}`);
+        significantPairs.add(`${trtB}_${trtA}`);
+      }
+
+      comparisons.push({
+        treatmentA: trtA,
+        treatmentB: trtB,
+        meanA: treatmentMeans[trtA],
+        meanB: treatmentMeans[trtB],
+        difference: diff,
+        significant: sig,
+        range: rCrit
+      });
+    }
+  }
+
+  // Group treatments (letter display)
+  const isSig = (t1, t2) => significantPairs.has(`${t1}_${t2}`);
+  const groups = assignLetterGroups(sortedTrts, treatmentMeans, comparisons.map(c => ({
+    treatmentA: c.treatmentA,
+    treatmentB: c.treatmentB,
+    significant: isSig(c.treatmentA, c.treatmentB)
+  })));
+
+  return {
+    ...anova,
+    criticalRanges,
+    comparisons,
+    groups,
+    test: "Duncan's MRT",
+    alpha
+  };
+}
+
+const DUNCAN_TABLE_05 = {
+  5: [3.64, 3.74, 3.79, 3.83, 3.85, 3.86, 3.87, 3.88, 3.89],
+  10: [3.15, 3.30, 3.37, 3.43, 3.46, 3.47, 3.48, 3.49, 3.50],
+  15: [3.01, 3.16, 3.25, 3.31, 3.35, 3.37, 3.39, 3.40, 3.41],
+  20: [2.95, 3.10, 3.18, 3.25, 3.29, 3.32, 3.34, 3.35, 3.36],
+  30: [2.89, 3.04, 3.12, 3.18, 3.22, 3.25, 3.27, 3.28, 3.29],
+  60: [2.83, 2.98, 3.06, 3.12, 3.16, 3.19, 3.21, 3.22, 3.23],
+  "inf": [2.77, 2.92, 3.00, 3.06, 3.10, 3.13, 3.15, 3.17, 3.18]
+};
+
+function getDuncanCriticalRange(alpha, p, df) {
+  const dfKey = df >= 120 ? "inf" : (df >= 60 ? 60 : (df >= 30 ? 30 : (df >= 20 ? 20 : (df >= 15 ? 15 : (df >= 10 ? 10 : 5)))));
+  const pIndex = Math.min(Math.max(p, 2), 10) - 2;
+  const dfEntry = DUNCAN_TABLE_05[dfKey] || DUNCAN_TABLE_05["inf"];
+  return dfEntry[pIndex] || 3.0;
+}
+
+/**
  * Export window bindings
  */
 if (typeof window !== 'undefined') {
   window.performANOVA = performANOVA;
   window.performTukeyHSD = performTukeyHSD;
+  window.performDuncanMRT = performDuncanMRT;
   window.performDunnettTest = performDunnettTest;
   window.calculateStats = calculateStats;
 }
@@ -562,6 +654,7 @@ if (typeof window !== 'undefined') {
 export default {
   performANOVA,
   performTukeyHSD,
+  performDuncanMRT,
   performDunnettTest,
   calculateStats
 };

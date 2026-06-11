@@ -6,7 +6,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
-import { performANOVA, performTukeyHSD, performDunnettTest } from '../utils/statsUtils.js';
+import { performANOVA, performTukeyHSD, performDunnettTest, performDuncanMRT } from '../utils/statsUtils.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { 
   BarChart3, Calculator, ChevronDown, Download, 
@@ -96,6 +96,9 @@ export default function Statistics() {
         case 'tukey':
           result = performTukeyHSD(projectTrials, options);
           break;
+        case 'duncan':
+          result = performDuncanMRT(projectTrials, options);
+          break;
         case 'dunnett':
           result = performDunnettTest(projectTrials, controlTreatment, options);
           break;
@@ -128,10 +131,10 @@ export default function Statistics() {
     
     if (results.comparisons) {
       csv += '\nPairwise Comparisons\n';
-      if (test === 'tukey') {
-        csv += 'Treatment A,Treatment B,Mean A,Mean B,Difference,Significant,HSD\n';
+      if (test === 'tukey' || test === 'duncan') {
+        csv += 'Treatment A,Treatment B,Mean A,Mean B,Difference,Significant,Critical Value\n';
         results.comparisons.forEach(c => {
-          csv += `${c.treatmentA},${c.treatmentB},${c.meanA?.toFixed(2)},${c.meanB?.toFixed(2)},${c.difference?.toFixed(2)},${c.significant ? 'Yes' : 'No'},${c.hsd?.toFixed(2)}\n`;
+          csv += `${c.treatmentA},${c.treatmentB},${c.meanA?.toFixed(2)},${c.meanB?.toFixed(2)},${c.difference?.toFixed(2)},${c.significant ? 'Yes' : 'No'},${(c.hsd || c.range)?.toFixed(2)}\n`;
         });
       } else if (test === 'dunnett') {
         csv += 'Treatment,Control,Mean Diff,% Change,Significant,DSD\n';
@@ -195,6 +198,7 @@ export default function Statistics() {
             >
               <option value="anova">ANOVA (F-test)</option>
               <option value="tukey">Tukey HSD (All Pairs)</option>
+              <option value="duncan">Duncan's MRT (Step-wise Ranked)</option>
               <option value="dunnett">Dunnett's Test (vs Control)</option>
             </select>
           </div>
@@ -359,6 +363,21 @@ export default function Statistics() {
               </div>
             )}
 
+            {test === 'duncan' && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <BarChart3 className="w-5 h-5 text-purple-500" />
+                  <span className="font-semibold text-slate-700">Duncan's MRT</span>
+                </div>
+                <p className="text-md font-bold text-slate-800">
+                  Step Ranges: {Object.entries(results.criticalRanges || {}).map(([p, r]) => `p=${p}: ±${r.toFixed(1)}`).join(', ')}
+                </p>
+                <p className="text-sm text-slate-500 mt-1">
+                  α = {alpha}
+                </p>
+              </div>
+            )}
+
             {results.dsd && (
               <div className="bg-white p-4 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-2 mb-2">
@@ -459,14 +478,14 @@ export default function Statistics() {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
                 <h3 className="font-semibold text-slate-800">
-                  {test === 'tukey' ? 'Tukey HSD Pairwise Comparisons' : "Dunnett's Test Comparisons vs Control"}
+                  {test === 'tukey' ? 'Tukey HSD Pairwise Comparisons' : test === 'duncan' ? "Duncan's MRT Comparisons" : "Dunnett's Test Comparisons vs Control"}
                 </h3>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50">
                     <tr>
-                      {test === 'tukey' ? (
+                      {test === 'tukey' || test === 'duncan' ? (
                         <>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Treatment A</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Treatment B</th>
@@ -488,7 +507,7 @@ export default function Statistics() {
                   <tbody>
                     {results.comparisons.map((comp, i) => (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                        {test === 'tukey' ? (
+                        {test === 'tukey' || test === 'duncan' ? (
                           <>
                             <td className="px-4 py-3 font-medium text-slate-800">{comp.treatmentA}</td>
                             <td className="px-4 py-3 font-medium text-slate-800">{comp.treatmentB}</td>
