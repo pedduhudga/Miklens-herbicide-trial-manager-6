@@ -189,6 +189,64 @@ function AppLayout() {
     return () => { cancelled = true; };
   }, [activeCategory, isAuthenticated, isConfigured, hasCredentials, updateState, getAppState]);
 
+  // ── Category-specific Dynamic Theme Synchronization ─────────────────────
+  useEffect(() => {
+    const config = getCategoryConfig(activeCategory);
+    if (config && config.color) {
+      const root = document.documentElement;
+      root.style.setProperty('--primary-color', config.color.hex);
+      root.style.setProperty('--primary-light', config.color.hexLight);
+      
+      const hovers = {
+        herbicide: '#047857',
+        fungicide: '#4338ca',
+        pesticide: '#b91c1c',
+        nutrition: '#b45309',
+        biostimulant: '#0f766e'
+      };
+      root.style.setProperty('--primary-hover-color', hovers[activeCategory] || config.color.hex);
+
+      // Category-specific radial gradient values for body background
+      const gradients = {
+        herbicide: [
+          'hsla(160, 100%, 96%, 1)',
+          'hsla(190, 100%, 96%, 1)',
+          'hsla(160, 100%, 96%, 1)',
+          'hsla(210, 100%, 96%, 1)'
+        ],
+        fungicide: [
+          'hsla(240, 100%, 96%, 1)',
+          'hsla(280, 100%, 96%, 1)',
+          'hsla(240, 100%, 96%, 1)',
+          'hsla(220, 100%, 96%, 1)'
+        ],
+        pesticide: [
+          'hsla(0, 100%, 96%, 1)',
+          'hsla(25, 100%, 96%, 1)',
+          'hsla(0, 100%, 96%, 1)',
+          'hsla(15, 100%, 96%, 1)'
+        ],
+        nutrition: [
+          'hsla(35, 100%, 96%, 1)',
+          'hsla(48, 100%, 96%, 1)',
+          'hsla(35, 100%, 96%, 1)',
+          'hsla(20, 100%, 96%, 1)'
+        ],
+        biostimulant: [
+          'hsla(170, 100%, 96%, 1)',
+          'hsla(195, 100%, 96%, 1)',
+          'hsla(170, 100%, 96%, 1)',
+          'hsla(185, 100%, 96%, 1)'
+        ]
+      };
+      const gradColors = gradients[activeCategory] || gradients.herbicide;
+      root.style.setProperty('--bg-gradient-1', gradColors[0]);
+      root.style.setProperty('--bg-gradient-2', gradColors[1]);
+      root.style.setProperty('--bg-gradient-3', gradColors[2]);
+      root.style.setProperty('--bg-gradient-4', gradColors[3]);
+    }
+  }, [activeCategory]);
+
   if (!isConfigured) {
     return <Setup />;
   }
