@@ -731,25 +731,27 @@ export class AnalysisEngine {
                         metric: metric
                     };
 
-                    // PERSIST RESULTS TO BACKEND
+                    // PERSIST RESULTS TO BACKEND (Asynchronously in background to keep UI fast!)
                     if (options.persist !== false && this.getAppState && this.getAppState()?.settings?.scriptUrl) {
-                        try {
-                            await apiCall('saveAnalysisResults', {
-                                projectId: this.projectId,
-                                results: results
-                            }, true, this.getAppState);
-                            await apiCall('logAnalysisRun', {
-                                projectId: this.projectId,
-                                metric: metric,
-                                fValue: anovaResults.fVal,
-                                pValue: anovaResults.pVal,
-                                significance: formatSignificance(anovaResults.pVal).symbol,
-                                results: results
-                            }, true, this.getAppState);
-                            console.log('[AnalysisEngine] Results persisted to sheet');
-                        } catch (e) {
-                            console.error('[AnalysisEngine] Failed to persist results:', e);
-                        }
+                        Promise.resolve().then(async () => {
+                            try {
+                                await apiCall('saveAnalysisResults', {
+                                    projectId: this.projectId,
+                                    results: results
+                                }, true, this.getAppState);
+                                await apiCall('logAnalysisRun', {
+                                    projectId: this.projectId,
+                                    metric: metric,
+                                    fValue: anovaResults.fVal,
+                                    pValue: anovaResults.pVal,
+                                    significance: formatSignificance(anovaResults.pVal).symbol,
+                                    results: results
+                                }, true, this.getAppState);
+                                console.log('[AnalysisEngine] Results persisted to sheet');
+                            } catch (e) {
+                                console.error('[AnalysisEngine] Failed to persist results:', e);
+                            }
+                        }).catch(e => console.error('[AnalysisEngine] Async persistence error:', e));
                     }
 
                     return results;

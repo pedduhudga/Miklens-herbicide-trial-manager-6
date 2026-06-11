@@ -838,13 +838,11 @@ export default function Projects({ onMenuClick }) {
 
     try {
       await deleteBlock({ ID: blockId }, getAppState);
-      // Also delete associated trials from Firebase
-      for (const t of blockTrials) {
-        try {
-          const { deleteTrial } = await import('../services/dataLayer.js');
-          await deleteTrial({ ID: t.ID }, getAppState);
-        } catch { /* best effort */ }
-      }
+      // Also delete associated trials from Firebase in parallel
+      const { deleteTrial } = await import('../services/dataLayer.js');
+      await Promise.all(
+        blockTrials.map(t => deleteTrial({ ID: t.ID }, getAppState).catch(() => {}))
+      );
       toast(`Block "${blockName}" deleted`);
     } catch { toast('Failed to delete block', 'error'); }
   };
@@ -1140,19 +1138,18 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const oldTrials = currentTrials.filter(t => String(t.ProjectID) === String(activeProject.ID));
 
     try {
-      // 1. Delete old trials
-      for (const t of oldTrials) {
-        try { await deleteTrial({ ID: t.ID }, getAppState); } catch (e) { console.error(e); }
-      }
-      // 2. Delete old blocks
-      for (const b of oldBlocks) {
-        try { await deleteBlock({ ID: b.ID }, getAppState); } catch (e) { console.error(e); }
-      }
-      // 3. Save new blocks
-      for (const b of blocksToSave) {
-        try { await addBlock(b, getAppState); } catch (e) { console.error(e); }
-      }
-      // 4. Save new trials in batch
+      // Run deletions in parallel
+      await Promise.all([
+        ...oldTrials.map(t => deleteTrial({ ID: t.ID }, getAppState).catch(e => console.error(e))),
+        ...oldBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState).catch(e => console.error(e)))
+      ]);
+
+      // Save new blocks in parallel
+      await Promise.all(
+        blocksToSave.map(b => addBlock(b, getAppState).catch(e => console.error(e)))
+      );
+
+      // Save new trials in batch
       await addBatchTrials({ trials: trialsToSave }, getAppState);
       toast('Randomized layout generated successfully!', 'success');
       runAnalysis(postHocMethod);
@@ -1395,24 +1392,12 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     try {
       await deleteProject({ ID: id }, getAppState);
       
-      // Delete associated blocks
-      for (const b of projectBlocks) {
-        try {
-          await deleteBlock({ ID: b.ID }, getAppState);
-        } catch (err) {
-          console.error('Failed to delete block', b.ID, err);
-        }
-      }
-      
-      // Delete associated trials
-      for (const t of projectTrials) {
-        try {
-          const { deleteTrial } = await import('../services/dataLayer.js');
-          await deleteTrial({ ID: t.ID }, getAppState);
-        } catch (err) {
-          console.error('Failed to delete trial', t.ID, err);
-        }
-      }
+      // Delete associated blocks and trials in parallel
+      const { deleteTrial } = await import('../services/dataLayer.js');
+      await Promise.all([
+        ...projectBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState).catch(err => console.error('Failed to delete block', b.ID, err))),
+        ...projectTrials.map(t => deleteTrial({ ID: t.ID }, getAppState).catch(err => console.error('Failed to delete trial', t.ID, err)))
+      ]);
       
       toast('Project and all associated blocks and trials deleted');
     } catch { 
@@ -2300,7 +2285,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                     onChange={e => updateTreatmentRow(t.id, 'formulationId', e.target.value)}
                                     className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
                                   >
-                                    <option value="">None (Untreated Control)</option>
+                                    <option value="">None / Custom (No saved formulation)</option>
                                     {activeFormulations.map(f => (
                                       <option key={f.ID} value={f.ID}>{f.Name}</option>
                                     ))}
