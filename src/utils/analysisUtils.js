@@ -636,7 +636,7 @@ export class AnalysisEngine {
                     return this.trials.filter(t => t.FormulationName === treatmentName);
                 }
 
-                // Get aggregated data for a specific metric
+                 // Get aggregated data for a specific metric
                 getData(metric, species = null, daa = null) {
                     const data = {};
                     const primaryField = getPrimaryObservationField(this.category);
@@ -654,8 +654,40 @@ export class AnalysisEngine {
                             if (metric === 'yield') return parseFloat(r.Yield || r.YieldValue || 0);
                             const eff = safeJsonParse(r.EfficacyDataJSON, []);
                             if (eff.length === 0) return 0;
-                            let obs = daa !== null ? (eff.find(e => e.daa === daa) || eff[eff.length - 1]) : eff.sort((a, b) => b.daa - a.daa)[0];
-                            if (!obs) return 0;
+
+                            // Advanced scientific metrics
+                            if (metric === 'audpc') {
+                                // Calculate AUDPC for disease severity over time
+                                const sortedObs = [...eff].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+                                let audpcVal = 0;
+                                for (let i = 0; i < sortedObs.length - 1; i++) {
+                                    const y1 = parseFloat(sortedObs[i].diseaseSeverity ?? sortedObs[i].cover ?? 0);
+                                    const y2 = parseFloat(sortedObs[i+1].diseaseSeverity ?? sortedObs[i+1].cover ?? 0);
+                                    const t1 = parseFloat(sortedObs[i].daa || 0);
+                                    const t2 = parseFloat(sortedObs[i+1].daa || 0);
+                                    audpcVal += ((y1 + y2) / 2) * (t2 - t1);
+                                }
+                                return audpcVal;
+                            }
+
+                            if (metric === 'rootToShootRatio') {
+                                let obs = daa !== null ? (eff.find(e => e.daa === daa) || eff[eff.length - 1]) : eff.sort((a, b) => b.daa - a.daa)[0];
+                                if (!obs) return 0;
+                                const root = parseFloat(obs.rootBiomass ?? 0);
+                                const shoot = parseFloat(obs.shootBiomass ?? 0);
+                                return shoot > 0 ? root / shoot : 0;
+                            }
+
+                            if (metric === 'nue') {
+                                const yieldVal = parseFloat(r.Yield || r.YieldValue || 0);
+                                const rate = parseFloat(r.Dosage || 1);
+                                // Get UTC control yield to calculate NUE = (Yield_trt - Yield_control) / Rate
+                                const utcReps = this.getReplications(this.utcName || '');
+                                const utcYields = utcReps.map(ur => parseFloat(ur.Yield || ur.YieldValue || 0));
+                                const utcMeanYield = utcYields.length ? utcYields.reduce((a, b) => a + b, 0) / utcYields.length : 0;
+                                return rate > 0 ? (yieldVal - utcMeanYield) / rate : 0;
+                            }
+
                             if (metric === 'cover' || metric === primaryField) {
                                 if (this.category === 'herbicide') {
                                     if (species) {
@@ -711,10 +743,50 @@ export class AnalysisEngine {
                     const efficacy = {};
                     const primaryField = getPrimaryObservationField(this.category);
                     if (this.utcName && means[this.utcName] > 0) {
+                        // Check if Henderson-Tilton can be calculated for pesticide trials
+                        let canUseHendersonTilton = false;
+                        let utcBaseMean = 0;
+                        const trtBaseMeans = {};
+
+                        if (this.category === 'pesticide' && (metric === 'cover' || metric === primaryField)) {
+                            // Find 0 DAA or earliest baseline values
+                            const utcReps = this.getReplications(this.utcName);
+                            const utcBaseVals = utcReps.map(ur => {
+                                const eff = safeJsonParse(ur.EfficacyDataJSON, []);
+                                const baseObs = eff.find(e => parseFloat(e.daa) === 0);
+                                return baseObs ? parseFloat(baseObs[primaryField] ?? baseObs.pestCount ?? 0) : null;
+                            }).filter(v => v !== null);
+
+                            if (utcBaseVals.length > 0) {
+                                utcBaseMean = utcBaseVals.reduce((a, b) => a + b, 0) / utcBaseVals.length;
+                                if (utcBaseMean > 0) {
+                                    treatments.forEach(trt => {
+                                        const trtReps = this.getReplications(trt);
+                                        const trtBaseVals = trtReps.map(tr => {
+                                            const eff = safeJsonParse(tr.EfficacyDataJSON, []);
+                                            const baseObs = eff.find(e => parseFloat(e.daa) === 0);
+                                            return baseObs ? parseFloat(baseObs[primaryField] ?? baseObs.pestCount ?? 0) : null;
+                                        }).filter(v => v !== null);
+                                        if (trtBaseVals.length > 0) {
+                                            trtBaseMeans[trt] = trtBaseVals.reduce((a, b) => a + b, 0) / trtBaseVals.length;
+                                        }
+                                    });
+                                    canUseHendersonTilton = Object.keys(trtBaseMeans).length === treatments.length;
+                                }
+                            }
+                        }
+
                         treatments.forEach(t => {
-                            if (metric === 'cover' || metric === primaryField) {
-                                if (this.category === 'nutrition' || this.category === 'biostimulant') {
+                            if (metric === 'cover' || metric === primaryField || metric === 'audpc') {
+                                if (this.category === 'nutrition' || this.category === 'biostimulant' || metric === 'nue') {
                                     efficacy[t] = ((means[t] - means[this.utcName]) / means[this.utcName]) * 100;
+                                } else if (canUseHendersonTilton && trtBaseMeans[t] > 0) {
+                                    // Henderson-Tilton: (1 - (Ta * Cb) / (Tb * Ca)) * 100
+                                    const Ta = means[t];
+                                    const Tb = trtBaseMeans[t];
+                                    const Ca = means[this.utcName];
+                                    const Cb = utcBaseMean;
+                                    efficacy[t] = (1 - (Ta * Cb) / (Tb * Ca)) * 100;
                                 } else {
                                     efficacy[t] = ((means[this.utcName] - means[t]) / means[this.utcName]) * 100;
                                 }

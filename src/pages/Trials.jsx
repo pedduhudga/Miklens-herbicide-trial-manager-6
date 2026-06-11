@@ -1460,7 +1460,7 @@ export default function Trials({ onMenuClick }) {
   const handleCropExistingPhoto = (idx, currentSrc) => {
     openCropperFor(currentSrc, async (croppedUrl) => {
       const photos = safeJsonParse(activeTrial.PhotoURLs, []);
-      photos[idx] = { ...photos[idx], fileData: croppedUrl, url: undefined };
+      photos[idx] = { ...photos[idx], fileData: croppedUrl, url: undefined, bounds: undefined, identifications: [] };
       const updated = { ...activeTrial, PhotoURLs: JSON.stringify(photos) };
       updateState({ trials: trials.map(t => t.ID === updated.ID ? updated : t) });
       setActiveTrial(updated);

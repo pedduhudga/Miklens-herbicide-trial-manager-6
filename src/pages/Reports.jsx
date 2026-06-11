@@ -182,6 +182,36 @@ export default function Reports({ onMenuClick }) {
      }
   };
 
+  const handleGenerateARM = async () => {
+    if (!selectedProjectId) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a project first.', type: 'warning' } }));
+      return;
+    }
+    const projectTrials = (state.trials || []).filter(t => t.ProjectID === selectedProjectId);
+    if (projectTrials.length === 0) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No trials found for the selected project.', type: 'warning' } }));
+      return;
+    }
+    const project = (state.projects || []).find(p => p.ID === selectedProjectId);
+    
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating ARM exchange file...', type: 'info' } }));
+    
+    try {
+      const { exportToARM } = await import('../services/armExporter.js');
+      const blob = exportToARM(projectTrials, activeCategory, project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ARM_Export_${project?.Name || 'Project'}_${activeCategory}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'ARM file exported successfully!', type: 'success' } }));
+    } catch (error) {
+      console.error(error);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to generate ARM file.', type: 'error' } }));
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
       <TopBar title="Reports & Cards" onMenuClick={onMenuClick} />
@@ -284,13 +314,30 @@ export default function Reports({ onMenuClick }) {
                  </button>
               </div>
 
+              <div 
+                onClick={handleGenerateARM}
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full hover:border-purple-400"
+              >
+                 <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <FileBox className="w-7 h-7" />
+                 </div>
+                 <h3 className="font-bold text-lg text-slate-800 mb-3">ARM Exchange Data (CSV)</h3>
+                 <p className="text-sm text-slate-500 mb-6 flex-grow">Export trial coordinates, blocks, treatments, and observation logs in the standard Agricultural Research Manager exchange layout.</p>
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); handleGenerateARM(); }}
+                   className="w-full py-3 bg-slate-50 text-purple-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-purple-100 transition"
+                 >
+                   Export ARM File <Download className="w-4 h-4" />
+                 </button>
+              </div>
+
               <div
                 onClick={() => setShowBuilder(true)}
                 className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl shadow-md border border-purple-800 p-6 hover:shadow-lg transition-all cursor-pointer group flex flex-col h-full text-white"
               >
                  <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <LayoutTemplate className="w-7 h-7" />
-                 </div>
+                  </div>
                  <h3 className="font-bold text-lg mb-3">Custom Report Builder</h3>
                  <p className="text-sm text-purple-100 mb-6 flex-grow">Drag and drop specific charts, tables, and narrative blocks to build a tailored regulatory or scientific export template.</p>
                  <button className="w-full py-3 bg-white/10 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/20 transition">

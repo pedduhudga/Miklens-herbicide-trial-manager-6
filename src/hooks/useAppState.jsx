@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import { initFirebase, isFirebaseReady } from '../services/firebase.js';
-import { saveOfflineData, loadOfflineData } from '../services/offlineStorage.js';
+import { saveOfflineData, loadOfflineData, saveOfflinePhoto, loadOfflinePhoto } from '../services/offlineStorage.js';
+
+function safeJsonParse(val, fallback = []) {
+  if (!val) return fallback;
+  if (typeof val === 'object') return val;
+  try { return JSON.parse(val); } catch { return fallback; }
+}
 
 const initialState = {
   auth: {
@@ -162,9 +168,33 @@ export function AppStateProvider({ children }) {
         loadOfflineData('formulations'),
         loadOfflineData('ingredients'),
         loadOfflineData('blocks')
-      ]).then(([trials, projects, formulations, ingredients, blocks]) => {
+      ]).then(async ([trials, projects, formulations, ingredients, blocks]) => {
         const payload = {};
-        if (trials?.length) payload.trials = trials;
+        if (trials?.length) {
+          // Rehydrate trials with cached photos
+          const rehydratedTrials = await Promise.all(trials.map(async t => {
+            if (t.PhotoURLs) {
+              const photos = safeJsonParse(t.PhotoURLs, []);
+              const rehydratedPhotos = await Promise.all(photos.map(async (p, idx) => {
+                const src = typeof p === 'string' ? p : (p.fileData || p.url || p.src);
+                if (src && src.startsWith('local-photo-id:')) {
+                  const photoKey = src.substring('local-photo-id:'.length);
+                  const cachedBase64 = await loadOfflinePhoto(photoKey);
+                  if (cachedBase64) {
+                    if (typeof p === 'string') return cachedBase64;
+                    if (p.fileData) return { ...p, fileData: cachedBase64 };
+                    if (p.url) return { ...p, url: cachedBase64 };
+                    return { ...p, src: cachedBase64 };
+                  }
+                }
+                return p;
+              }));
+              return { ...t, PhotoURLs: JSON.stringify(rehydratedPhotos) };
+            }
+            return t;
+          }));
+          payload.trials = rehydratedTrials;
+        }
         if (projects?.length) payload.projects = projects;
         if (formulations?.length) payload.formulations = formulations;
         if (ingredients?.length) payload.ingredients = ingredients;
@@ -181,7 +211,30 @@ export function AppStateProvider({ children }) {
   // Auto-persist datasets to IndexedDB when they change in state
   useEffect(() => {
     if (state.trials && state.trials.length > 0) {
-      saveOfflineData('trials', state.trials);
+      const processAndSaveTrialsOffline = async () => {
+        const cleanTrials = await Promise.all(state.trials.map(async t => {
+          if (!t.PhotoURLs) return t;
+          const photos = safeJsonParse(t.PhotoURLs, []);
+          let changed = false;
+          const processedPhotos = await Promise.all(photos.map(async (p, idx) => {
+            const src = typeof p === 'string' ? p : (p.fileData || p.url || p.src);
+            if (src && src.startsWith('data:image/')) {
+              const photoKey = `${t.ID}_${idx}`;
+              await saveOfflinePhoto(photoKey, src);
+              changed = true;
+              const refString = `local-photo-id:${photoKey}`;
+              if (typeof p === 'string') return refString;
+              if (p.fileData) return { ...p, fileData: refString };
+              if (p.url) return { ...p, url: refString };
+              return { ...p, src: refString };
+            }
+            return p;
+          }));
+          return changed ? { ...t, PhotoURLs: JSON.stringify(processedPhotos) } : t;
+        }));
+        await saveOfflineData('trials', cleanTrials);
+      };
+      processAndSaveTrialsOffline().catch(err => console.error('Failed to save trials offline:', err));
     }
   }, [state.trials]);
 

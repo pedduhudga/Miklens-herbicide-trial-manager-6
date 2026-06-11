@@ -2,8 +2,8 @@
 // Native IndexedDB storage wrapper for offline data caching.
 
 const DB_NAME = 'MiklensTrialManagerDB';
-const DB_VERSION = 1;
-const STORES = ['trials', 'projects', 'formulations', 'ingredients', 'blocks', 'syncQueue'];
+const DB_VERSION = 2;
+const STORES = ['trials', 'projects', 'formulations', 'ingredients', 'blocks', 'syncQueue', 'trialPhotos'];
 
 function getDB() {
   return new Promise((resolve, reject) => {
@@ -26,6 +26,37 @@ function getDB() {
       reject(event.target.error);
     };
   });
+}
+
+export async function saveOfflinePhoto(id, base64Data) {
+  try {
+    const db = await getDB();
+    const transaction = db.transaction('trialPhotos', 'readwrite');
+    const store = transaction.objectStore('trialPhotos');
+    store.put({ ID: String(id), dataUrl: base64Data });
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve(true);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  } catch (err) {
+    console.error(`Failed to save offline photo ${id}:`, err);
+  }
+}
+
+export async function loadOfflinePhoto(id) {
+  try {
+    const db = await getDB();
+    const transaction = db.transaction('trialPhotos', 'readonly');
+    const store = transaction.objectStore('trialPhotos');
+    const request = store.get(String(id));
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result?.dataUrl || null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.error(`Failed to load offline photo ${id}:`, err);
+    return null;
+  }
 }
 
 export async function saveOfflineData(storeName, data) {
