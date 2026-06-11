@@ -84,6 +84,11 @@ export default function Trials({ onMenuClick }) {
   const activeCategory = state.activeCategory || 'herbicide';
   const catConfig = getCategoryConfig(activeCategory);
 
+  // ── DERIVED DATA ───────────────────────────────────────────────────
+  const trials = state.trials || [];
+  const formulations = state.formulations || [];
+  const projects = state.projects || [];
+
   // --- List view state ---
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -366,10 +371,7 @@ export default function Trials({ onMenuClick }) {
     updateState({ selectedTrials: matched });
   }, [selectedForBulk, state.trials, updateState]);
 
-  // ── DERIVED DATA ───────────────────────────────────────────────────
-  const trials = state.trials || [];
-  const formulations = state.formulations || [];
-  const projects = state.projects || [];
+
 
   const filteredTrials = useMemo(() => {
     let list = [...trials];
