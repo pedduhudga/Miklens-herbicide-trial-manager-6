@@ -175,8 +175,10 @@ export function fitDoseResponse(data) {
   // ED values: dose giving x% response between c and d
   const computeED = (pct) => {
     if (pct <= 0 || pct >= 100) return null;
-    const ratio = (100 - pct) / pct;
-    const ed = e * Math.pow(ratio, 1 / b);
+    // Enforce that ED90 is always greater than ED50, and ED10 is always less than ED50,
+    // regardless of whether the slope parameter 'b' is positive or negative.
+    const ratio = pct / (100 - pct);
+    const ed = e * Math.pow(ratio, 1 / Math.abs(b));
     return isNaN(ed) || !isFinite(ed) ? null : ed;
   };
 
