@@ -34,7 +34,7 @@ const initialState = {
     openWeatherMapKey: '',
     agAnalyticsKey: '',
     qrCodeFields: { FormulationName: true, InvestigatorName: true, Date: true, Dosage: true, Location: false, Result: false, WeedSpecies: false, Weather: false },
-    qrOnlineFields: { showInvestigator: true, showDate: true, showLocation: true, showDosage: true, showWeedSpecies: true, showResult: true, showWeather: true, showIngredients: false, showConclusion: true, showPhotos: true },
+    qrOnlineFields: { showFormulationName: true, showInvestigator: true, showDate: true, showLocation: true, showDosage: true, showWeedSpecies: true, showResult: true, showReplication: false, showWeather: true, showIngredients: false, showObservations: false, showAISummary: false, showConclusion: true, showPhotos: true },
     // ── Firebase ────────────────────────────────────────────────────────────
     firebaseEnabled: false,
     firebaseConfig: {

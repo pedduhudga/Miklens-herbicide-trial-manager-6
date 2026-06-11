@@ -45,26 +45,34 @@ const QR_FIELDS = [
   "Humidity",
 ];
 const ONLINE_QR_FIELDS = [
+  { key: "showFormulationName", label: "Formulation Name (Product)" },
   { key: "showInvestigator", label: "Investigator" },
   { key: "showDate", label: "Date" },
   { key: "showLocation", label: "Location" },
   { key: "showDosage", label: "Dosage" },
   { key: "showWeedSpecies", label: "Weed Species" },
   { key: "showResult", label: "Result" },
+  { key: "showReplication", label: "Replication" },
   { key: "showWeather", label: "Weather" },
   { key: "showIngredients", label: "Ingredients" },
+  { key: "showObservations", label: "Observations (Timeline)" },
+  { key: "showAISummary", label: "AI Narrative Summary" },
   { key: "showConclusion", label: "Conclusion & Notes" },
   { key: "showPhotos", label: "Photos" },
 ];
 const DEFAULT_ONLINE_QR_SETTINGS = {
+  showFormulationName: true,
   showInvestigator: true,
   showDate: true,
   showLocation: true,
   showDosage: true,
   showWeedSpecies: true,
   showResult: true,
+  showReplication: false,
   showWeather: true,
   showIngredients: false,
+  showObservations: false,
+  showAISummary: false,
   showConclusion: true,
   showPhotos: true,
 };
@@ -196,16 +204,20 @@ export default function Settings({ onMenuClick }) {
     if (Array.isArray(val)) {
       return {
         ...DEFAULT_ONLINE_QR_SETTINGS,
+        showFormulationName: val.includes("FormulationName"),
         showInvestigator: val.includes("InvestigatorName"),
         showDate: val.includes("Date"),
         showLocation: val.includes("Location"),
         showDosage: val.includes("Dosage"),
         showWeedSpecies: val.includes("WeedSpecies"),
         showResult: val.includes("Result"),
+        showReplication: val.includes("Replication"),
         showWeather:
           val.includes("Temperature") ||
           val.includes("Humidity") ||
           val.includes("Weather"),
+        showObservations: val.includes("Observations") || val.includes("Efficacy"),
+        showAISummary: val.includes("AISummary") || val.includes("AI"),
         showConclusion: val.includes("Notes") || val.includes("Conclusion"),
         showPhotos: val.includes("Photos"),
       };
