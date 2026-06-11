@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import { FileBox, Download, LayoutTemplate, GripVertical, Plus, Trash2, ChevronRight } from 'lucide-react';
-import { exportScientificReportAsDOC } from '../utils/exportUtils.js';
+import { exportScientificReportAsDOC, exportTrialCardsPDF } from '../utils/exportUtils.js';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 
@@ -105,6 +105,33 @@ export default function Reports({ onMenuClick }) {
     setSelectedTrialIds(projectTrials.map(t => t.ID));
   };
 
+  const handleGenerateScientificReport = async () => {
+    if (!selectedTrialId) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a trial first.', type: 'warning' } }));
+      return;
+    }
+    const trial = (state.trials || []).find(t => t.ID === selectedTrialId);
+    if (!trial) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Trial data not found.', type: 'error' } }));
+      return;
+    }
+    await exportScientificReportAsDOC({ trialId: selectedTrialId }, state, { templateConfig: ['block-exec-summary', 'block-trial-design', 'block-table-means', 'block-env-suitability'] });
+  };
+
+  const handleGenerateTrialCards = async () => {
+    if (!selectedProjectId) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a project first.', type: 'warning' } }));
+      return;
+    }
+    const projectTrials = (state.trials || []).filter(t => t.ProjectID === selectedProjectId);
+    if (projectTrials.length === 0) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No trials found for the selected project.', type: 'warning' } }));
+      return;
+    }
+    const project = (state.projects || []).find(p => p.ID === selectedProjectId);
+    await exportTrialCardsPDF(projectTrials, project);
+  };
+
   const handleGenerateAdvancedExcel = async () => {
     if (!selectedTrialId) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a trial first.', type: 'warning' } }));
@@ -205,24 +232,36 @@ export default function Reports({ onMenuClick }) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full">
+              <div 
+                onClick={handleGenerateScientificReport}
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full"
+              >
                  <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <FileBox className="w-7 h-7" />
                  </div>
                  <h3 className="font-bold text-lg text-slate-800 mb-3">Scientific Report (DOCX)</h3>
                  <p className="text-sm text-slate-500 mb-6 flex-grow">Export detailed, standard format per-trial reports containing full efficacy charts, environmental data, and standardized AI narratives.</p>
-                 <button className="w-full py-3 bg-slate-50 text-blue-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-blue-50 transition">
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); handleGenerateScientificReport(); }}
+                   className="w-full py-3 bg-slate-50 text-blue-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-blue-100 transition"
+                 >
                    Select Trials <Download className="w-4 h-4" />
                  </button>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full">
+              <div 
+                onClick={handleGenerateTrialCards}
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full"
+              >
                  <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <FileBox className="w-7 h-7" />
                  </div>
                  <h3 className="font-bold text-lg text-slate-800 mb-3">Printable Trial Cards (PDF)</h3>
                  <p className="text-sm text-slate-500 mb-6 flex-grow">Generate layout-optimized, physical field cards containing plot layouts and scannable QR codes for your stakes.</p>
-                 <button className="w-full py-3 bg-slate-50 text-emerald-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-emerald-50 transition">
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); handleGenerateTrialCards(); }}
+                   className="w-full py-3 bg-slate-50 text-emerald-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-emerald-100 transition"
+                 >
                    Generate Cards <Download className="w-4 h-4" />
                  </button>
               </div>

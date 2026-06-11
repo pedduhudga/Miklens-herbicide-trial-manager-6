@@ -1,4 +1,5 @@
 import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
 
 // Stub integrations for export logic
 // In a full implementation, this uses html-docx-js to render React components to strings and build a word doc.
