@@ -134,7 +134,7 @@ function InlineBarChart({ data, color = '#10b981', height = 120 }) {
 }
 
 // ── Plot mini card ─────────────────────────────────────────────────────────
-function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
+function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick, outlierInfo }) {
   const isControl = String(trial.IsControl).toLowerCase() === 'true';
   const isCheck = String(trial.IsStandardCheck).toLowerCase() === 'true';
   const isCompleted = String(trial.IsCompleted).toLowerCase() === 'true';
@@ -158,12 +158,21 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
 
   const metricVal = latest ? latest[primaryObsField] : null;
 
+  const borderStyle = outlierInfo ? 'border-red-400 ring-1 ring-red-400 ring-opacity-50 shadow-red-50' : '';
+
   return (
-    <div onClick={onClick} className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition relative overflow-hidden cursor-pointer ${bg}`}>
+    <div onClick={onClick} className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition relative overflow-hidden cursor-pointer ${bg} ${borderStyle}`}>
       <div className={`absolute top-0 left-0 w-1 h-full ${ribbon}`} />
       <div className="flex justify-between items-start mb-1">
         <span className="text-[9px] font-bold text-slate-400">PLOT {plotNum}</span>
-        {badge}
+        <div className="flex gap-1 items-center">
+          {outlierInfo && (
+            <span className="text-[7px] font-extrabold bg-red-500 text-white px-1 py-0.5 rounded uppercase" title={`Outlier detected (Z = ${outlierInfo.zScore.toFixed(2)})`}>
+              Outlier
+            </span>
+          )}
+          {badge}
+        </div>
       </div>
       <p className="font-bold text-xs text-slate-800 truncate mb-0.5" title={trial.FormulationName}>{trial.FormulationName || '—'}</p>
       <p className="text-[9px] text-slate-500 truncate">{trial.Dosage || '—'}</p>
@@ -191,7 +200,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
 }
 
 // ── Block card ─────────────────────────────────────────────────────────────
-function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, onAddPlot, isLocked }) {
+function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, onAddPlot, isLocked, outliers }) {
   const projectConfig = getCategoryConfig(activeCategory);
   const theme = getThemeClasses(projectConfig.color.accent);
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
@@ -224,7 +233,7 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
               <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Main Factor: {mainFactor}</div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
+                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
               </div>
             </div>
           ))}
@@ -246,7 +255,7 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
               <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Sub-Block: {subBlock}</div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
+                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
               </div>
             </div>
           ))}
@@ -257,7 +266,7 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
     return (
       <div className="flex gap-3 min-w-max pb-1">
         {[...trials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-          .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} />)}
+          .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
       </div>
     );
   };
@@ -2044,7 +2053,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   {projectBlocks.length > 0 ? (
                     <div className={blocksViewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" : "space-y-4"}>
                       {projectBlocks.map(b => (
-                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} />
+                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} outliers={analysisResults?.outliers} />
                       ))}
                     </div>
                   ) : (
@@ -2073,6 +2082,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className={`text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}>
                             <option value="lsd">Fisher's LSD</option>
                             <option value="tukey">Tukey HSD</option>
+                            <option value="duncan">Duncan's MRT</option>
                           </select>
                         </div>
                       </div>
@@ -2103,8 +2113,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         </div>
                       </div>
                       <p className="mt-3 text-xs text-slate-400">
-                        Means sharing the same letter are not significantly different ({postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05).
-                        {isFinite(analysisResults.postHoc?.value) && <span className="ml-2 font-semibold">{postHocMethod === 'tukey' ? 'HSD' : 'LSD'} (0.05): {analysisResults.postHoc.value.toFixed(2)}</span>}
+                        Means sharing the same letter are not significantly different ({postHocMethod === 'tukey' ? 'Tukey HSD' : postHocMethod === 'duncan' ? "Duncan's MRT" : "Fisher's LSD"}, α=0.05).
+                        {isFinite(analysisResults.postHoc?.value) && <span className="ml-2 font-semibold">{postHocMethod === 'tukey' ? 'HSD' : postHocMethod === 'duncan' ? 'Range' : 'LSD'} (0.05): {analysisResults.postHoc.value.toFixed(2)}</span>}
                       </p>
                     </div>
 
@@ -2142,8 +2152,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           </table>
                         </div>
                         <p className="mt-2 text-xs text-slate-400">
-                          Means sharing the same letter are not significantly different ({postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"}, α=0.05).
-                          {isFinite(analysisResults.postHoc?.value) && <span className="ml-2 font-semibold text-slate-500">{postHocMethod === 'tukey' ? 'HSD' : 'LSD'} (0.05) = {analysisResults.postHoc.value.toFixed(2)}</span>}
+                          Means sharing the same letter are not significantly different ({postHocMethod === 'tukey' ? 'Tukey HSD' : postHocMethod === 'duncan' ? "Duncan's MRT" : "Fisher's LSD"}, α=0.05).
+                          {isFinite(analysisResults.postHoc?.value) && <span className="ml-2 font-semibold text-slate-500">{postHocMethod === 'tukey' ? 'HSD' : postHocMethod === 'duncan' ? 'Range' : 'LSD'} (0.05) = {analysisResults.postHoc.value.toFixed(2)}</span>}
                         </p>
                       </div>
                     )}
@@ -2159,42 +2169,94 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            <tr>
-                              <td className="p-3 font-medium">Treatment</td>
-                              <td className="p-3 text-right">{analysisResults.anova?.dfTreat ?? '—'}</td>
-                              <td className="p-3 text-right">{isFinite(analysisResults.anova?.ssTreat) ? analysisResults.anova.ssTreat.toFixed(2) : '—'}</td>
-                              <td className="p-3 text-right">{isFinite(analysisResults.anova?.msTreat) ? analysisResults.anova.msTreat.toFixed(2) : '—'}</td>
-                              <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova?.fVal) ? analysisResults.anova.fVal.toFixed(2) : '—'}</td>
-                              <td className={`p-3 text-right ${(analysisResults.anova?.pVal ?? 1) < 0.05 ? '${theme.text} font-bold' : ''}`}>
-                                {isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '—'}
-                              </td>
-                              <td className="p-3 text-right">
-                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova?.pVal ?? 1) < 0.05 ? '${theme.badge}' : 'bg-slate-100 text-slate-500'}`}>
-                                  {sigStars(analysisResults.anova?.pVal)}
-                                </span>
-                              </td>
-                            </tr>
-                            {isFinite(analysisResults.anova?.ssBlock) && (
+                            {analysisResults.anova?.isTwoWay ? (
+                              <>
+                                <tr>
+                                  <td className="p-3 font-medium">{analysisResults.anova.factorA?.name || 'Factor A'}</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.factorA?.df ?? '—'}</td>
+                                  <td className="p-3 text-right">{isFinite(analysisResults.anova.factorA?.ss) ? analysisResults.anova.factorA.ss.toFixed(2) : '—'}</td>
+                                  <td className="p-3 text-right">{isFinite(analysisResults.anova.factorA?.ms) ? analysisResults.anova.factorA.ms.toFixed(2) : '—'}</td>
+                                  <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova.factorA?.f) ? analysisResults.anova.factorA.f.toFixed(2) : '—'}</td>
+                                  <td className={`p-3 text-right ${(analysisResults.anova.factorA?.p ?? 1) < 0.05 ? `${theme.text} font-bold` : ''}`}>
+                                    {isFinite(analysisResults.anova.factorA?.p) ? analysisResults.anova.factorA.p.toFixed(4) : '—'}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova.factorA?.p ?? 1) < 0.05 ? `${theme.badge}` : 'bg-slate-100 text-slate-500'}`}>
+                                      {sigStars(analysisResults.anova.factorA?.p)}
+                                    </span>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="p-3 font-medium">{analysisResults.anova.factorB?.name || 'Factor B'}</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.factorB?.df ?? '—'}</td>
+                                  <td className="p-3 text-right">{isFinite(analysisResults.anova.factorB?.ss) ? analysisResults.anova.factorB.ss.toFixed(2) : '—'}</td>
+                                  <td className="p-3 text-right">{isFinite(analysisResults.anova.factorB?.ms) ? analysisResults.anova.factorB.ms.toFixed(2) : '—'}</td>
+                                  <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova.factorB?.f) ? analysisResults.anova.factorB.f.toFixed(2) : '—'}</td>
+                                  <td className={`p-3 text-right ${(analysisResults.anova.factorB?.p ?? 1) < 0.05 ? `${theme.text} font-bold` : ''}`}>
+                                    {isFinite(analysisResults.anova.factorB?.p) ? analysisResults.anova.factorB.p.toFixed(4) : '—'}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova.factorB?.p ?? 1) < 0.05 ? `${theme.badge}` : 'bg-slate-100 text-slate-500'}`}>
+                                      {sigStars(analysisResults.anova.factorB?.p)}
+                                    </span>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="p-3 font-medium">Interaction (A x B)</td>
+                                  <td className="p-3 text-right">{analysisResults.anova.interaction?.df ?? '—'}</td>
+                                  <td className="p-3 text-right">{isFinite(analysisResults.anova.interaction?.ss) ? analysisResults.anova.interaction.ss.toFixed(2) : '—'}</td>
+                                  <td className="p-3 text-right">{isFinite(analysisResults.anova.interaction?.ms) ? analysisResults.anova.interaction.ms.toFixed(2) : '—'}</td>
+                                  <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova.interaction?.f) ? analysisResults.anova.interaction.f.toFixed(2) : '—'}</td>
+                                  <td className={`p-3 text-right ${(analysisResults.anova.interaction?.p ?? 1) < 0.05 ? `${theme.text} font-bold` : ''}`}>
+                                    {isFinite(analysisResults.anova.interaction?.p) ? analysisResults.anova.interaction.p.toFixed(4) : '—'}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova.interaction?.p ?? 1) < 0.05 ? `${theme.badge}` : 'bg-slate-100 text-slate-500'}`}>
+                                      {sigStars(analysisResults.anova.interaction?.p)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              </>
+                            ) : (
+                              <tr>
+                                <td className="p-3 font-medium">Treatment</td>
+                                <td className="p-3 text-right">{analysisResults.anova?.dfTreat ?? '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.ssTreat) ? analysisResults.anova.ssTreat.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.msTreat) ? analysisResults.anova.msTreat.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova?.fVal) ? analysisResults.anova.fVal.toFixed(2) : '—'}</td>
+                                <td className={`p-3 text-right ${(analysisResults.anova?.pVal ?? 1) < 0.05 ? `${theme.text} font-bold` : ''}`}>
+                                  {isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '—'}
+                                </td>
+                                <td className="p-3 text-right">
+                                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova?.pVal ?? 1) < 0.05 ? `${theme.badge}` : 'bg-slate-100 text-slate-500'}`}>
+                                    {sigStars(analysisResults.anova?.pVal)}
+                                  </span>
+                                </td>
+                              </tr>
+                            )}
+                            {isFinite(analysisResults.anova?.blocks?.ss ?? analysisResults.anova?.ssBlock) && (
                               <tr>
                                 <td className="p-3 font-medium">Block</td>
-                                <td className="p-3 text-right">{analysisResults.anova?.dfBlock ?? '—'}</td>
-                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.ssBlock) ? analysisResults.anova.ssBlock.toFixed(2) : '—'}</td>
-                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.msBlock) ? analysisResults.anova.msBlock.toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right">{analysisResults.anova?.blocks?.df ?? analysisResults.anova?.dfBlock ?? '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.blocks?.ss ?? analysisResults.anova?.ssBlock) ? (analysisResults.anova.blocks?.ss ?? analysisResults.anova.ssBlock).toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.blocks?.ms ?? analysisResults.anova?.msBlock) ? (analysisResults.anova.blocks?.ms ?? analysisResults.anova.msBlock).toFixed(2) : '—'}</td>
                                 <td className="p-3 text-right"></td><td className="p-3 text-right"></td><td className="p-3 text-right"></td>
                               </tr>
                             )}
-                            <tr>
-                              <td className="p-3 font-medium">Error</td>
-                              <td className="p-3 text-right">{analysisResults.anova?.dfError ?? '—'}</td>
-                              <td className="p-3 text-right">{isFinite(analysisResults.anova?.ssError) ? analysisResults.anova.ssError.toFixed(2) : '—'}</td>
-                              <td className="p-3 text-right">{isFinite(analysisResults.anova?.msError) ? analysisResults.anova.msError.toFixed(2) : '—'}</td>
-                              <td className="p-3 text-right"></td><td className="p-3 text-right"></td><td className="p-3 text-right"></td>
-                            </tr>
-                            {isFinite(analysisResults.anova?.ssTotal) && (
+                            {isFinite(analysisResults.anova?.error?.ss ?? analysisResults.anova?.ssError) && (
+                              <tr>
+                                <td className="p-3 font-medium">Error</td>
+                                <td className="p-3 text-right">{analysisResults.anova?.error?.df ?? analysisResults.anova?.dfError ?? '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.error?.ss ?? analysisResults.anova?.ssError) ? (analysisResults.anova.error?.ss ?? analysisResults.anova.ssError).toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.error?.ms ?? analysisResults.anova?.msError) ? (analysisResults.anova.error?.ms ?? analysisResults.anova.msError).toFixed(2) : '—'}</td>
+                                <td className="p-3 text-right"></td><td className="p-3 text-right"></td><td className="p-3 text-right"></td>
+                              </tr>
+                            )}
+                            {isFinite(analysisResults.anova?.total?.ss ?? analysisResults.anova?.ssTotal) && (
                               <tr className="bg-slate-50 font-semibold">
                                 <td className="p-3">Total</td>
-                                <td className="p-3 text-right">{analysisResults.anova?.dfTotal ?? '—'}</td>
-                                <td className="p-3 text-right">{analysisResults.anova.ssTotal.toFixed(2)}</td>
+                                <td className="p-3 text-right">{analysisResults.anova?.total?.df ?? analysisResults.anova?.dfTotal ?? '—'}</td>
+                                <td className="p-3 text-right">{isFinite(analysisResults.anova?.total?.ss ?? analysisResults.anova?.ssTotal) ? (analysisResults.anova.total?.ss ?? analysisResults.anova.ssTotal).toFixed(2) : '—'}</td>
                                 <td className="p-3 text-right"></td><td className="p-3 text-right"></td><td className="p-3 text-right"></td><td className="p-3 text-right"></td>
                               </tr>
                             )}

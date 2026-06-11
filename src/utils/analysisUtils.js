@@ -3,6 +3,7 @@ import { safeJsonParse, extractMetricValue, formatSignificance } from './helpers
 import { getPrimaryObservationField } from './categoryConfig.js';
 import { jStat } from 'jstat';
 import { apiCall } from '../services/db.js';
+import { performTwoWayANOVA, detectOutliers } from './statsUtils.js';
 
 
 
@@ -738,7 +739,46 @@ export class AnalysisEngine {
                         means[t] = jStat.mean(dataMap[t]);
                     });
 
-                    let anovaResults = this.calculateANOVA(anovaData);
+                    const isTwoWay = this.trials[0]?.TrialDesign === 'Factorial' || this.trials[0]?.TrialDesign === 'Split-Plot' || this.project?.TrialDesign === 'Factorial' || this.project?.TrialDesign === 'Split-Plot';
+
+                    let anovaResults;
+                    if (isTwoWay) {
+                        anovaResults = performTwoWayANOVA(this.trials, {
+                            metric,
+                            species,
+                            daa,
+                            mainFactorName: this.project?.MainFactor || this.trials.find(t => t.MainFactor)?.MainFactor || 'Factor A',
+                            subFactorName: this.project?.SubFactor || this.trials.find(t => t.SubFactor)?.SubFactor || 'Factor B'
+                        });
+                        if (anovaResults.error) {
+                            anovaResults = this.calculateANOVA(anovaData);
+                        }
+                    } else {
+                        anovaResults = this.calculateANOVA(anovaData);
+                    }
+
+                    // Detect outliers for each treatment
+                    const outliers = {};
+                    treatments.forEach(trt => {
+                        const reps = this.getReplications(trt);
+                        const repsWithValues = reps.map(r => {
+                            const val = dataMap[trt][reps.indexOf(r)];
+                            return { trialId: r.ID || r.trialId, value: val };
+                        }).filter(r => r.trialId && r.value !== undefined && !isNaN(r.value));
+
+                        const values = repsWithValues.map(r => r.value);
+                        if (values.length >= 3) {
+                            const detected = detectOutliers(values);
+                            detected.forEach(out => {
+                                const trId = repsWithValues[out.index].trialId;
+                                outliers[trId] = {
+                                    value: out.value,
+                                    zScore: out.zScore,
+                                    modifiedZScore: out.modifiedZScore
+                                };
+                            });
+                        }
+                    });
 
                     const efficacy = {};
                     const primaryField = getPrimaryObservationField(this.category);
@@ -826,6 +866,7 @@ export class AnalysisEngine {
                             isBalanced: (new Set(Object.values(counts))).size === 1,
                             counts: counts
                         },
+                        outliers,
                         timestamp: new Date().toISOString(),
                         metric: metric
                     };

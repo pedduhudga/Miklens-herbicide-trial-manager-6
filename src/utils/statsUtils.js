@@ -648,6 +648,190 @@ function getDuncanCriticalRange(alpha, p, df) {
   return dfEntry[pIndex] || 3.0;
 }
 
+export function performTwoWayANOVA(trials, options = {}) {
+  const { metric = 'controlPct', daa = null, species = null } = options;
+  
+  const dataPoints = [];
+  const factorALevels = new Set();
+  const factorBLevels = new Set();
+  const blocks = new Set();
+  
+  trials.forEach(trial => {
+    let factorA = (trial.MainFactor || '').trim();
+    let factorB = (trial.SubFactor || '').trim();
+    
+    // Fallback if empty but it is a factorial trial
+    if (!factorA && !factorB) {
+      const parts = (trial.FormulationName || '').split(/\s*[xX]\s*/);
+      factorA = (parts[0] || 'A').trim();
+      factorB = (parts[1] || 'B').trim();
+    }
+    
+    const blockId = trial.BlockID || trial.Replication || '1';
+    
+    const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
+    const observations = daa 
+      ? efficacy.filter(e => e.daa === daa || e.daysAfterApplication === daa)
+      : efficacy;
+    
+    if (observations.length > 0) {
+      const latest = observations[observations.length - 1];
+      const value = latest[metric] ?? 
+                    latest[metric === 'yield' ? 'yieldKgPlot' : metric] ?? 
+                    latest.controlPct ?? 
+                    latest.wce ?? 
+                    latest.weedCover ?? 
+                    latest.diseaseSeverity ?? 
+                    latest.pestCount ?? 
+                    latest.yieldKgPlot ?? 
+                    latest.overallVigor;
+      if (value !== null && !isNaN(value)) {
+        const valNum = parseFloat(value);
+        dataPoints.push({
+          y: valNum,
+          factorA,
+          factorB,
+          block: blockId,
+          trial
+        });
+        factorALevels.add(factorA);
+        factorBLevels.add(factorB);
+        blocks.add(blockId);
+      }
+    }
+  });
+  
+  const listA = [...factorALevels];
+  const listB = [...factorBLevels];
+  const listBlocks = [...blocks];
+  const N = dataPoints.length;
+  
+  if (listA.length < 2 || listB.length < 2) {
+    return { error: 'Need at least 2 levels for each factor to perform Two-Way ANOVA' };
+  }
+  
+  const grandTotal = dataPoints.reduce((sum, dp) => sum + dp.y, 0);
+  const grandMean = grandTotal / N;
+  const CF = (grandTotal * grandTotal) / N;
+  
+  const ssTotal = dataPoints.reduce((sum, dp) => sum + dp.y * dp.y, 0) - CF;
+  
+  let ssA = 0;
+  listA.forEach(levelA => {
+    const filtered = dataPoints.filter(dp => dp.factorA === levelA);
+    const sum = filtered.reduce((s, dp) => s + dp.y, 0);
+    const count = filtered.length;
+    if (count > 0) ssA += (sum * sum) / count;
+  });
+  ssA -= CF;
+  
+  let ssB = 0;
+  listB.forEach(levelB => {
+    const filtered = dataPoints.filter(dp => dp.factorB === levelB);
+    const sum = filtered.reduce((s, dp) => s + dp.y, 0);
+    const count = filtered.length;
+    if (count > 0) ssB += (sum * sum) / count;
+  });
+  ssB -= CF;
+  
+  let ssCells = 0;
+  listA.forEach(levelA => {
+    listB.forEach(levelB => {
+      const filtered = dataPoints.filter(dp => dp.factorA === levelA && dp.factorB === levelB);
+      const sum = filtered.reduce((s, dp) => s + dp.y, 0);
+      const count = filtered.length;
+      if (count > 0) ssCells += (sum * sum) / count;
+    });
+  });
+  ssCells -= CF;
+  
+  const ssAB = Math.max(0, ssCells - ssA - ssB);
+  
+  let ssBlocks = 0;
+  listBlocks.forEach(blk => {
+    const filtered = dataPoints.filter(dp => dp.block === blk);
+    const sum = filtered.reduce((s, dp) => s + dp.y, 0);
+    const count = filtered.length;
+    if (count > 0) ssBlocks += (sum * sum) / count;
+  });
+  ssBlocks -= CF;
+  
+  const ssError = Math.max(0, ssTotal - ssA - ssB - ssAB - ssBlocks);
+  
+  const dfA = listA.length - 1;
+  const dfB = listB.length - 1;
+  const dfAB = dfA * dfB;
+  const dfBlocks = Math.max(0, listBlocks.length - 1);
+  const dfTotal = N - 1;
+  const dfError = Math.max(1, dfTotal - dfA - dfB - dfAB - dfBlocks);
+  
+  const msA = ssA / dfA;
+  const msB = ssB / dfB;
+  const msAB = ssAB / dfAB;
+  const msBlocks = dfBlocks > 0 ? ssBlocks / dfBlocks : 0;
+  const msError = ssError / dfError;
+  
+  const fA = msError > 0 ? msA / msError : 0;
+  const fB = msError > 0 ? msB / msError : 0;
+  const fAB = msError > 0 ? msAB / msError : 0;
+  const fBlocks = (dfBlocks > 0 && msError > 0) ? msBlocks / msError : 0;
+  
+  const pA = msError > 0 ? approximatePValue(fA, dfA, dfError) : 1;
+  const pB = msError > 0 ? approximatePValue(fB, dfB, dfError) : 1;
+  const pAB = msError > 0 ? approximatePValue(fAB, dfAB, dfError) : 1;
+  const pBlocks = (dfBlocks > 0 && msError > 0) ? approximatePValue(fBlocks, dfBlocks, dfError) : 1;
+  
+  const cv = grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0;
+  
+  return {
+    anovaTable: {
+      source: ['Factor A', 'Factor B', 'Interaction A x B', 'Blocks', 'Error', 'Total'],
+      ss: [ssA, ssB, ssAB, ssBlocks, ssError, ssTotal],
+      df: [dfA, dfB, dfAB, dfBlocks, dfError, dfTotal],
+      ms: [msA, msB, msAB, msBlocks, msError, null],
+      f: [fA, fB, fAB, fBlocks, null, null],
+      p: [pA, pB, pAB, pBlocks, null, null]
+    },
+    factorA: { name: options.mainFactorName || 'Factor A', levels: listA, ss: ssA, df: dfA, ms: msA, f: fA, p: pA },
+    factorB: { name: options.subFactorName || 'Factor B', levels: listB, ss: ssB, df: dfB, ms: msB, f: fB, p: pB },
+    interaction: { ss: ssAB, df: dfAB, ms: msAB, f: fAB, p: pAB },
+    blocks: { ss: ssBlocks, df: dfBlocks, ms: msBlocks, f: fBlocks, p: pBlocks },
+    error: { ss: ssError, df: dfError, ms: msError },
+    total: { ss: ssTotal, df: dfTotal },
+    grandMean,
+    cv,
+    isTwoWay: true
+  };
+}
+
+export function detectOutliers(values, threshold = 1.5) {
+  const n = values.length;
+  if (n < 3) return [];
+  
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.map(v => Math.pow(v - mean, 2)).reduce((a, b) => a + b, 0) / (n - 1);
+  const stdDev = Math.sqrt(variance);
+  
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = sorted[Math.floor(n / 2)];
+  const absoluteDeviations = values.map(v => Math.abs(v - median));
+  const sortedAD = [...absoluteDeviations].sort((a, b) => a - b);
+  const mad = sortedAD[Math.floor(n / 2)] || 1e-6;
+  
+  if (stdDev === 0) return [];
+  
+  const outliers = [];
+  values.forEach((v, idx) => {
+    const z = (v - mean) / stdDev;
+    const modZ = (0.6745 * (v - median)) / mad;
+    
+    if (Math.abs(z) > threshold || Math.abs(modZ) > 2.0) {
+      outliers.push({ index: idx, value: v, zScore: z, modifiedZScore: modZ });
+    }
+  });
+  return outliers;
+}
+
 /**
  * Export window bindings
  */
@@ -657,6 +841,8 @@ if (typeof window !== 'undefined') {
   window.performDuncanMRT = performDuncanMRT;
   window.performDunnettTest = performDunnettTest;
   window.calculateStats = calculateStats;
+  window.performTwoWayANOVA = performTwoWayANOVA;
+  window.detectOutliers = detectOutliers;
 }
 
 export default {
@@ -664,5 +850,8 @@ export default {
   performTukeyHSD,
   performDuncanMRT,
   performDunnettTest,
-  calculateStats
+  calculateStats,
+  performTwoWayANOVA,
+  detectOutliers
 };
+
