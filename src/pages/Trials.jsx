@@ -485,26 +485,51 @@ export default function Trials({ onMenuClick }) {
           ctx.drawImage(img, 0, 0, w, h);
           const data = ctx.getImageData(0, 0, w, h).data;
           let total = 0, green = 0, brown = 0;
+          let sumExG = 0, sumNGRDI = 0;
           for (let i = 0; i < data.length; i += 4) {
-            const r = data[i], g = data[i+1], b = data[i+2];
+            const R = data[i], G = data[i+1], B = data[i+2];
             total++;
-            const gli = (2*g - r - b) / (2*g + r + b + 1);
+            const rNorm = R / 255;
+            const gNorm = G / 255;
+            const bNorm = B / 255;
+            const exg = 2 * gNorm - rNorm - bNorm;
+            sumExG += exg;
+            const ngrdi = (gNorm + rNorm) > 0 ? (gNorm - rNorm) / (gNorm + rNorm) : 0;
+            sumNGRDI += ngrdi;
+
+            const gli = (2*G - R - B) / (2*G + R + B + 1);
             if (gli > 0.05) { green++; }
             else {
-              const max = Math.max(r,g,b), min = Math.min(r,g,b), diff = max - min;
-              const h2 = max === 0 ? 0 : max === r ? 60*((g-b)/diff%6) : max === g ? 60*((b-r)/diff+2) : 60*((r-g)/diff+4);
+              const max = Math.max(R,G,B), min = Math.min(R,G,B), diff = max - min;
+              const h2 = max === 0 ? 0 : max === R ? 60*((G-B)/diff%6) : max === G ? 60*((B-R)/diff+2) : 60*((R-G)/diff+4);
               const s = max === 0 ? 0 : (diff/max)*100, v = max/2.55;
               if (h2 >= 20 && h2 <= 55 && s > 12 && v > 20 && v < 85) brown++;
             }
           }
           const cover = Math.round(((green + brown) / total) * 100);
-          resolve({ cover, greenPct: Math.round((green/total)*100), brownPct: Math.round((brown/total)*100), confidence: Math.min(95, 60 + Math.round(total/2000)), source: 'pixel' });
+          resolve({ 
+            cover, 
+            greenPct: Math.round((green/total)*100), 
+            brownPct: Math.round((brown/total)*100), 
+            exgMean: parseFloat((sumExG / total).toFixed(4)),
+            ngrdiMean: parseFloat((sumNGRDI / total).toFixed(4)),
+            confidence: Math.min(95, 60 + Math.round(total/2000)), 
+            source: 'pixel' 
+          });
         } catch(e) { reject(e); }
       };
       img.onerror = () => reject(new Error('Failed to load image'));
       img.src = imageDataUrl;
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.calculateExGIndex = async (src) => {
+        return analyzeWeedCoverFromPixels(src);
+      };
+    }
+  }, [analyzeWeedCoverFromPixels]);
 
   const detectWeedCoverAI = useCallback(async (imageUrl) => {
     if (weedIdResult && weedIdResult.length > 0) {

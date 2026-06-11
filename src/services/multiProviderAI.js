@@ -376,7 +376,10 @@ async function callGemini(provider, imageData, context, apiKey) {
           { text: buildPrompt(context) },
           imagePart
         ]
-      }]
+      }],
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
     })
   });
   if (!response.ok) {
