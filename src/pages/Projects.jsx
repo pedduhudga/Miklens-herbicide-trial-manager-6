@@ -16,14 +16,94 @@ import { safeJsonParse } from '../utils/helpers.js';
 import { AnalysisEngine } from '../utils/analysisUtils.js';
 import PlotMap from '../components/PlotMap.jsx';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../utils/dateUtils.js';
-import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
+import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────
-const INPUT = 'w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white';
+export function getThemeClasses(accentColor = 'emerald') {
+  const accentMap = {
+    emerald: {
+      bg: '${theme.bg}',
+      bgSecondary: '${theme.bgSecondary}',
+      text: '${theme.text}',
+      textDark: '${theme.textDark}',
+      ring: '${theme.ring}',
+      bgLight: '${theme.bgLight}',
+      textLight: '${theme.textDark}',
+      badge: '${theme.badge}',
+      border: '${theme.border}',
+      borderLight: '${theme.borderLight}',
+      hoverBgLight: 'hover:${theme.bgLight} ${theme.textDark}',
+      hoverTextLight: 'hover:${theme.textDark}',
+      ringFocus: '${theme.ringFocus}',
+    },
+    indigo: {
+      bg: 'bg-indigo-600 hover:bg-indigo-700',
+      bgSecondary: 'bg-indigo-600',
+      text: 'text-indigo-600',
+      textDark: 'text-indigo-700',
+      ring: 'focus:ring-indigo-400',
+      bgLight: 'bg-indigo-50',
+      textLight: 'text-indigo-700',
+      badge: 'bg-indigo-100 text-indigo-700',
+      border: 'border-indigo-200',
+      borderLight: 'border-indigo-100',
+      hoverBgLight: 'hover:bg-indigo-50 text-indigo-700',
+      hoverTextLight: 'hover:text-indigo-700',
+      ringFocus: 'focus:ring-indigo-500',
+    },
+    red: {
+      bg: 'bg-red-600 hover:bg-red-700',
+      bgSecondary: 'bg-red-600',
+      text: 'text-red-600',
+      textDark: 'text-red-700',
+      ring: 'focus:ring-red-400',
+      bgLight: 'bg-red-50',
+      textLight: 'text-red-700',
+      badge: 'bg-red-100 text-red-700',
+      border: 'border-red-200',
+      borderLight: 'border-red-100',
+      hoverBgLight: 'hover:bg-red-50 text-red-700',
+      hoverTextLight: 'hover:text-red-700',
+      ringFocus: 'focus:ring-red-500',
+    },
+    amber: {
+      bg: 'bg-amber-600 hover:bg-amber-700',
+      bgSecondary: 'bg-amber-600',
+      text: 'text-amber-600',
+      textDark: 'text-amber-700',
+      ring: 'focus:ring-amber-400',
+      bgLight: 'bg-amber-50',
+      textLight: 'text-amber-700',
+      badge: 'bg-amber-100 text-amber-700',
+      border: 'border-amber-200',
+      borderLight: 'border-amber-100',
+      hoverBgLight: 'hover:bg-amber-50 text-amber-700',
+      hoverTextLight: 'hover:text-amber-700',
+      ringFocus: 'focus:ring-amber-500',
+    },
+    teal: {
+      bg: 'bg-teal-600 hover:bg-teal-700',
+      bgSecondary: 'bg-teal-600',
+      text: 'text-teal-600',
+      textDark: 'text-teal-700',
+      ring: 'focus:ring-teal-400',
+      bgLight: 'bg-teal-50',
+      textLight: 'text-teal-700',
+      badge: 'bg-teal-100 text-teal-700',
+      border: 'border-teal-200',
+      borderLight: 'border-teal-100',
+      hoverBgLight: 'hover:bg-teal-50 text-teal-700',
+      hoverTextLight: 'hover:text-teal-700',
+      ringFocus: 'focus:ring-teal-500',
+    },
+  };
+  return accentMap[accentColor] || accentMap.emerald;
+}
+
 const toast = (msg, type = 'success') =>
   window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type } }));
 
-function MiniBar({ value, max, color = 'bg-emerald-500' }) {
+function MiniBar({ value, max, color = '${theme.bgLight}0' }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -70,6 +150,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
   const categoryId = trial.Category || activeCategory;
   const projectConfig = getCategoryConfig(categoryId);
   const primaryObsField = getPrimaryObservationField(categoryId);
+  const theme = getThemeClasses(projectConfig.color.accent);
 
   const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
   const latest = efficacy.length ? efficacy[efficacy.length - 1] : null;
@@ -96,12 +177,12 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
         <p className="text-[9px] font-semibold text-slate-500 truncate">Blk: {trial.SubBlockID}</p>
       )}
       {metricVal !== undefined && metricVal !== null && (
-        <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-[8px]">
-          <span className="font-bold text-green-700">{metricVal}{projectConfig.primaryMetric.unit || ''} {projectConfig.primaryMetric.key}</span>
+        <div className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 ${theme.bgLight} border ${theme.border} rounded text-[8px]`}>
+          <span className={`font-bold ${theme.textDark}`}>{metricVal}{projectConfig.primaryMetric.unit || ''} {projectConfig.primaryMetric.key}</span>
         </div>
       )}
       <div className="mt-1.5 flex justify-end">
-        <span className={`text-[9px] font-bold ${isCompleted ? 'text-emerald-600' : 'text-amber-500'}`}>
+        <span className={`text-[9px] font-bold ${isCompleted ? theme.text : 'text-amber-500'}`}>
           {isCompleted ? 'DONE' : 'ACTIVE'}
         </span>
       </div>
@@ -112,13 +193,14 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick }) {
 // ── Block card ─────────────────────────────────────────────────────────────
 function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, onAddPlot, isLocked }) {
   const projectConfig = getCategoryConfig(activeCategory);
+  const theme = getThemeClasses(projectConfig.color.accent);
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
   const hasControl = controls.length > 0;
   const tooMany = controls.length > 1;
   const icon = tooMany
     ? <AlertCircle className="w-4 h-4 text-red-500 animate-pulse" title="Multiple controls!" />
     : hasControl
-      ? <CheckCircle2 className="w-4 h-4 text-emerald-500" title="Control present" />
+      ? <CheckCircle2 className={`w-4 h-4 ${theme.text}`} title="Control present" />
       : <AlertTriangle className="w-4 h-4 text-amber-500" title="Missing control!" />;
 
   const designType = trials[0]?.TrialDesign || 'RCBD';
@@ -184,7 +266,7 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
       <div className="bg-slate-50 px-4 py-3 flex justify-between items-center border-b">
         <div className="flex items-center gap-3">
-          <div className="bg-emerald-600 text-white w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs">
+          <div className={`${theme.bg} text-white w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs`}>
             R{block.ReplicationNum || '?'}
           </div>
           <span className="font-bold text-slate-800 text-sm">{block.Name}</span>
@@ -195,7 +277,7 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
           {!isLocked && onAddPlot && (
             <button
               onClick={(e) => { e.stopPropagation(); onAddPlot(block.ID); }}
-              className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition" title="Add plot to this block"
+              className={`p-1 rounded ${theme.hoverBgLight} ${theme.text} transition`} title="Add plot to this block"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -223,6 +305,9 @@ export default function Projects({ onMenuClick }) {
   const navigate = useNavigate();
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
+
+  const theme = useMemo(() => getThemeClasses(config.color.accent), [config.color.accent]);
+  const INPUT = `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${theme.ring} bg-white`;
 
   // list view state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -475,11 +560,7 @@ export default function Projects({ onMenuClick }) {
           if (utcCovers.length > 0) {
             const utcMean = utcCovers.reduce((s, v) => s + v, 0) / utcCovers.length;
             if (utcMean > 0) {
-              if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
-                return parseFloat(((meanCover / utcMean - 1) * 100).toFixed(1));
-              } else {
-                return parseFloat(((1 - meanCover / utcMean) * 100).toFixed(1));
-              }
+              return parseFloat(calculateEfficacy(activeCategory, meanCover, utcMean).toFixed(1));
             }
             return 0;
           }
@@ -523,11 +604,7 @@ export default function Projects({ onMenuClick }) {
       const cv = mean > 0 ? (sd / mean) * 100 : 0;
       let wce = 0;
       if (utcMean > 0) {
-        if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
-          wce = Math.max(0, (mean / utcMean - 1) * 100);
-        } else {
-          wce = Math.max(0, (1 - mean / utcMean) * 100);
-        }
+        wce = calculateEfficacy(activeCategory, mean, utcMean);
       }
       return { name: g.name, n, mean, sd, cv, wce, grouping: g.grouping, repValues };
     });
@@ -1313,7 +1390,7 @@ ${(analysisResults.grouping || []).map(g => {
 P-Value: ${isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '-'}<br>
 CV: ${isFinite(analysisResults.anova?.cv) ? analysisResults.anova.cv.toFixed(1) : '-'}%<br>
 LSD/HSD (0.05): ${isFinite(analysisResults.postHoc?.value) ? analysisResults.postHoc.value.toFixed(2) : '-'}</p>
-<p><em>Generated by HerbiRice RCBD Analysis System</em></p>`;
+<p><em>Generated by Miklens ${config.name} Trial Manager</em></p>`;
     const blob = new Blob([header + content + footer], { type: 'application/msword' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1515,7 +1592,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               {/* 1. Protocol & Conditions Summary */}
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-slate-800 border-b pb-2 mb-4 flex items-center gap-2 text-sm">
-                  <ClipboardList className="h-4 w-4 text-emerald-600" />
+                  <ClipboardList className={`h-4 w-4 ${theme.text}`} />
                   Trial Conditions & Protocol
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-600">
@@ -1556,7 +1633,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               {/* 2. Visual Analysis Charts */}
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-slate-800 border-b pb-2 mb-6 flex items-center gap-2 text-sm">
-                  <BarChart2 className="h-4 w-4 text-emerald-600" />
+                  <BarChart2 className={`h-4 w-4 ${theme.text}`} />
                   Visual Analysis
                 </h3>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -1616,7 +1693,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       </div>
                       <div className="shrink-0">
                         <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Post-hoc test</label>
-                        <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className="text-xs border rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                        <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className={`text-xs border rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}>
                           <option value="lsd">Fisher's LSD</option>
                           <option value="tukey">Tukey HSD</option>
                         </select>
@@ -1636,7 +1713,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             <tr key={i} className="hover:bg-slate-50">
                               <td className="p-3 font-medium text-slate-700">{g.name}</td>
                               <td className="p-3 text-center">{isFinite(g.mean) ? g.mean.toFixed(2) : '—'}</td>
-                              <td className="p-3 text-center font-bold text-emerald-700">{g.grouping}</td>
+                              <td className={`p-3 text-center font-bold ${theme.textDark}`}>{g.grouping}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1672,7 +1749,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                 <td className="p-3 text-right">{isFinite(analysisResults.anova.ssTreat) ? analysisResults.anova.ssTreat.toFixed(2) : '—'}</td>
                                 <td className="p-3 text-right">{isFinite(analysisResults.anova.msTreat) ? analysisResults.anova.msTreat.toFixed(2) : '—'}</td>
                                 <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova.fVal) ? analysisResults.anova.fVal.toFixed(2) : '—'}</td>
-                                <td className={`p-3 text-right ${(analysisResults.anova.pVal ?? 1) < 0.05 ? 'text-emerald-600 font-bold' : ''}`}>
+                                <td className={`p-3 text-right ${(analysisResults.anova.pVal ?? 1) < 0.05 ? '${theme.text} font-bold' : ''}`}>
                                   {isFinite(analysisResults.anova.pVal) ? analysisResults.anova.pVal.toFixed(4) : '—'}
                                 </td>
                               </tr>
@@ -1730,7 +1807,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <button
                       onClick={handleSaveNarrative}
                       disabled={isSavingNarrative}
-                      className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-bold transition text-xs flex items-center justify-center gap-2"
+                      className={`mt-3 w-full ${theme.bg} text-white py-2 rounded-lg font-bold transition text-xs flex items-center justify-center gap-2`}
                     >
                       {isSavingNarrative ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                       Save Narrative
@@ -1800,7 +1877,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <button
                   onClick={() => runAnalysis(postHocMethod)}
                   disabled={isAnalyzing}
-                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-bold transition shrink-0"
+                  className={`flex items-center gap-2 ${theme.bg} disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-bold transition shrink-0`}
                 >
                   {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart2 className="w-4 h-4" />}
                   {isAnalyzing ? 'Analyzing…' : 'Run Analysis'}
@@ -1823,15 +1900,15 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div>
                           <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
-                            <LayoutGrid className="w-4 h-4 text-emerald-600" /> Design Completeness
+                            <LayoutGrid className={`w-4 h-4 ${theme.text}`} /> Design Completeness
                           </h3>
                           <p className="text-xs text-slate-400 mt-0.5">Every block has every treatment (RCBD).</p>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${designCheck.isBalanced ? 'bg-emerald-100 text-emerald-700' : designCheck.missing.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${designCheck.isBalanced ? '${theme.badge}' : designCheck.missing.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                           {designCheck.isBalanced ? 'Balanced' : designCheck.missing.length > 0 ? 'Incomplete' : 'Check'}
                         </span>
                       </div>
-                      <MiniBar value={designCheck.coveragePct} max={100} color={designCheck.isBalanced ? 'bg-emerald-500' : 'bg-amber-500'} />
+                      <MiniBar value={designCheck.coveragePct} max={100} color={designCheck.isBalanced ? '${theme.bgLight}0' : 'bg-amber-500'} />
                       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                         {[['Coverage', `${designCheck.coveragePct}%`], ['Expected cells', designCheck.expectedCells],
                           ['Missing cells', designCheck.missing.length], ['Duplicates', designCheck.duplicates.length]
@@ -1852,7 +1929,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         </div>
                       )}
                       {designCheck.isBalanced && (
-                        <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-lg p-2 text-xs text-emerald-700 flex items-center gap-1">
+                        <div className={`mt-3 ${theme.bgLight} border ${theme.borderLight} rounded-lg p-2 text-xs ${theme.textDark} flex items-center gap-1`}>
                           <CheckCircle2 className="w-3 h-3" /> All blocks contain all treatments.
                         </div>
                       )}
@@ -1863,17 +1940,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div>
                           <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
-                            <ShieldAlert className="w-4 h-4 text-emerald-600" /> Control Integrity
+                            <ShieldAlert className={`w-4 h-4 ${theme.text}`} /> Control Integrity
                           </h3>
                           <p className="text-xs text-slate-400 mt-0.5">Checks untreated control count per block.</p>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${(designCheck.noControl.length === 0 && designCheck.multiControl.length === 0) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${(designCheck.noControl.length === 0 && designCheck.multiControl.length === 0) ? '${theme.badge}' : 'bg-amber-100 text-amber-700'}`}>
                           {(designCheck.noControl.length === 0 && designCheck.multiControl.length === 0) ? 'OK' : 'Attention'}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                        <div className="flex justify-between"><span className="text-slate-500">Blocks w/o control</span><span className={`font-bold ${designCheck.noControl.length > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{designCheck.noControl.length}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Blocks {'>'} 1 control</span><span className={`font-bold ${designCheck.multiControl.length > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{designCheck.multiControl.length}</span></div>
+                        <div className={`flex justify-between`}><span className={`text-slate-500`}>Blocks w/o control</span><span className={`font-bold ${designCheck.noControl.length > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{designCheck.noControl.length}</span></div>
+                        <div className={`flex justify-between`}><span className={`text-slate-500`}>Blocks {'>'} 1 control</span><span className={`font-bold ${designCheck.multiControl.length > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{designCheck.multiControl.length}</span></div>
                       </div>
                       {(designCheck.noControl.length > 0 || designCheck.multiControl.length > 0) ? (
                         <div className="bg-amber-50 border border-amber-100 rounded-lg p-2 text-xs text-amber-800 space-y-1">
@@ -1881,7 +1958,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           {designCheck.multiControl.length > 0 && <div><span className="font-bold">Multiple controls: </span>{designCheck.multiControl.map(b => `${b.blockName}(${b.count})`).join(', ')}</div>}
                         </div>
                       ) : (
-                        <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2 text-xs text-emerald-700 flex items-center gap-1">
+                        <div className={`${theme.bgLight} border ${theme.borderLight} rounded-lg p-2 text-xs ${theme.textDark} flex items-center gap-1`}>
                           <CheckCircle2 className="w-3 h-3" /> Each block has exactly one control.
                         </div>
                       )}
@@ -1892,9 +1969,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 {/* ── Blocks ── */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><Layers className="w-4 h-4 text-emerald-600" /> Blocks & Plots</h3>
+                    <h3 className={`font-bold text-slate-800 flex items-center gap-2`}><Layers className={`w-4 h-4 ${theme.text}`} /> Blocks & Plots</h3>
                     {!isLocked && (
-                      <button onClick={() => setIsAddingBlock(v => !v)} className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition">
+                      <button onClick={() => setIsAddingBlock(v => !v)} className={`flex items-center gap-1.5 text-xs ${theme.bg} text-white px-3 py-1.5 rounded-lg font-bold transition`}>
                         <Plus className="w-3.5 h-3.5" /> Add Block
                       </button>
                     )}
@@ -1910,7 +1987,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         <label className="text-xs font-bold text-slate-500 block mb-1">Rep #</label>
                         <input type="number" min="1" value={blockForm.ReplicationNum} onChange={e => setBlockForm(v => ({ ...v, ReplicationNum: e.target.value }))} className={INPUT} placeholder="1" />
                       </div>
-                      <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Save</button>
+                      <button type="submit" className={`${theme.bg} text-white px-4 py-2 rounded-lg text-sm font-bold`}>Save</button>
                       <button type="button" onClick={() => setIsAddingBlock(false)} className="px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
                     </form>
                   )}
@@ -1923,7 +2000,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </div>
                   ) : (
                     <div className="text-center py-8 text-slate-400 text-sm">
-                      No blocks yet. {!isLocked && <button onClick={() => setIsAddingBlock(true)} className="text-emerald-600 font-semibold hover:underline">Add the first block →</button>}
+                      No blocks yet. {!isLocked && <button onClick={() => setIsAddingBlock(true)} className={`${theme.text} font-semibold hover:underline`}>Add the first block →</button>}
                     </div>
                   )}
                 </div>
@@ -1944,7 +2021,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         </div>
                         <div className="shrink-0">
                           <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Post-hoc test</label>
-                          <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className="text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                          <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className={`text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}>
                             <option value="lsd">Fisher's LSD</option>
                             <option value="tukey">Tukey HSD</option>
                           </select>
@@ -1964,7 +2041,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                               <tr key={i} className="hover:bg-slate-50">
                                 <td className="p-3 font-medium text-slate-700">{g.name}</td>
                                 <td className="p-3 text-center">{isFinite(g.mean) ? g.mean.toFixed(2) : '—'}</td>
-                                <td className="p-3 text-center font-bold text-emerald-700">{g.grouping}</td>
+                                <td className={`p-3 text-center font-bold ${theme.textDark}`}>{g.grouping}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1998,12 +2075,12 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                   <td className="p-3 text-right font-semibold text-slate-800">{ts.mean.toFixed(2)}</td>
                                   <td className="p-3 text-right text-slate-500">{ts.sd.toFixed(2)}</td>
                                   <td className="p-3 text-right">
-                                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ts.cv < 15 ? 'bg-emerald-50 text-emerald-700' : ts.cv < 30 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ts.cv < 15 ? '${theme.bgLight} ${theme.textDark}' : ts.cv < 30 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
                                       {ts.cv.toFixed(1)}%
                                     </span>
                                   </td>
-                                  <td className={`p-3 text-right font-bold ${ts.wce >= 80 ? 'text-emerald-600' : ts.wce >= 60 ? 'text-amber-600' : 'text-red-500'}`}>{ts.wce.toFixed(1)}{config.primaryMetric.unit || ''}</td>
-                                  <td className="p-3 text-right font-black text-emerald-700 tracking-widest">{ts.grouping}</td>
+                                  <td className={`p-3 text-right font-bold ${ts.wce >= 80 ? '${theme.text}' : ts.wce >= 60 ? 'text-amber-600' : 'text-red-500'}`}>{ts.wce.toFixed(1)}{config.primaryMetric.unit || ''}</td>
+                                  <td className={`p-3 text-right font-black ${theme.textDark} tracking-widest`}>{ts.grouping}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -2033,11 +2110,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                               <td className="p-3 text-right">{isFinite(analysisResults.anova?.ssTreat) ? analysisResults.anova.ssTreat.toFixed(2) : '—'}</td>
                               <td className="p-3 text-right">{isFinite(analysisResults.anova?.msTreat) ? analysisResults.anova.msTreat.toFixed(2) : '—'}</td>
                               <td className="p-3 text-right font-bold">{isFinite(analysisResults.anova?.fVal) ? analysisResults.anova.fVal.toFixed(2) : '—'}</td>
-                              <td className={`p-3 text-right ${(analysisResults.anova?.pVal ?? 1) < 0.05 ? 'text-emerald-600 font-bold' : ''}`}>
+                              <td className={`p-3 text-right ${(analysisResults.anova?.pVal ?? 1) < 0.05 ? '${theme.text} font-bold' : ''}`}>
                                 {isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(4) : '—'}
                               </td>
                               <td className="p-3 text-right">
-                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova?.pVal ?? 1) < 0.05 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ (analysisResults.anova?.pVal ?? 1) < 0.05 ? '${theme.badge}' : 'bg-slate-100 text-slate-500'}`}>
                                   {sigStars(analysisResults.anova?.pVal)}
                                 </span>
                               </td>
@@ -2081,7 +2158,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Per-treatment WCE timeline */}
                       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                        <h4 className="font-bold text-sm text-slate-700 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> {config.primaryMetric.key} % Over Time (per Treatment)</h4>
+                        <h4 className={`font-bold text-sm text-slate-700 mb-3 flex items-center gap-2`}><TrendingUp className={`w-4 h-4 ${theme.text}`} /> {config.primaryMetric.key} % Over Time (per Treatment)</h4>
                         {wceTimelineData.daas.length > 0 && wceTimelineData.series.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="text-xs w-full min-w-max">
@@ -2097,7 +2174,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                     <td className="p-2 font-medium text-slate-700 max-w-[120px] truncate" title={s.name}>{s.name}</td>
                                     {s.values.map((v, j) => (
                                       <td key={j} className={`p-2 text-center font-semibold ${
-                                        v === null ? 'text-slate-300' : v >= 80 ? 'text-emerald-600' : v >= 60 ? 'text-amber-600' : 'text-red-500'
+                                        v === null ? 'text-slate-300' : v >= 80 ? '${theme.text}' : v >= 60 ? 'text-amber-600' : 'text-red-500'
                                       }`}>{v !== null ? `${v}` : '—'}</td>
                                     ))}
                                   </tr>
@@ -2136,7 +2213,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     placeholder="Click 'Generate AI Narrative' or type your narrative here…"
                   />
                   <button onClick={handleSaveNarrative} disabled={isSavingNarrative}
-                    className="mt-3 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-bold transition">
+                    className={`mt-3 flex items-center gap-2 ${theme.bg} disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-bold transition`}>
                     {isSavingNarrative ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     {isSavingNarrative ? 'Saving…' : 'Save Narrative'}
                   </button>
@@ -2177,7 +2254,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   <h3 className="font-bold text-slate-800 mb-3 text-sm">Actions</h3>
                   <div className="space-y-1">
                     <button onClick={() => runAnalysis(postHocMethod)}
-                      className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-emerald-700 hover:bg-emerald-50">
+                      className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${theme.textDark} hover:${theme.bgLight}`}>
                       <BarChart2 className="w-4 h-4 shrink-0" /> {isLocked ? 'Refresh Report' : 'Run Analysis'}
                     </button>
                     <button onClick={handleRecalcDAA}
@@ -2185,7 +2262,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       <RefreshCw className="w-4 h-4 shrink-0" /> Recalculate DAA
                     </button>
                     <button onClick={handleRandomizeLayout} disabled={isLocked}
-                      className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-emerald-700 hover:bg-emerald-50 ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                      className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${theme.textDark} hover:${theme.bgLight} ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
                       <Shuffle className="w-4 h-4 shrink-0" /> Randomize Layout
                     </button>
                     <button onClick={openProtocolSettings} disabled={isLocked}
@@ -2242,9 +2319,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 {/* ── Randomize Layout Modal ── */}
                 <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
                   <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-                      <p className="text-xs font-bold text-emerald-600 uppercase">Target Project</p>
-                      <p className="text-base font-bold text-emerald-900">{activeProject?.Name}</p>
+                    <div className={`${theme.bgLight} border ${theme.borderLight} rounded-lg p-3`}>
+                      <p className={`text-xs font-bold ${theme.text} uppercase`}>Target Project</p>
+                      <p className={`text-base font-bold text-${config.color.primary.split('-')[0]}-900`}>{activeProject?.Name}</p>
                     </div>
                     <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
                     
@@ -2310,7 +2387,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         <button
                           type="button"
                           onClick={addTreatmentRow}
-                          className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition"
+                          className={`flex items-center gap-1.5 text-xs ${theme.bg} text-white px-3 py-1.5 rounded-lg font-bold transition`}
                         >
                           <Plus className="w-3.5 h-3.5" /> Add Treatment Row
                         </button>
@@ -2337,14 +2414,14 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                     placeholder="Treatment Name (e.g. UTC, T1, T2)"
                                     value={t.name}
                                     onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
-                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                    className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                                   />
                                 </td>
                                 <td className="p-2">
                                   <select
                                     value={t.formulationId}
                                     onChange={e => updateTreatmentRow(t.id, 'formulationId', e.target.value)}
-                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                    className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                                   >
                                     <option value="">None / Custom (No saved formulation)</option>
                                     {activeFormulations.map(f => (
@@ -2358,14 +2435,14 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                     placeholder="e.g. 100 mL/ha"
                                     value={t.dosage}
                                     onChange={e => updateTreatmentRow(t.id, 'dosage', e.target.value)}
-                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                    className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                                   />
                                 </td>
                                 <td className="p-2">
                                   <select
                                     value={t.role}
                                     onChange={e => updateTreatmentRow(t.id, 'role', e.target.value)}
-                                    className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                                    className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                                   >
                                     <option value="experimental">Experimental</option>
                                     <option value="standard">Standard Check</option>
@@ -2401,7 +2478,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </div>
                     <div className="pt-4 flex justify-end gap-3 border-t">
                       <button type="button" onClick={() => setIsRandomizeModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
-                      <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                      <button type="submit" className={`${theme.bg} text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2`}>
                         <Shuffle className="w-4 h-4" /> Generate & Randomize
                       </button>
                     </div>
@@ -2429,7 +2506,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             type="button"
                             onClick={handleAutofetchLocationAndWeatherForProtocol}
                             disabled={isFetchingGeoProtocol}
-                            className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                            className={`text-xs ${theme.text} hover:${theme.textDark} font-medium flex items-center gap-1 disabled:opacity-50`}
                           >
                             {isFetchingGeoProtocol ? (
                               <>
@@ -2564,7 +2641,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             const pb = (state.blocks || []).filter(b => String(b.ProjectID) === String(p.ID));
             const pt = (state.trials || []).filter(t => String(t.ProjectID) === String(p.ID));
             const treats = [...new Set(pt.map(t => t.FormulationName).filter(Boolean))];
-            const statusClass = p.Status === 'Locked' ? 'bg-slate-800 text-white' : p.Status === 'Finalized' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+            const statusClass = p.Status === 'Locked' ? 'bg-slate-800 text-white' : p.Status === 'Finalized' ? '${theme.badge}' : 'bg-amber-100 text-amber-700';
 
             return (
               <div key={p.ID} onClick={() => openProject(p.ID)}
@@ -2589,7 +2666,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
 
                 <div className="pt-3 border-t border-slate-50 flex justify-between items-center">
                   <span className="text-[10px] text-slate-400">{formatDateTime(p.CreatedAt) || '—'}</span>
-                  <span className="text-emerald-600 font-bold text-xs flex items-center gap-1">View Dashboard <ChevronRight className="h-3.5 w-3.5" /></span>
+                  <span className={`${theme.text} font-bold text-xs flex items-center gap-1`}>View Dashboard <ChevronRight className={`h-3.5 w-3.5`} /></span>
                 </div>
               </div>
             );
@@ -2597,7 +2674,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             <div className="col-span-full text-center py-14 bg-white rounded-xl border-2 border-dashed border-slate-200">
               <Layers className="w-10 h-10 mx-auto text-slate-200 mb-3" />
               <p className="text-slate-500 mb-3">No RCBD Projects yet.</p>
-              <button onClick={() => setIsModalOpen(true)} className="text-emerald-600 font-bold hover:underline text-sm">Create your first project →</button>
+              <button onClick={() => setIsModalOpen(true)} className={`${theme.text} font-bold hover:underline text-sm`}>Create your first project →</button>
             </div>
           )}
         </div>
@@ -2618,7 +2695,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   type="button"
                   onClick={handleAutofetchLocationAndWeather}
                   disabled={isFetchingGeo}
-                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                  className={`text-xs ${theme.text} hover:${theme.textDark} font-medium flex items-center gap-1 disabled:opacity-50`}
                 >
                   {isFetchingGeo ? (
                     <>
@@ -2705,9 +2782,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
       {/* ── Randomize Layout Modal ── */}
       <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
         <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-          <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-            <p className="text-xs font-bold text-emerald-600 uppercase">Target Project</p>
-            <p className="text-base font-bold text-emerald-900">{activeProject?.Name}</p>
+          <div className={`${theme.bgLight} border ${theme.borderLight} rounded-lg p-3`}>
+            <p className={`text-xs font-bold ${theme.text} uppercase`}>Target Project</p>
+            <p className={`text-base font-bold text-${config.color.primary.split('-')[0]}-900`}>{activeProject?.Name}</p>
           </div>
           <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
           
@@ -2773,7 +2850,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               <button
                 type="button"
                 onClick={addTreatmentRow}
-                className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition"
+                className={`flex items-center gap-1.5 text-xs ${theme.bg} text-white px-3 py-1.5 rounded-lg font-bold transition`}
               >
                 <Plus className="w-3.5 h-3.5" /> Add Treatment Row
               </button>
@@ -2800,14 +2877,14 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           placeholder="Treatment Name (e.g. UTC, T1, T2)"
                           value={t.name}
                           onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
-                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                          className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                         />
                       </td>
                       <td className="p-2">
                         <select
                           value={t.formulationId}
                           onChange={e => updateTreatmentRow(t.id, 'formulationId', e.target.value)}
-                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                          className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                         >
                           <option value="">None (Untreated Control)</option>
                           {activeFormulations.map(f => (
@@ -2821,14 +2898,14 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           placeholder="e.g. 100 mL/ha"
                           value={t.dosage}
                           onChange={e => updateTreatmentRow(t.id, 'dosage', e.target.value)}
-                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                          className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                         />
                       </td>
                       <td className="p-2">
                         <select
                           value={t.role}
                           onChange={e => updateTreatmentRow(t.id, 'role', e.target.value)}
-                          className="w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                          className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
                         >
                           <option value="experimental">Experimental</option>
                           <option value="standard">Standard Check</option>
@@ -2864,7 +2941,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           </div>
           <div className="pt-4 flex justify-end gap-3 border-t">
             <button type="button" onClick={() => setIsRandomizeModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
-            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+            <button type="submit" className={`${theme.bg} text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2`}>
               <Shuffle className="w-4 h-4" /> Generate & Randomize
             </button>
           </div>
@@ -2892,7 +2969,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   type="button"
                   onClick={handleAutofetchLocationAndWeatherForProtocol}
                   disabled={isFetchingGeoProtocol}
-                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                  className={`text-xs ${theme.text} hover:${theme.textDark} font-medium flex items-center gap-1 disabled:opacity-50`}
                 >
                   {isFetchingGeoProtocol ? (
                     <>

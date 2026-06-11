@@ -25,6 +25,88 @@ import { calculateDAA, toDatetimeLocal, formatDate, formatDateTime, formatPhotoD
 import { safeJsonParse } from '../utils/helpers.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
+
+export function getThemeClasses(accentColor = 'emerald') {
+  const accentMap = {
+    emerald: {
+      bg: '${theme.bg}',
+      bgSecondary: '${theme.bgSecondary}',
+      text: '${theme.text}',
+      textDark: '${theme.textDark}',
+      ring: '${theme.ring}',
+      bgLight: '${theme.bgLight}',
+      textLight: '${theme.textDark}',
+      badge: '${theme.badge}',
+      border: '${theme.border}',
+      borderLight: '${theme.borderLight}',
+      hoverBgLight: 'hover:${theme.bgLight} ${theme.textDark}',
+      hoverTextLight: 'hover:${theme.textDark}',
+      ringFocus: '${theme.ringFocus}',
+    },
+    indigo: {
+      bg: 'bg-indigo-600 hover:bg-indigo-700',
+      bgSecondary: 'bg-indigo-600',
+      text: 'text-indigo-600',
+      textDark: 'text-indigo-700',
+      ring: 'focus:ring-indigo-400',
+      bgLight: 'bg-indigo-50',
+      textLight: 'text-indigo-700',
+      badge: 'bg-indigo-100 text-indigo-700',
+      border: 'border-indigo-200',
+      borderLight: 'border-indigo-100',
+      hoverBgLight: 'hover:bg-indigo-50 text-indigo-700',
+      hoverTextLight: 'hover:text-indigo-700',
+      ringFocus: 'focus:ring-indigo-500',
+    },
+    red: {
+      bg: 'bg-red-600 hover:bg-red-700',
+      bgSecondary: 'bg-red-600',
+      text: 'text-red-600',
+      textDark: 'text-red-700',
+      ring: 'focus:ring-red-400',
+      bgLight: 'bg-red-50',
+      textLight: 'text-red-700',
+      badge: 'bg-red-100 text-red-700',
+      border: 'border-red-200',
+      borderLight: 'border-red-100',
+      hoverBgLight: 'hover:bg-red-50 text-red-700',
+      hoverTextLight: 'hover:text-red-700',
+      ringFocus: 'focus:ring-red-500',
+    },
+    amber: {
+      bg: 'bg-amber-600 hover:bg-amber-700',
+      bgSecondary: 'bg-amber-600',
+      text: 'text-amber-600',
+      textDark: 'text-amber-700',
+      ring: 'focus:ring-amber-400',
+      bgLight: 'bg-amber-50',
+      textLight: 'text-amber-700',
+      badge: 'bg-amber-100 text-amber-700',
+      border: 'border-amber-200',
+      borderLight: 'border-amber-100',
+      hoverBgLight: 'hover:bg-amber-50 text-amber-700',
+      hoverTextLight: 'hover:text-amber-700',
+      ringFocus: 'focus:ring-amber-500',
+    },
+    teal: {
+      bg: 'bg-teal-600 hover:bg-teal-700',
+      bgSecondary: 'bg-teal-600',
+      text: 'text-teal-600',
+      textDark: 'text-teal-700',
+      ring: 'focus:ring-teal-400',
+      bgLight: 'bg-teal-50',
+      textLight: 'text-teal-700',
+      badge: 'bg-teal-100 text-teal-700',
+      border: 'border-teal-200',
+      borderLight: 'border-teal-100',
+      hoverBgLight: 'hover:bg-teal-50 text-teal-700',
+      hoverTextLight: 'hover:text-teal-700',
+      ringFocus: 'focus:ring-teal-500',
+    },
+  };
+  return accentMap[accentColor] || accentMap.emerald;
+}
+
 import {
   generateComprehensivePdf,
   generateScientificReport,
@@ -90,10 +172,10 @@ const emptyVisitForm = () => ({
 });
 
 export default function LargeScaleTrials({ onMenuClick }) {
-  const { state, updateState, getAppState } = useAppState();
-
-  const activeCategory = state.activeCategory || 'herbicide';
-  const config = getCategoryConfig(activeCategory);
+  
+  const theme = useMemo(() => getThemeClasses(config.color.accent), [config.color.accent]);
+  const INPUT = `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${theme.ring} bg-white`;
+  
 
   // Master projects filter
   const masterProjects = useMemo(() => {
@@ -109,7 +191,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const [editingVisitIdx, setEditingVisitIdx] = useState(null);
 
   // Forms
-  const [projectForm, setProjectForm] = useState({ Name: '', Crop: '', Location: '', Investigator: '', TargetWeeds: '', GPSBounds: '' });
+  const [projectForm, setProjectForm] = useState({ Name: '', Crop: '', Location: '', Investigator: '', TargetWeed: '', GPSBounds: '' });
   const [subTrialForm, setSubTrialForm] = useState(emptySubTrialForm());
   const [visitForm, setVisitForm] = useState(emptyVisitForm());
 
@@ -245,7 +327,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   // Color mappings matching TrialCard
   const RESULT_COLORS = {
-    'Excellent': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'Excellent': '${theme.badge} ${theme.border}',
     'Good': 'bg-blue-100 text-blue-700 border-blue-200',
     'Fair': 'bg-amber-100 text-amber-700 border-amber-200',
     'Poor': 'bg-red-100 text-red-700 border-red-200',
@@ -663,7 +745,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ contents: [{ parts: [
-                { text: 'Analyze this field plot image. Estimate the percentage (0-100) of ground covered by weeds (both green and brown/burnt). Respond with ONLY a number like "45".' },
+                { text: config.aiPhotoPrompt },
                 { inlineData: { mimeType, data: base64 } }
               ]}] })
             });
@@ -1020,7 +1102,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
       const marker = L.marker([lat, lon], {
         icon: L.divIcon({
           className: 'custom-subtrial-pin',
-          html: `<div class="w-8 h-8 rounded-full bg-emerald-600 border-2 border-white flex items-center justify-center text-white font-bold text-xs shadow-lg hover:bg-emerald-700 transition-colors">${st.Replication || 'ST'}</div>`,
+          html: `<div class="w-8 h-8 rounded-full ${theme.bgSecondary} border-2 border-white flex items-center justify-center text-white font-bold text-xs shadow-lg ${theme.hoverBg} transition-colors">${st.Replication || 'ST'}</div>`,
           iconSize: [32, 32],
           iconAnchor: [16, 16]
         })
@@ -1031,7 +1113,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
           <h4 class="font-bold text-slate-800">${st.FormulationName || 'Untreated Spot'}</h4>
           <p class="text-slate-500 font-medium mt-0.5">Rep: ${st.Replication} | Plot: ${st.PlotNumber || 'N/A'}</p>
           <p class="text-slate-400 mt-1">${lat.toFixed(6)}, ${lon.toFixed(6)}</p>
-          <button onclick="window.dispatchEvent(new CustomEvent('app:select-subtrial', {detail: '${st.ID}'}))" class="mt-2 w-full px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded text-[10px] text-center border-none cursor-pointer">Inspect Spot</button>
+          <button onclick="window.dispatchEvent(new CustomEvent('app:select-subtrial', {detail: '${st.ID}'}))" class="mt-2 w-full px-2 py-1 ${theme.bg} text-white font-bold rounded text-[10px] text-center border-none cursor-pointer">Inspect Spot</button>
         </div>
       `);
 
@@ -1148,7 +1230,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
       Crop: activeProject.Crop || '',
       Location: activeProject.Location || '',
       Investigator: activeProject.Investigator || '',
-      TargetWeeds: activeProject.TargetWeeds || '',
+      TargetWeed: activeProject.TargetWeed || '',
       GPSBounds: activeProject.GPSBounds || ''
     });
     setIsProjectModalOpen(true);
@@ -1200,7 +1282,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Large Field Trial Workspace Created!', type: 'success' } }));
       }
       setIsProjectModalOpen(false);
-      setProjectForm({ Name: '', Crop: '', Location: '', Investigator: '', TargetWeeds: '', GPSBounds: '' });
+      setProjectForm({ Name: '', Crop: '', Location: '', Investigator: '', TargetWeed: '', GPSBounds: '' });
     } catch {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to ${isEdit ? 'update' : 'save'} workspace.`, type: 'error' } }));
     }
@@ -1486,7 +1568,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
         return `Sub-trial formulation: ${st.FormulationName}, dosage: ${st.Dosage || 'N/A'}, replication: ${st.Replication}, plot: ${st.PlotNumber || 'N/A'}. History: ${obs}`;
       }).join('\n\n');
 
-      const prompt = `You are an expert agronomist evaluating a large-scale agricultural herbicide field study. Please write a highly professional, comprehensive executive master summary (4-6 paragraphs) synthesizing study outcomes across all monitoring spots/sub-trials:\n\nProject Name: ${activeProject.Name}\nCrop: ${activeProject.Crop || 'N/A'}\nTarget weeds: ${activeProject.TargetWeeds || 'N/A'}\nLocation: ${activeProject.Location || 'N/A'}\n\nSub-Trial Data:\n${subTrialText}\n\nDiscuss: \n1. Overall weed pressure trajectory and general efficacy.\n2. Species-specific outcomes (which weeds were successfully controlled vs which survived/resisted).\n3. Spatial variability (differences across replicates/spots).\n4. Definitive scientific conclusion and recommendation for future applications.`;
+      const prompt = `You are an expert agronomist evaluating a large-scale agricultural herbicide field study. Please write a highly professional, comprehensive executive master summary (4-6 paragraphs) synthesizing study outcomes across all monitoring spots/sub-trials:\n\nProject Name: ${activeProject.Name}\nCrop: ${activeProject.Crop || 'N/A'}\nTarget weeds: ${activeProject.TargetWeed || 'N/A'}\nLocation: ${activeProject.Location || 'N/A'}\n\nSub-Trial Data:\n${subTrialText}\n\nDiscuss: \n1. Overall weed pressure trajectory and general efficacy.\n2. Species-specific outcomes (which weeds were successfully controlled vs which survived/resisted).\n3. Spatial variability (differences across replicates/spots).\n4. Definitive scientific conclusion and recommendation for future applications.`;
 
       const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${keys[0]}`, {
         method: 'POST',
@@ -1565,9 +1647,9 @@ export default function LargeScaleTrials({ onMenuClick }) {
         {/* Workspace Bar */}
         <div className="backdrop-blur-md bg-white/70 rounded-2xl p-4 border border-white/40 shadow-sm flex flex-wrap gap-4 justify-between items-center">
           <div className="flex items-center gap-3">
-            <Compass className="text-emerald-700 h-6 w-6 shrink-0" />
+            <Compass className={`${theme.textDark} h-6 w-6 shrink-0`} />
             <div>
-              <label className="block text-[10px] uppercase tracking-wider font-extrabold text-emerald-800">Large Scale Workspace</label>
+              <label className={`block text-[10px] uppercase tracking-wider font-extrabold ${theme.textDark}`}>Large Scale Workspace</label>
               <div className="flex items-center gap-2">
                 <select
                   value={activeProjectId}
@@ -1575,7 +1657,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                     setActiveProjectId(e.target.value);
                     setSelectedSubTrialId('');
                   }}
-                  className="bg-transparent border-b border-emerald-800/20 text-slate-800 font-bold focus:outline-none focus:border-emerald-700 pr-4 text-sm"
+                  className={`bg-transparent border-b border-slate-300 text-slate-800 font-bold focus:outline-none focus:border-emerald-700 pr-4 text-sm`}
                 >
                   <option value="">-- Select Master Project --</option>
                   {masterProjects.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
@@ -1585,7 +1667,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                     <button
                       onClick={handleEditProjectClick}
                       title="Edit Master Workspace"
-                      className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-emerald-700 transition"
+                      className={`p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:${theme.textDark} transition`}
                     >
                       <Edit className="w-3.5 h-3.5" />
                     </button>
@@ -1624,7 +1706,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   });
                   setIsSubTrialModalOpen(true);
                 }}
-                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                className={`px-4 py-2 ${theme.bg} text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm`}
               >
                 <Plus className="w-4 h-4" /> Add Sub-Trial / Spot
               </button>
@@ -1643,7 +1725,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                     onClick={() => setSelectedSubTrialId('')}
                     className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                   >
-                    <ArrowLeft className="w-4 h-4 text-emerald-700" /> Back to Spots Directory
+                    <ArrowLeft className={`w-4 h-4 ${theme.textDark}`} /> Back to Spots Directory
                   </button>
                   <div className="h-4 w-px bg-slate-200" />
                   <div>
@@ -1657,12 +1739,12 @@ export default function LargeScaleTrials({ onMenuClick }) {
                 </div>
                 
                 <div className="flex gap-2">
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${activeSubTrial.IsCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${activeSubTrial.IsCompleted ? '${theme.badge}' : 'bg-blue-100 text-blue-800'}`}>
                     {activeSubTrial.IsCompleted ? 'Finalized' : 'Active'}
                   </span>
                   {activeSubTrial.IsControl === true || activeSubTrial.IsControl === 'true' ?
                     <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-purple-100 text-purple-800">Control</span> : null}
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-800 border">
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${theme.bgLight} ${theme.textDark} border`}>
                     {activeSubTrial.Result || 'Unrated'}
                   </span>
                 </div>
@@ -1680,10 +1762,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
                         key={k}
                         onClick={() => setDetailTab(k)}
                         className={`px-3 py-2.5 text-xs font-bold border-b-2 transition
-                          ${detailTab === k ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                          ${detailTab === k ? 'border-emerald-600 ${theme.textDark}' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                       >
                         {label}
-                        {k === 'observations' && obsCount > 0 && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded-full">{obsCount}</span>}
+                        {k === 'observations' && obsCount > 0 && <span className={`ml-1 text-[9px] ${theme.badge} px-1 rounded-full`}>{obsCount}</span>}
                         {k === 'photos' && photosCount > 0 && <span className="ml-1 text-[9px] bg-blue-100 text-blue-700 px-1 rounded-full">{photosCount}</span>}
                       </button>
                     );
@@ -1748,8 +1830,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       )}
 
                       {activeSubTrial.Conclusion && (
-                        <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-100 text-xs">
-                          <span className="text-[9px] font-bold text-emerald-600 uppercase block mb-1">Conclusion</span>
+                        <div className={`${theme.bgLight}/50 rounded-xl p-4 border ${theme.borderLight} text-xs`}>
+                          <span className={`text-[9px] font-bold ${theme.text} uppercase block mb-1`}>Conclusion</span>
                           <p className="text-slate-700 whitespace-pre-wrap">{activeSubTrial.Conclusion}</p>
                         </div>
                       )}
@@ -1771,7 +1853,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                         {!activeSubTrial.IsCompleted ? (
                           <button
                             onClick={() => onMarkComplete(activeSubTrial)}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                            className={`px-4 py-2 ${theme.bg} text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm`}
                           >
                             <CheckCircle className="w-4 h-4" /> Finalize Spot
                           </button>
@@ -1829,7 +1911,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                               setVisitForm({ ...emptyVisitForm(), date: new Date().toISOString().split('T')[0] });
                               setIsVisitModalOpen(true);
                             }}
-                            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-[10px] flex items-center gap-1"
+                            className={`px-3 py-1.5 ${theme.bg} text-white font-bold rounded-lg text-[10px] flex items-center gap-1`}
                           >
                             <Plus className="w-3.5 h-3.5" /> Log Visit
                           </button>
@@ -1842,7 +1924,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             const isBaseline = visit.daa === obsData.sorted[0]?.daa;
                             const wce = obsData.baseCover > 0 && !isBaseline ? Math.max(0, Math.min(100, (1 - visit.weedCover / obsData.baseCover) * 100)) : null;
                             const wceRating = wce === null ? null : wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
-                            const wceCls = wce === null ? '' : wce >= 85 ? 'text-emerald-700 bg-emerald-50' : wce >= 70 ? 'text-blue-700 bg-blue-50' : wce >= 50 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
+                            const wceCls = wce === null ? '' : wce >= 85 ? '${theme.textDark} ${theme.bgLight}' : wce >= 70 ? 'text-blue-700 bg-blue-50' : wce >= 50 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
                             const risks = getClimateRisks(visit.weatherTemp, visit.weatherWind, visit.weatherRain);
 
                             return (
@@ -1871,7 +1953,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                         });
                                         setIsVisitModalOpen(true);
                                       }}
-                                      className="text-xs text-slate-500 hover:text-emerald-700 font-bold"
+                                      className={`text-xs text-slate-500 hover:${theme.textDark} font-bold`}
                                     >
                                       Edit
                                     </button>
@@ -1945,7 +2027,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             }}
                             className="px-3 py-1.5 border rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
                           >
-                            <Camera className="w-4 h-4 text-emerald-600" /> Camera
+                            <Camera className={`w-4 h-4 ${theme.text}`} /> Camera
                           </button>
                           <button
                             type="button"
@@ -1955,7 +2037,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             }}
                             className="px-3 py-1.5 border rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
                           >
-                            <ImageIcon className="w-4 h-4 text-emerald-600" /> Choose File
+                            <ImageIcon className={`w-4 h-4 ${theme.text}`} /> Choose File
                           </button>
                         </div>
                       </div>
@@ -2071,7 +2153,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       <span className="text-[10px] font-bold text-slate-400 uppercase block">ANOVA Statistics & WCE Diagnostics</span>
                       {statsData.hasStats ? (
                         <div className="space-y-4 text-sm max-w-2xl">
-                          <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4 text-emerald-800">
+                          <div className={`${theme.bgLight}/50 border ${theme.borderLight} rounded-xl p-4 ${theme.textDark}`}>
                             <p className="font-bold text-base">Mean WCE Efficacy: {statsData.renderMeanWce.toFixed(1)}%</p>
                             <p className="text-xs mt-1">Coefficient of Variation (CV): {statsData.stats.anovaResults?.diagnostics?.cv || 'N/A'}%</p>
                           </div>
@@ -2123,7 +2205,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                 window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Calculated successfully!', type: 'success' } }));
                               } catch {}
                             }}
-                            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow"
+                            className={`px-4 py-2 ${theme.bg} text-white rounded-lg text-xs font-bold transition shadow`}
                           >
                             Calculate Statistics
                           </button>
@@ -2144,7 +2226,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           <button key={m}
                             onClick={() => { setQrMode(m); setQrGenerated(false); }}
                             className={`flex-1 py-2 text-sm font-semibold capitalize transition-colors ${
-                              qrMode === m ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
+                              qrMode === m ? '${theme.bgSecondary} text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
                             }`}>
                             {m === 'offline' ? '📦 Offline QR' : '🌐 Online / Live QR'}
                           </button>
@@ -2164,7 +2246,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       {/* Actions */}
                       <div className="flex gap-3">
                         <button onClick={() => generateQR(activeSubTrial, qrMode)}
-                          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700">
+                          className={`flex items-center gap-2 px-4 py-2 ${theme.bgSecondary} text-white rounded-lg text-sm font-semibold ${theme.hoverBg}`}>
                           <Plus className="w-4 h-4" /> Generate QR
                         </button>
                         {qrGenerated && (
@@ -2195,7 +2277,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           { key: 'showDate', label: 'Application Date' },
                           { key: 'showDosage', label: 'Dosage' },
                           { key: 'showLocation', label: 'Location' },
-                          { key: 'showWeedSpecies', label: 'Target Weeds' },
+                          { key: 'showWeedSpecies', label: 'Target ${config.targetLabel}s' },
                           { key: 'showResult', label: 'Result' },
                           { key: 'showWeather', label: 'Weather' },
                           { key: 'showIngredients', label: 'Ingredients' },
@@ -2278,7 +2360,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                     <div
                                       onClick={() => handleToggleLiveField(key)}
                                       className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${
-                                        liveSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'
+                                        liveSettings[key] ? '${theme.bgLight}0' : 'bg-slate-300'
                                       }`}
                                     >
                                       <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${
@@ -2308,7 +2390,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           onClick={() => generateComprehensivePdf(activeSubTrial, { formulations: state.formulations })}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
-                          <FileText className="w-4 h-4 text-emerald-600" /> PDF Report
+                          <FileText className={`w-4 h-4 ${theme.text}`} /> PDF Report
                         </button>
                         <button
                           onClick={() => generateScientificReport(activeSubTrial, { formulations: state.formulations })}
@@ -2353,13 +2435,13 @@ export default function LargeScaleTrials({ onMenuClick }) {
               <div className="flex bg-slate-200/50 p-1 rounded-xl w-fit">
                 <button
                   onClick={() => setViewMode('gis')}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'gis' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'gis' ? 'bg-white ${theme.textDark} shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                 >
                   <MapIcon className="w-3.5 h-3.5" /> GIS Workspace & Analytics
                 </button>
                 <button
                   onClick={() => setViewMode('spots')}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'spots' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'spots' ? 'bg-white ${theme.textDark} shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                 >
                   <Layers3 className="w-3.5 h-3.5" /> Spot Directory ({subTrials.length})
                 </button>
@@ -2372,19 +2454,19 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   <div className="flex bg-slate-200/50 p-1 rounded-xl w-fit">
                     <button
                       onClick={() => setDashboardTab('map')}
-                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'map' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'map' ? 'bg-white ${theme.textDark} shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                     >
                       <MapIcon className="inline-block w-3.5 h-3.5 mr-1" /> GIS Satellite Map
                     </button>
                     <button
                       onClick={() => setDashboardTab('charts')}
-                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'charts' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'charts' ? 'bg-white ${theme.textDark} shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                     >
                       <BarChart2 className="inline-block w-3.5 h-3.5 mr-1" /> Efficacy Curves
                     </button>
                     <button
                       onClick={() => setDashboardTab('ai')}
-                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'ai' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'ai' ? 'bg-white ${theme.textDark} shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                     >
                       <Sparkles className="inline-block w-3.5 h-3.5 mr-1" /> Master Report
                     </button>
@@ -2395,7 +2477,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                     <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col h-[520px] relative">
                       <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                         <span className="font-bold text-slate-700 text-sm flex items-center gap-2">
-                          <MapIcon className="w-4 h-4 text-emerald-600" /> Esri Satellite Spatial Coordinates
+                          <MapIcon className={`w-4 h-4 ${theme.text}`} /> Esri Satellite Spatial Coordinates
                         </span>
                         <div className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
                           {subTrials.length} Monitoring Spots
@@ -2510,7 +2592,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             onClick={() => generateMasterComprehensivePdf(activeProject, subTrials, { formulations: state.formulations, aiSummary: activeProject?._aiMasterSummary })}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
-                            <FileText className="w-4 h-4 text-emerald-600" /> Comprehensive PDF
+                            <FileText className={`w-4 h-4 ${theme.text}`} /> Comprehensive PDF
                           </button>
                           <button
                             onClick={() => generateMasterScientificReport(activeProject, subTrials, { aiSummary: activeProject?._aiMasterSummary })}
@@ -2553,7 +2635,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b pb-4">
                     <div>
                       <h3 className="font-bold text-slate-800 text-base flex items-center gap-2 font-sans">
-                        <Layers3 className="w-5 h-5 text-emerald-600" /> Sub-Trial Monitoring Spots
+                        <Layers3 className={`w-5 h-5 ${theme.text}`} /> Sub-Trial Monitoring Spots
                       </h3>
                       <p className="text-xs text-slate-400">Standard trial cards managed inside this Master project workspace.</p>
                     </div>
@@ -2566,7 +2648,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           placeholder="Search spots..."
                           value={search}
                           onChange={e => setSearch(e.target.value)}
-                          className="pl-8 pr-4 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-slate-50/50 w-44"
+                          className={`pl-8 pr-4 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 ${theme.ring} bg-slate-50/50 w-44`}
                         />
                         <div className="absolute left-2.5 top-2.5 text-slate-400">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -2576,7 +2658,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       <select
                         value={filterResult}
                         onChange={e => setFilterResult(e.target.value)}
-                        className="text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className={`text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}
                       >
                         <option value="">All Results</option>
                         {['Excellent', 'Good', 'Fair', 'Poor', 'Pending'].map(r => <option key={r} value={r}>{r}</option>)}
@@ -2585,7 +2667,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       <select
                         value={filterRole}
                         onChange={e => setFilterRole(e.target.value)}
-                        className="text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className={`text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}
                       >
                         <option value="">All Roles</option>
                         <option value="control">Control Spot</option>
@@ -2595,7 +2677,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       <select
                         value={sortBy}
                         onChange={e => setSortBy(e.target.value)}
-                        className="text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className={`text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}
                       >
                         <option value="date-desc">Newest First</option>
                         <option value="date-asc">Oldest First</option>
@@ -2676,7 +2758,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
               placeholder="e.g. 50-Acre Soy Herbicide Master Demo"
               value={projectForm.Name}
               onChange={e => setProjectForm(p => ({ ...p, Name: e.target.value }))}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${theme.ring}`}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -2706,8 +2788,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
             <input
               type="text"
               placeholder={`e.g. Target ${config.targetLabel}s`}
-              value={projectForm.TargetWeeds}
-              onChange={e => setProjectForm(p => ({ ...p, TargetWeeds: e.target.value }))}
+              value={projectForm.TargetWeed}
+              onChange={e => setProjectForm(p => ({ ...p, TargetWeed: e.target.value }))}
               className="w-full px-3 py-2 border rounded-lg focus:outline-none"
             />
           </div>
@@ -2722,7 +2804,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
           </div>
           <button
             type="submit"
-            className="w-full py-2 bg-emerald-700 text-white font-bold rounded-lg hover:bg-emerald-800 transition"
+            className={`w-full py-2 bg-emerald-700 text-white font-bold rounded-lg ${theme.hoverBg} transition`}
           >
             {projectForm.ID ? "Save Workspace Changes" : "Create Master Workspace"}
           </button>
@@ -2791,7 +2873,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
               <button
                 type="button"
                 onClick={handleGetGPS}
-                className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border flex items-center gap-0.5"
+                className={`text-[10px] ${theme.textDark} font-bold bg-white px-2 py-0.5 rounded border flex items-center gap-0.5`}
               >
                 {gpsFetching ? 'Fetching...' : 'Get GPS Point'}
               </button>
@@ -2821,7 +2903,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
               </div>
             </div>
             {gpsAccuracy !== null && (
-              <div className="mt-2 text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded border border-emerald-200/50 flex items-center justify-between">
+              <div className={`mt-2 text-[10px] ${theme.textDark} font-bold ${theme.bgLight} px-2 py-1 rounded border ${theme.border}/50 flex items-center justify-between`}>
                 <span>Accuracy:</span>
                 <span>±{gpsAccuracy.toFixed(1)} meters</span>
               </div>
@@ -2835,7 +2917,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
               <button
                 type="button"
                 onClick={fetchWeather}
-                className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border"
+                className={`text-[10px] ${theme.textDark} font-bold bg-white px-2 py-0.5 rounded border`}
               >
                 Sync Weather API
               </button>
@@ -3010,7 +3092,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-emerald-700 text-white font-bold rounded-lg hover:bg-emerald-800 transition"
+            className={`w-full py-2.5 bg-emerald-700 text-white font-bold rounded-lg ${theme.hoverBg} transition`}
           >
             Save Spot Configuration
           </button>
@@ -3126,11 +3208,11 @@ export default function LargeScaleTrials({ onMenuClick }) {
                 onClick={() => setIsCameraOpen(true)}
                 className="flex-1 py-2.5 border rounded-xl flex items-center justify-center gap-1.5 hover:bg-slate-50 text-xs font-bold text-slate-700"
               >
-                <Camera className="w-4 h-4 text-emerald-600" /> Snap from Camera
+                <Camera className={`w-4 h-4 ${theme.text}`} /> Snap from Camera
               </button>
 
               <label className="flex-1 py-2.5 border rounded-xl flex items-center justify-center gap-1.5 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer text-center">
-                <Plus className="w-4 h-4 text-emerald-600" /> Choose File
+                <Plus className={`w-4 h-4 ${theme.text}`} /> Choose File
                 <input
                   type="file"
                   accept="image/*"
@@ -3174,7 +3256,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                     weedDetails: [...(prev.weedDetails || []), { species: '', cover: '', status: 'Active' }]
                   }));
                 }}
-                className="text-[10px] text-emerald-700 font-bold flex items-center gap-0.5"
+                className={`text-[10px] ${theme.textDark} font-bold flex items-center gap-0.5`}
               >
                 <Plus className="w-3.5 h-3.5" /> Add {activeCategory === 'herbicide' ? 'Weed' : config.targetLabel}
               </button>
@@ -3247,7 +3329,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-emerald-700 text-white font-bold rounded-lg hover:bg-emerald-800 transition"
+            className={`w-full py-2.5 bg-emerald-700 text-white font-bold rounded-lg ${theme.hoverBg} transition`}
           >
             Save DAA Visit Log
           </button>
@@ -3297,7 +3379,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
             </div>
             <button
               onClick={() => saveAndAnalyzePhoto(pendingPhotoAnalysis.dataUrl, pendingPhotoAnalysis.date, pendingPhotoAnalysis.targetTrial)}
-              className="w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg transition"
+              className={`w-full py-2 ${theme.bg} text-white font-bold rounded-lg transition`}
             >
               Analyze Photo & Save Visit
             </button>
@@ -3349,7 +3431,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
       {/* Floating Selection Bar for spots */}
       {selectedForBulk.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-4 z-50">
-          <span className="font-bold text-sm"><span className="bg-emerald-500 px-2 py-0.5 rounded-full mr-2">{selectedForBulk.size}</span>Selected</span>
+          <span className={`font-bold text-sm`}><span className={`${theme.bgLight}0 px-2 py-0.5 rounded-full mr-2`}>{selectedForBulk.size}</span>Selected</span>
           <div className="h-4 w-px bg-slate-600" />
           <button
             onClick={() => {
