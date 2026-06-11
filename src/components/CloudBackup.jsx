@@ -58,13 +58,6 @@ export default function CloudBackup({ onClose }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Load backups when switching to restore tab
-  useEffect(() => {
-    if (activeTab === 'restore') {
-      loadBackups();
-    }
-  }, [activeTab, selectedProvider, isSignedIn]);
-
   const loadBackups = useCallback(async () => {
     setIsLoading(true);
     setMessage(null);
@@ -85,6 +78,13 @@ export default function CloudBackup({ onClose }) {
       setIsLoading(false);
     }
   }, [selectedProvider, isSignedIn]);
+
+  // Load backups when switching to restore tab
+  useEffect(() => {
+    if (activeTab === 'restore') {
+      loadBackups();
+    }
+  }, [activeTab, selectedProvider, isSignedIn, loadBackups]);
 
   const handleSignIn = async (provider) => {
     setIsLoading(true);

@@ -2,10 +2,63 @@ import { apiCall } from './db.js';
 import { safeJsonParse } from '../utils/helpers.js';
 
 let _isSyncProcessing = false;
+let _lastSyncAttempt = 0;
+const SYNC_MIN_INTERVAL = 500;
+const SYNC_STUCK_TIMEOUT = 60000;
+
+function getSyncItemLabel(item) {
+    if (!item) return 'Unknown item';
+    if (item.action) return `Action: ${item.action}`;
+    return item.photo?.fileName || item.photo?.label || item.photo?.date || item.id || 'Photo upload';
+}
+
+function isDrivePermissionError(msg) {
+    const m = String(msg || '').toLowerCase();
+    return m.includes('driveapp') ||
+        m.includes('drive access denied') ||
+        m.includes('access denied') ||
+        m.includes('triggerdrivepermissions') ||
+        m.includes('execute as: me');
+}
 
 export async function processSyncQueue(getAppState, updateAppState, showToast, renderSyncStatus) {
                 const state = getAppState();
                 if (_isSyncProcessing || state.syncQueue.length === 0) return;
+
+                const getEffectiveFolderId = () => {
+                    if (state.auth) {
+                        if (state.auth.user && state.auth.user.personalDriveFolderId) {
+                            return state.auth.user.personalDriveFolderId;
+                        }
+                        if (state.auth.personalDriveFolderId) {
+                            return state.auth.personalDriveFolderId;
+                        }
+                    }
+                    return state.settings?.folderId;
+                };
+
+                const removeSyncPlaceholderFromTrial = (item) => {
+                    if (!item || !item.trialId || !item.photo?.tempId) return;
+
+                    const trial = state.trials.find(t => t.ID === item.trialId);
+                    if (!trial) return;
+
+                    const isWeed = item.type === 'weed_upload';
+                    const field = isWeed ? 'WeedPhotosJSON' : 'PhotoURLs';
+                    const photos = safeJsonParse(trial[field], []);
+                    const nextPhotos = photos.filter(photo => {
+                        if (photo?.tempId !== item.photo.tempId) return true;
+                        return !!photo.url;
+                    });
+
+                    if (nextPhotos.length !== photos.length) {
+                        trial[field] = JSON.stringify(nextPhotos);
+                        updateAppState({ trials: [...state.trials] });
+                        if (typeof refreshRelevantUI === 'function') {
+                            refreshRelevantUI(item.trialId, item.type);
+                        }
+                    }
+                };
 
                 const now = Date.now();
                 if (now - _lastSyncAttempt < SYNC_MIN_INTERVAL) {

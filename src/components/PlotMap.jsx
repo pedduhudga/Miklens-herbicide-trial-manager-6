@@ -83,7 +83,7 @@ export default function PlotMap({ projectId, onClose }) {
     updateTileLayer(tileProvider);
   }, [tileProvider]);
 
-  const updateTileLayer = (provider) => {
+  function updateTileLayer(provider) {
     if (!leafletMapRef.current) return;
     
     const providerConfig = TILE_PROVIDERS[provider];
@@ -101,7 +101,7 @@ export default function PlotMap({ projectId, onClose }) {
       maxZoom: 22,
       maxNativeZoom: 19
     }).addTo(leafletMapRef.current);
-  };
+  }
 
   // Get GPS position
   const handleGetGPS = useCallback(async () => {
@@ -215,7 +215,7 @@ export default function PlotMap({ projectId, onClose }) {
   }, [config, projectTrials]);
 
   // Draw plots on map
-  const drawPlotsOnMap = (plotsToDraw) => {
+  function drawPlotsOnMap(plotsToDraw) {
     if (!leafletMapRef.current) return;
     
     // Clear existing plots layer
@@ -269,7 +269,7 @@ export default function PlotMap({ projectId, onClose }) {
       polygon.addTo(plotsLayerRef.current);
       centerLabel.addTo(plotsLayerRef.current);
     });
-  };
+  }
 
   // Export plots
   const handleExport = (format) => {

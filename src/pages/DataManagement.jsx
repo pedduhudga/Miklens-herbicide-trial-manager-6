@@ -10,6 +10,16 @@ import { analyzePhoto } from '../services/multiProviderAI.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 
 
+// Initialize global states if not existing (Module scope)
+if (typeof window !== 'undefined') {
+  if (!window.globalRepairState) {
+    window.globalRepairState = { isRunning: false, taskName: '', progress: 0, total: 0, currentTrialName: '' };
+  }
+  if (!window.globalBulkAnalysisState) {
+    window.globalBulkAnalysisState = { isRunning: false, isPaused: false, lastProcessedIndex: -1, trialsToProcess: [], totalToProcess: 0, successCount: 0, errorCount: 0, currentTrialName: '' };
+  }
+}
+
 export default function DataManagement({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
   const activeCategory = state.activeCategory || 'herbicide';
@@ -20,21 +30,13 @@ export default function DataManagement({ onMenuClick }) {
   const importRef = useRef(null);
   const csvImportRef = useRef(null);
   const [csvImportEntity, setCsvImportEntity] = useState('');
-  const [localRepairProgress, setLocalRepairProgress] = useState(window.globalRepairProgress || '');
+  const [localRepairProgress, setLocalRepairProgress] = useState(typeof window !== 'undefined' ? window.globalRepairProgress || '' : '');
   const [showCloudBackup, setShowCloudBackup] = useState(false);
-  const [localScanSummary, setLocalScanSummary] = useState(window.globalScanSummary || '');
-  const [localBulkAiProgress, setLocalBulkAiProgress] = useState(window.globalBulkAiProgress || '');
-
-  // Initialize global states if not existing
-  if (!window.globalRepairState) {
-    window.globalRepairState = { isRunning: false, taskName: '', progress: 0, total: 0, currentTrialName: '' };
-  }
-  if (!window.globalBulkAnalysisState) {
-    window.globalBulkAnalysisState = { isRunning: false, isPaused: false, lastProcessedIndex: -1, trialsToProcess: [], totalToProcess: 0, successCount: 0, errorCount: 0, currentTrialName: '' };
-  }
+  const [localScanSummary, setLocalScanSummary] = useState(typeof window !== 'undefined' ? window.globalScanSummary || '' : '');
+  const [localBulkAiProgress, setLocalBulkAiProgress] = useState(typeof window !== 'undefined' ? window.globalBulkAiProgress || '' : '');
 
   // ── Enhanced Bulk AI Analysis State ───────────────────────────────────────
-  const [localBulkAnalysisState, setLocalBulkAnalysisState] = useState(window.globalBulkAnalysisState);
+  const [localBulkAnalysisState, setLocalBulkAnalysisState] = useState(typeof window !== 'undefined' ? window.globalBulkAnalysisState : null);
 
   const [localRepairState, setLocalRepairState] = useState(window.globalRepairState);
 

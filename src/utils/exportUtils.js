@@ -379,10 +379,9 @@ export async function exportTrialToPPTX(trial, options = {}) {
         ], {
             x: 0.5, y: 1.2, w: '90%',
             fontSize: 10,
-            color: colors.text,
             border: { pt: 0.5, color: 'E5E7EB' },
             fill: { header: colors.primary },
-            color: { header: 'FFFFFF' }
+            color: { header: 'FFFFFF', body: colors.text }
         });
     }
 

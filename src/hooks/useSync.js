@@ -36,27 +36,6 @@ export function useSync() {
     };
   }, [showToast]);
 
-  // Initial sync and when isOnline changes
-  useEffect(() => {
-    if (isOnline && state.syncQueue && state.syncQueue.length > 0) {
-      const pending = state.syncQueue.filter(s => s.status === 'pending' || s.status === 'failed').length;
-      if (pending > 0) {
-        runSync();
-      }
-    }
-  }, [isOnline, state.syncQueue]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isSyncing && isOnline && state.syncQueue && state.syncQueue.length > 0) {
-        const pending = state.syncQueue.filter(s => s.status === 'pending' || s.status === 'failed').length;
-        if (pending > 0) runSync();
-      }
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [isSyncing, isOnline, state.syncQueue]);
-
   const runSync = useCallback(async () => {
     if (isSyncing || !isOnline) return;
 
@@ -67,6 +46,27 @@ export function useSync() {
       setIsSyncing(false);
     }
   }, [isSyncing, isOnline, getAppState, updateState, showToast, renderSyncStatus]);
+
+  // Initial sync and when isOnline changes
+  useEffect(() => {
+    if (isOnline && state.syncQueue && state.syncQueue.length > 0) {
+      const pending = state.syncQueue.filter(s => s.status === 'pending' || s.status === 'failed').length;
+      if (pending > 0) {
+        runSync();
+      }
+    }
+  }, [isOnline, state.syncQueue, runSync]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isSyncing && isOnline && state.syncQueue && state.syncQueue.length > 0) {
+        const pending = state.syncQueue.filter(s => s.status === 'pending' || s.status === 'failed').length;
+        if (pending > 0) runSync();
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [isSyncing, isOnline, state.syncQueue, runSync]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

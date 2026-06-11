@@ -46,7 +46,7 @@ export default function QRScanner({ isOpen, onClose, onScan, continuous = false 
     return stopCamera;
   }, [isOpen, onClose]);
 
-  const tick = () => {
+  function tick() {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
@@ -75,7 +75,7 @@ export default function QRScanner({ isOpen, onClose, onScan, continuous = false 
       }
     }
     requestRef.current = requestAnimationFrame(tick);
-  };
+  }
 
   if (!isOpen) return null;
 

@@ -205,7 +205,7 @@ export default function AIAssistant({ onMenuClick }) {
     setIsListening(true);
   };
 
-  const sendMessage = async (text) => {
+  const sendMessage = useCallback(async (text) => {
     const userMsg = text.trim();
     if (!userMsg || isLoading) return;
     setInput('');
@@ -412,7 +412,7 @@ RIGOROUS SCIENTIFIC ANSWERING PROTOCOL:
       setIsLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  };
+  }, [isLoading, attachedImage, history, currentSessionId, sessions, activeCategory, state.trials, state.projects, state.formulations, primaryObsField, config, updateState, getAppState]);
 
   const handleSubmit = (e) => { e.preventDefault(); sendMessage(input); };
 
