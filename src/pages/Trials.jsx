@@ -13,7 +13,7 @@ import {
   QrCode, BrainCircuit, TrendingDown, Download, RefreshCw, Leaf,
   Navigation, FolderOpen, Lock, Unlock,
   FileDown, Share2, MoreVertical, FileSpreadsheet,
-  FileCode, MonitorPlay, Archive, Pencil, ScanLine, Crop, Clock
+  FileCode, MonitorPlay, Archive, Pencil, ScanLine, Crop, Clock, Calculator
 } from 'lucide-react';
 import { safeJsonParse } from '../utils/helpers.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
