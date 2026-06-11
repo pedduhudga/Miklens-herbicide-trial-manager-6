@@ -510,12 +510,6 @@ export default function Trials({ onMenuClick }) {
     }
 
     const finalFormData = { ...formData };
-    if (!finalFormData.ProjectID) {
-      finalFormData.TrialDesign = 'RCBD';
-      finalFormData.MainFactor = '';
-      finalFormData.SubFactor = '';
-      finalFormData.SubBlockID = '';
-    }
 
     const payload = {
       ...(isEdit ? editingTrial : {}),
@@ -3292,18 +3286,16 @@ If none are present, write "None".`;
                 {projects.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
-            {formData.ProjectID && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Trial Design Type</label>
-                <select value={formData.TrialDesign || 'RCBD'} onChange={e => setFormData({...formData, TrialDesign: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
-                  <option value="RCBD">RCBD (Randomized Complete Block)</option>
-                  <option value="CRD">CRD (Completely Randomized Design)</option>
-                  <option value="Split-Plot">Split-Plot Design</option>
-                  <option value="Lattice">Alpha-Lattice Design</option>
-                  <option value="Factorial">Factorial Design</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Trial Design Type</label>
+              <select value={formData.TrialDesign || 'RCBD'} onChange={e => setFormData({...formData, TrialDesign: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <option value="RCBD">RCBD (Randomized Complete Block)</option>
+                <option value="CRD">CRD (Completely Randomized Design)</option>
+                <option value="Split-Plot">Split-Plot Design</option>
+                <option value="Lattice">Alpha-Lattice Design</option>
+                <option value="Factorial">Factorial Design</option>
+              </select>
+            </div>
             {(formData.TrialDesign === 'Split-Plot' || formData.TrialDesign === 'Factorial') && (
               <>
                 <div>
