@@ -661,11 +661,30 @@ export default function Trials({ onMenuClick }) {
 
     // Try to retrieve cached bounds from targetPhoto to save tokens and load instantly
     const photos = activeTrial ? safeJsonParse(activeTrial.PhotoURLs, []) : [];
-    const targetPhoto = (photoIndex !== null && photos[photoIndex]) 
-      ? photos[photoIndex] 
-      : photos.find(p => (p.fileData || p.url) === imageDataUrl || p === imageDataUrl);
+    let targetPhoto = null;
+    let targetIdx = -1;
 
-    if (targetPhoto && typeof targetPhoto === 'object' && targetPhoto.bounds) {
+    if (photoIndex !== null && photos[photoIndex]) {
+      targetPhoto = photos[photoIndex];
+      targetIdx = photoIndex;
+    } else {
+      // Find by source
+      const driveId1 = getDriveFileId(imageDataUrl);
+      targetIdx = photos.findIndex(p => {
+        const pSrc = typeof p === 'string' ? p : (p.fileData || p.url);
+        if (pSrc === imageDataUrl) return true;
+        if (driveId1 && getDriveFileId(pSrc) === driveId1) return true;
+        return false;
+      });
+      if (targetIdx !== -1) {
+        targetPhoto = photos[targetIdx];
+      }
+    }
+
+    // Check if we have cached bounds on this photo
+    const hasCachedBounds = targetPhoto && typeof targetPhoto === 'object' && Array.isArray(targetPhoto.bounds);
+
+    if (hasCachedBounds) {
       setWeedIdResult(targetPhoto.bounds);
       if (openAnalyzer) {
         setPhotoAnalyzerResults(targetPhoto.bounds);
@@ -703,12 +722,19 @@ export default function Trials({ onMenuClick }) {
       });
 
       // Save to memory (cache bounds in targetPhoto and persist)
-      if (activeTrial && targetPhoto && typeof targetPhoto === 'object') {
-        const updatedPhotos = photos.map(p => {
-          const pSrc = p.fileData || p.url;
-          const targetSrc = targetPhoto.fileData || targetPhoto.url;
-          if (pSrc === targetSrc) {
-            return { ...p, bounds: weeds };
+      if (activeTrial && targetIdx !== -1) {
+        const updatedPhotos = photos.map((p, idx) => {
+          if (idx === targetIdx) {
+            // Normalize to object format if it was a string
+            if (typeof p === 'string') {
+              const isDrive = p.includes('drive.google.com');
+              return {
+                [isDrive ? 'url' : 'fileData']: p,
+                bounds: weeds
+              };
+            } else {
+              return { ...p, bounds: weeds };
+            }
           }
           return p;
         });
