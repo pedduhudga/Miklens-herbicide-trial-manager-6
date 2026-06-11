@@ -29,19 +29,19 @@ import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from
 export function getThemeClasses(accentColor = 'emerald') {
   const accentMap = {
     emerald: {
-      bg: '${theme.bg}',
-      bgSecondary: '${theme.bgSecondary}',
-      text: '${theme.text}',
-      textDark: '${theme.textDark}',
-      ring: '${theme.ring}',
-      bgLight: '${theme.bgLight}',
-      textLight: '${theme.textDark}',
-      badge: '${theme.badge}',
-      border: '${theme.border}',
-      borderLight: '${theme.borderLight}',
-      hoverBgLight: 'hover:${theme.bgLight} ${theme.textDark}',
-      hoverTextLight: 'hover:${theme.textDark}',
-      ringFocus: '${theme.ringFocus}',
+      bg: 'bg-emerald-600 hover:bg-emerald-700',
+      bgSecondary: 'bg-emerald-600',
+      text: 'text-emerald-600',
+      textDark: 'text-emerald-700',
+      ring: 'focus:ring-emerald-400',
+      bgLight: 'bg-emerald-50',
+      textLight: 'text-emerald-700',
+      badge: 'bg-emerald-100 text-emerald-700',
+      border: 'border-emerald-200',
+      borderLight: 'border-emerald-100',
+      hoverBgLight: 'hover:bg-emerald-50 text-emerald-700',
+      hoverTextLight: 'hover:text-emerald-700',
+      ringFocus: 'focus:ring-emerald-500',
     },
     indigo: {
       bg: 'bg-indigo-600 hover:bg-indigo-700',
@@ -172,7 +172,9 @@ const emptyVisitForm = () => ({
 });
 
 export default function LargeScaleTrials({ onMenuClick }) {
-  
+  const { state, updateState, getAppState } = useAppState();
+  const activeCategory = state.activeCategory || 'herbicide';
+  const config = getCategoryConfig(activeCategory);
   const theme = useMemo(() => getThemeClasses(config.color.accent), [config.color.accent]);
   const INPUT = `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${theme.ring} bg-white`;
   
@@ -1924,7 +1926,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             const isBaseline = visit.daa === obsData.sorted[0]?.daa;
                             const wce = obsData.baseCover > 0 && !isBaseline ? Math.max(0, Math.min(100, (1 - visit.weedCover / obsData.baseCover) * 100)) : null;
                             const wceRating = wce === null ? null : wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
-                            const wceCls = wce === null ? '' : wce >= 85 ? '${theme.textDark} ${theme.bgLight}' : wce >= 70 ? 'text-blue-700 bg-blue-50' : wce >= 50 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
+                            const wceCls = wce === null ? '' : wce >= 85 ? `${theme.textDark} ${theme.bgLight}` : wce >= 70 ? 'text-blue-700 bg-blue-50' : wce >= 50 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
                             const risks = getClimateRisks(visit.weatherTemp, visit.weatherWind, visit.weatherRain);
 
                             return (
@@ -2360,7 +2362,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                     <div
                                       onClick={() => handleToggleLiveField(key)}
                                       className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${
-                                        liveSettings[key] ? '${theme.bgLight}0' : 'bg-slate-300'
+                                        liveSettings[key] ? theme.bgSecondary : 'bg-slate-300'
                                       }`}
                                     >
                                       <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${
@@ -3431,7 +3433,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
       {/* Floating Selection Bar for spots */}
       {selectedForBulk.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-4 z-50">
-          <span className={`font-bold text-sm`}><span className={`${theme.bgLight}0 px-2 py-0.5 rounded-full mr-2`}>{selectedForBulk.size}</span>Selected</span>
+          <span className={`font-bold text-sm`}><span className={`${theme.bgSecondary} px-2 py-0.5 rounded-full mr-2`}>{selectedForBulk.size}</span>Selected</span>
           <div className="h-4 w-px bg-slate-600" />
           <button
             onClick={() => {

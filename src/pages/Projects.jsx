@@ -22,19 +22,19 @@ import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from
 export function getThemeClasses(accentColor = 'emerald') {
   const accentMap = {
     emerald: {
-      bg: '${theme.bg}',
-      bgSecondary: '${theme.bgSecondary}',
-      text: '${theme.text}',
-      textDark: '${theme.textDark}',
-      ring: '${theme.ring}',
-      bgLight: '${theme.bgLight}',
-      textLight: '${theme.textDark}',
-      badge: '${theme.badge}',
-      border: '${theme.border}',
-      borderLight: '${theme.borderLight}',
-      hoverBgLight: 'hover:${theme.bgLight} ${theme.textDark}',
-      hoverTextLight: 'hover:${theme.textDark}',
-      ringFocus: '${theme.ringFocus}',
+      bg: 'bg-emerald-600 hover:bg-emerald-700',
+      bgSecondary: 'bg-emerald-600',
+      text: 'text-emerald-600',
+      textDark: 'text-emerald-700',
+      ring: 'focus:ring-emerald-400',
+      bgLight: 'bg-emerald-50',
+      textLight: 'text-emerald-700',
+      badge: 'bg-emerald-100 text-emerald-700',
+      border: 'border-emerald-200',
+      borderLight: 'border-emerald-100',
+      hoverBgLight: 'hover:bg-emerald-50 text-emerald-700',
+      hoverTextLight: 'hover:text-emerald-700',
+      ringFocus: 'focus:ring-emerald-500',
     },
     indigo: {
       bg: 'bg-indigo-600 hover:bg-indigo-700',
@@ -103,7 +103,7 @@ export function getThemeClasses(accentColor = 'emerald') {
 const toast = (msg, type = 'success') =>
   window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type } }));
 
-function MiniBar({ value, max, color = '${theme.bgLight}0' }) {
+function MiniBar({ value, max, color = 'bg-slate-400' }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -1904,11 +1904,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           </h3>
                           <p className="text-xs text-slate-400 mt-0.5">Every block has every treatment (RCBD).</p>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${designCheck.isBalanced ? '${theme.badge}' : designCheck.missing.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${designCheck.isBalanced ? theme.badge : designCheck.missing.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                           {designCheck.isBalanced ? 'Balanced' : designCheck.missing.length > 0 ? 'Incomplete' : 'Check'}
                         </span>
                       </div>
-                      <MiniBar value={designCheck.coveragePct} max={100} color={designCheck.isBalanced ? '${theme.bgLight}0' : 'bg-amber-500'} />
+                      <MiniBar value={designCheck.coveragePct} max={100} color={designCheck.isBalanced ? theme.bgSecondary : 'bg-amber-500'} />
                       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                         {[['Coverage', `${designCheck.coveragePct}%`], ['Expected cells', designCheck.expectedCells],
                           ['Missing cells', designCheck.missing.length], ['Duplicates', designCheck.duplicates.length]
@@ -1944,7 +1944,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           </h3>
                           <p className="text-xs text-slate-400 mt-0.5">Checks untreated control count per block.</p>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${(designCheck.noControl.length === 0 && designCheck.multiControl.length === 0) ? '${theme.badge}' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${(designCheck.noControl.length === 0 && designCheck.multiControl.length === 0) ? theme.badge : 'bg-amber-100 text-amber-700'}`}>
                           {(designCheck.noControl.length === 0 && designCheck.multiControl.length === 0) ? 'OK' : 'Attention'}
                         </span>
                       </div>
@@ -2075,11 +2075,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                   <td className="p-3 text-right font-semibold text-slate-800">{ts.mean.toFixed(2)}</td>
                                   <td className="p-3 text-right text-slate-500">{ts.sd.toFixed(2)}</td>
                                   <td className="p-3 text-right">
-                                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ts.cv < 15 ? '${theme.bgLight} ${theme.textDark}' : ts.cv < 30 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ts.cv < 15 ? `${theme.bgLight} ${theme.textDark}` : ts.cv < 30 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
                                       {ts.cv.toFixed(1)}%
                                     </span>
                                   </td>
-                                  <td className={`p-3 text-right font-bold ${ts.wce >= 80 ? '${theme.text}' : ts.wce >= 60 ? 'text-amber-600' : 'text-red-500'}`}>{ts.wce.toFixed(1)}{config.primaryMetric.unit || ''}</td>
+                                  <td className={`p-3 text-right font-bold ${ts.wce >= 80 ? theme.text : ts.wce >= 60 ? 'text-amber-600' : 'text-red-500'}`}>{ts.wce.toFixed(1)}{config.primaryMetric.unit || ''}</td>
                                   <td className={`p-3 text-right font-black ${theme.textDark} tracking-widest`}>{ts.grouping}</td>
                                 </tr>
                               ))}
