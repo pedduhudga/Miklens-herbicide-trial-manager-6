@@ -182,6 +182,9 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick, outlierInf
       {trial.TrialDesign === 'Factorial' && (trial.MainFactor || trial.SubFactor) && (
         <p className="text-[8px] font-semibold text-slate-500 truncate">Fac: {trial.MainFactor || 'A'} x {trial.SubFactor || 'B'}</p>
       )}
+      {trial.TrialDesign === 'Strip-Plot' && (trial.MainFactor || trial.SubFactor) && (
+        <p className="text-[8px] font-semibold text-slate-500 truncate">Strip: {trial.MainFactor} x {trial.SubFactor}</p>
+      )}
       {trial.TrialDesign === 'Lattice' && trial.SubBlockID && (
         <p className="text-[9px] font-semibold text-slate-500 truncate">Blk: {trial.SubBlockID}</p>
       )}
@@ -253,6 +256,28 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
           {Object.entries(groups).map(([subBlock, groupTrials]) => (
             <div key={subBlock} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
               <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Sub-Block: {subBlock}</div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
+                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (designType === 'Strip-Plot') {
+      const groups = {};
+      trials.forEach(t => {
+        const key = t.MainFactor || 'No Main Factor';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(t);
+      });
+      return (
+        <div className="space-y-4">
+          {Object.entries(groups).map(([mainFactor, groupTrials]) => (
+            <div key={mainFactor} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
+              <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Row Factor (Main): {mainFactor}</div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
                   .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
@@ -478,7 +503,10 @@ export default function Projects({ onMenuClick }) {
     dosage: '',
     weedSpecies: '',
     date: new Date().toISOString().split('T')[0],
-    replications: '4'
+    replications: '4',
+    trialDesign: 'RCBD',
+    mainFactorLevels: '',
+    subFactorLevels: ''
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
   const [randomizeTreatments, setRandomizeTreatments] = useState([]);
@@ -1203,6 +1231,44 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     setRandomizeTreatments(prev => prev.filter(t => t.id !== id));
   };
 
+  const generateFactorialCombinations = () => {
+    const mainLvl = (randomizeForm.mainFactorLevels || '').split(',').map(x => x.trim()).filter(Boolean);
+    const subLvl = (randomizeForm.subFactorLevels || '').split(',').map(x => x.trim()).filter(Boolean);
+    
+    if (mainLvl.length === 0 || subLvl.length === 0) {
+      toast('Please enter both Factor A and Factor B levels.', 'error');
+      return;
+    }
+    
+    const combined = [];
+    mainLvl.forEach(m => {
+      subLvl.forEach(s => {
+        combined.push({
+          id: Math.random().toString(36).substring(2, 9),
+          name: `${m} x ${s}`,
+          formulationId: '',
+          dosage: randomizeForm.dosage || '',
+          role: 'experimental',
+          mainFactor: m,
+          subFactor: s
+        });
+      });
+    });
+    
+    combined.push({
+      id: Math.random().toString(36).substring(2, 9),
+      name: 'Untreated Control',
+      formulationId: '',
+      dosage: '',
+      role: 'control',
+      mainFactor: 'Control',
+      subFactor: 'Control'
+    });
+    
+    setRandomizeTreatments(combined);
+    toast(`Generated ${combined.length} factorial combinations!`, 'success');
+  };
+
   const applyRandomization = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     
@@ -1213,7 +1279,9 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
         fid: t.formulationId || '',
         name: t.name.trim() || f?.Name || 'Unnamed Treatment',
         role: t.role,
-        dosage: t.dosage || ''
+        dosage: t.dosage || '',
+        mainFactor: t.mainFactor || '',
+        subFactor: t.subFactor || ''
       };
     });
       
@@ -1235,72 +1303,333 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     setIsRandomizeModalOpen(false);
     toast('Generating randomized layout and blocks...');
 
-    // Generate new Blocks based on the chosen number of replications
+    const designType = randomizeForm.trialDesign || 'RCBD';
     const numReps = parseInt(randomizeForm.replications) || 4;
     const blocksToSave = [];
     const trialsToSave = [];
 
-    for (let r = 1; r <= numReps; r++) {
-      const blockId = 'block_' + Date.now() + '_' + r + '_' + Math.random().toString(36).substring(2, 7);
-      const blockName = `Rep ${String.fromCharCode(64 + r)}`; // Rep A, Rep B, Rep C, etc.
-      blocksToSave.push({
+    if (designType === 'CRD') {
+      const blockId = 'block_' + Date.now() + '_crd_' + Math.random().toString(36).substring(2, 7);
+      const block = {
         ID: blockId,
         ProjectID: activeProject.ID,
-        Name: blockName,
-        ReplicationNum: String(r),
+        Name: 'CRD Field Layout',
+        ReplicationNum: '1',
         CreatedAt: new Date().toISOString(),
         Category: activeCategory
-      });
-    }
+      };
+      blocksToSave.push(block);
 
-    // Generate plots (trials) randomized within each block
-    blocksToSave.forEach(block => {
-      const blockTreatments = trtList.map(t => ({
-        FormulationID: t.fid,
-        FormulationName: t.name,
-        IsControl: t.role === 'control',
-        IsStandardCheck: t.role === 'standard',
-        dosage: t.dosage
-      }));
-
-      // Fisher-Yates Shuffle
-      for (let i = blockTreatments.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [blockTreatments[i], blockTreatments[j]] = [blockTreatments[j], blockTreatments[i]];
+      const allPlots = [];
+      for (let r = 1; r <= numReps; r++) {
+        trtList.forEach(t => {
+          allPlots.push({
+            ...t,
+            repNum: r
+          });
+        });
       }
 
-      blockTreatments.forEach((t, index) => {
+      for (let i = allPlots.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allPlots[i], allPlots[j]] = [allPlots[j], allPlots[i]];
+      }
+
+      allPlots.forEach((t, index) => {
         const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
         const targetField = config.targetField || 'WeedSpecies';
-
+        
         const tToSave = {
           ID: trialId,
           ProjectID: activeProject.ID,
           BlockID: block.ID,
-          FormulationID: t.FormulationID,
-          FormulationName: t.FormulationName,
+          FormulationID: t.fid,
+          FormulationName: t.name,
           InvestigatorName: randomizeForm.investigatorName || '',
           Dosage: t.dosage || randomizeForm.dosage || '',
           Date: randomizeForm.date || new Date().toISOString().split('T')[0],
-          Replication: block.ReplicationNum || '1',
+          Replication: String(t.repNum),
           RandomizationOrder: index + 1,
-          IsControl: t.IsControl,
-          IsStandardCheck: t.IsStandardCheck,
+          IsControl: t.role === 'control',
+          IsStandardCheck: t.role === 'standard',
           Status: 'Draft',
           IsLive: true,
           EfficacyDataJSON: '[]',
           PhotoURLs: '[]',
           WeedPhotosJSON: '[]',
-          PlotNumber: index + 1,
-          AISummariesJSON: JSON.stringify({ plotNum: index + 1 }),
+          PlotNumber: 100 + index + 1,
+          AISummariesJSON: JSON.stringify({ plotNum: 100 + index + 1 }),
           Category: activeCategory,
+          TrialDesign: 'CRD',
           [targetField]: randomizeForm.weedSpecies || ''
         };
         trialsToSave.push(tToSave);
       });
-    });
 
-    // Remove old blocks and trials from local state
+    } else if (designType === 'Split-Plot') {
+      for (let r = 1; r <= numReps; r++) {
+        const blockId = 'block_' + Date.now() + '_' + r + '_' + Math.random().toString(36).substring(2, 7);
+        const blockName = `Rep ${String.fromCharCode(64 + r)}`;
+        const block = {
+          ID: blockId,
+          ProjectID: activeProject.ID,
+          Name: blockName,
+          ReplicationNum: String(r),
+          CreatedAt: new Date().toISOString(),
+          Category: activeCategory
+        };
+        blocksToSave.push(block);
+
+        const mainFactors = [...new Set(trtList.map(t => t.mainFactor || 'Control'))];
+        
+        const shuffledMainFactors = [...mainFactors];
+        for (let i = shuffledMainFactors.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledMainFactors[i], shuffledMainFactors[j]] = [shuffledMainFactors[j], shuffledMainFactors[i]];
+        }
+
+        let plotIndex = 1;
+        shuffledMainFactors.forEach((mf) => {
+          const subPlots = trtList.filter(t => (t.mainFactor || 'Control') === mf);
+          
+          const shuffledSubPlots = [...subPlots];
+          for (let i = shuffledSubPlots.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffledSubPlots[i], shuffledSubPlots[j]] = [shuffledSubPlots[j], shuffledSubPlots[i]];
+          }
+
+          shuffledSubPlots.forEach((t) => {
+            const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+            const targetField = config.targetField || 'WeedSpecies';
+            
+            const tToSave = {
+              ID: trialId,
+              ProjectID: activeProject.ID,
+              BlockID: block.ID,
+              FormulationID: t.fid,
+              FormulationName: t.name,
+              InvestigatorName: randomizeForm.investigatorName || '',
+              Dosage: t.dosage || randomizeForm.dosage || '',
+              Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+              Replication: block.ReplicationNum,
+              RandomizationOrder: plotIndex,
+              IsControl: t.role === 'control',
+              IsStandardCheck: t.role === 'standard',
+              Status: 'Draft',
+              IsLive: true,
+              EfficacyDataJSON: '[]',
+              PhotoURLs: '[]',
+              WeedPhotosJSON: '[]',
+              PlotNumber: r * 100 + plotIndex,
+              AISummariesJSON: JSON.stringify({ plotNum: r * 100 + plotIndex }),
+              Category: activeCategory,
+              TrialDesign: 'Split-Plot',
+              MainFactor: mf,
+              SubFactor: t.subFactor || 'N/A',
+              [targetField]: randomizeForm.weedSpecies || ''
+            };
+            trialsToSave.push(tToSave);
+            plotIndex++;
+          });
+        });
+      }
+
+    } else if (designType === 'Strip-Plot') {
+      for (let r = 1; r <= numReps; r++) {
+        const blockId = 'block_' + Date.now() + '_' + r + '_' + Math.random().toString(36).substring(2, 7);
+        const blockName = `Rep ${String.fromCharCode(64 + r)}`;
+        const block = {
+          ID: blockId,
+          ProjectID: activeProject.ID,
+          Name: blockName,
+          ReplicationNum: String(r),
+          CreatedAt: new Date().toISOString(),
+          Category: activeCategory
+        };
+        blocksToSave.push(block);
+
+        const mainFactors = [...new Set(trtList.map(t => t.mainFactor || 'Control'))];
+        const subFactors = [...new Set(trtList.map(t => t.subFactor || 'Control'))];
+
+        const shuffledRows = [...mainFactors];
+        for (let i = shuffledRows.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledRows[i], shuffledRows[j]] = [shuffledRows[j], shuffledRows[i]];
+        }
+
+        const shuffledCols = [...subFactors];
+        for (let i = shuffledCols.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledCols[i], shuffledCols[j]] = [shuffledCols[j], shuffledCols[i]];
+        }
+
+        let plotIndex = 1;
+        shuffledRows.forEach((rowFactor) => {
+          shuffledCols.forEach((colFactor) => {
+            const t = trtList.find(x => (x.mainFactor || 'Control') === rowFactor && (x.subFactor || 'Control') === colFactor) || trtList[0];
+            
+            const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+            const targetField = config.targetField || 'WeedSpecies';
+            
+            const tToSave = {
+              ID: trialId,
+              ProjectID: activeProject.ID,
+              BlockID: block.ID,
+              FormulationID: t.fid,
+              FormulationName: t.name,
+              InvestigatorName: randomizeForm.investigatorName || '',
+              Dosage: t.dosage || randomizeForm.dosage || '',
+              Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+              Replication: block.ReplicationNum,
+              RandomizationOrder: plotIndex,
+              IsControl: t.role === 'control',
+              IsStandardCheck: t.role === 'standard',
+              Status: 'Draft',
+              IsLive: true,
+              EfficacyDataJSON: '[]',
+              PhotoURLs: '[]',
+              WeedPhotosJSON: '[]',
+              PlotNumber: r * 100 + plotIndex,
+              AISummariesJSON: JSON.stringify({ plotNum: r * 100 + plotIndex }),
+              Category: activeCategory,
+              TrialDesign: 'Strip-Plot',
+              MainFactor: rowFactor,
+              SubFactor: colFactor,
+              [targetField]: randomizeForm.weedSpecies || ''
+            };
+            trialsToSave.push(tToSave);
+            plotIndex++;
+          });
+        });
+      }
+
+    } else if (designType === 'Lattice') {
+      const k = Math.ceil(Math.sqrt(trtList.length));
+      
+      for (let r = 1; r <= numReps; r++) {
+        const shuffledTrts = [...trtList];
+        for (let i = shuffledTrts.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledTrts[i], shuffledTrts[j]] = [shuffledTrts[j], shuffledTrts[i]];
+        }
+
+        const blockId = 'block_' + Date.now() + '_' + r + '_' + Math.random().toString(36).substring(2, 7);
+        const blockName = `Rep ${String.fromCharCode(64 + r)}`;
+        const block = {
+          ID: blockId,
+          ProjectID: activeProject.ID,
+          Name: blockName,
+          ReplicationNum: String(r),
+          CreatedAt: new Date().toISOString(),
+          Category: activeCategory
+        };
+        blocksToSave.push(block);
+
+        let plotIndex = 1;
+        for (let bNum = 1; bNum <= k; bNum++) {
+          const blockSlice = shuffledTrts.slice((bNum - 1) * k, bNum * k);
+          const subBlockId = `Block ${String.fromCharCode(64 + r)}${bNum}`;
+          
+          blockSlice.forEach((t) => {
+            const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+            const targetField = config.targetField || 'WeedSpecies';
+            
+            const tToSave = {
+              ID: trialId,
+              ProjectID: activeProject.ID,
+              BlockID: block.ID,
+              FormulationID: t.fid,
+              FormulationName: t.name,
+              InvestigatorName: randomizeForm.investigatorName || '',
+              Dosage: t.dosage || randomizeForm.dosage || '',
+              Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+              Replication: block.ReplicationNum,
+              RandomizationOrder: plotIndex,
+              IsControl: t.role === 'control',
+              IsStandardCheck: t.role === 'standard',
+              Status: 'Draft',
+              IsLive: true,
+              EfficacyDataJSON: '[]',
+              PhotoURLs: '[]',
+              WeedPhotosJSON: '[]',
+              PlotNumber: r * 100 + plotIndex,
+              AISummariesJSON: JSON.stringify({ plotNum: r * 100 + plotIndex }),
+              Category: activeCategory,
+              TrialDesign: 'Lattice',
+              SubBlockID: subBlockId,
+              [targetField]: randomizeForm.weedSpecies || ''
+            };
+            trialsToSave.push(tToSave);
+            plotIndex++;
+          });
+        }
+      }
+
+    } else {
+      for (let r = 1; r <= numReps; r++) {
+        const blockId = 'block_' + Date.now() + '_' + r + '_' + Math.random().toString(36).substring(2, 7);
+        const blockName = `Rep ${String.fromCharCode(64 + r)}`;
+        blocksToSave.push({
+          ID: blockId,
+          ProjectID: activeProject.ID,
+          Name: blockName,
+          ReplicationNum: String(r),
+          CreatedAt: new Date().toISOString(),
+          Category: activeCategory
+        });
+      }
+
+      blocksToSave.forEach(block => {
+        const blockTreatments = trtList.map(t => ({
+          FormulationID: t.fid,
+          FormulationName: t.name,
+          IsControl: t.role === 'control',
+          IsStandardCheck: t.role === 'standard',
+          dosage: t.dosage,
+          mainFactor: t.mainFactor,
+          subFactor: t.subFactor
+        }));
+
+        for (let i = blockTreatments.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [blockTreatments[i], blockTreatments[j]] = [blockTreatments[j], blockTreatments[i]];
+        }
+
+        blockTreatments.forEach((t, index) => {
+          const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+          const targetField = config.targetField || 'WeedSpecies';
+
+          const tToSave = {
+            ID: trialId,
+            ProjectID: activeProject.ID,
+            BlockID: block.ID,
+            FormulationID: t.FormulationID,
+            FormulationName: t.FormulationName,
+            InvestigatorName: randomizeForm.investigatorName || '',
+            Dosage: t.dosage || randomizeForm.dosage || '',
+            Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+            Replication: block.ReplicationNum || '1',
+            RandomizationOrder: index + 1,
+            IsControl: t.IsControl,
+            IsStandardCheck: t.IsStandardCheck,
+            Status: 'Draft',
+            IsLive: true,
+            EfficacyDataJSON: '[]',
+            PhotoURLs: '[]',
+            WeedPhotosJSON: '[]',
+            PlotNumber: index + 1,
+            AISummariesJSON: JSON.stringify({ plotNum: index + 1 }),
+            Category: activeCategory,
+            TrialDesign: designType,
+            MainFactor: t.mainFactor || '',
+            SubFactor: t.subFactor || '',
+            [targetField]: randomizeForm.weedSpecies || ''
+          };
+          trialsToSave.push(tToSave);
+        });
+      });
+    }
+
     const currentBlocks = state.blocks || [];
     const otherBlocks = currentBlocks.filter(b => String(b.ProjectID) !== String(activeProject.ID));
     const currentTrials = state.trials || [];
@@ -1311,23 +1640,19 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       trials: [...otherTrials, ...trialsToSave]
     });
 
-    // Sync with Firebase
     const oldBlocks = currentBlocks.filter(b => String(b.ProjectID) === String(activeProject.ID));
     const oldTrials = currentTrials.filter(t => String(t.ProjectID) === String(activeProject.ID));
 
     try {
-      // Run deletions in parallel without blocking screen overlays
       await Promise.all([
         ...oldTrials.map(t => deleteTrial({ ID: t.ID }, getAppState, false).catch(e => console.error(e))),
         ...oldBlocks.map(b => deleteBlock({ ID: b.ID }, getAppState, false).catch(e => console.error(e)))
       ]);
 
-      // Save new blocks in parallel without blocking screen overlays
       await Promise.all(
         blocksToSave.map(b => addBlock(b, getAppState, false).catch(e => console.error(e)))
       );
 
-      // Save new trials in batch without blocking screen overlays
       await addBatchTrials({ trials: trialsToSave }, getAppState, false);
       toast('Randomized layout generated successfully!', 'success');
       runAnalysis(postHocMethod);
@@ -2443,7 +2768,22 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
                     
                     {/* Default Plot Info Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Trial Design Type</label>
+                        <select 
+                          value={randomizeForm.trialDesign} 
+                          onChange={e => setRandomizeForm(p => ({ ...p, trialDesign: e.target.value }))} 
+                          className={INPUT}
+                        >
+                          <option value="RCBD">RCBD (Block)</option>
+                          <option value="CRD">CRD (Completely Random)</option>
+                          <option value="Split-Plot">Split-Plot</option>
+                          <option value="Lattice">Alpha-Lattice</option>
+                          <option value="Factorial">Factorial</option>
+                          <option value="Strip-Plot">Strip-Plot</option>
+                        </select>
+                      </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Replications (Blocks)</label>
                         <select 
@@ -2496,6 +2836,41 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         />
                       </div>
                     </div>
+
+                    {/* Factorial / Split-Plot combinations generator */}
+                    {(randomizeForm.trialDesign === 'Split-Plot' || randomizeForm.trialDesign === 'Factorial' || randomizeForm.trialDesign === 'Strip-Plot') && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
+                        <div>
+                          <label className="block text-[10px] font-bold text-amber-700 uppercase mb-1">Factor A Levels (comma-separated)</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Irrigated, Dry" 
+                            value={randomizeForm.mainFactorLevels} 
+                            onChange={e => setRandomizeForm(p => ({ ...p, mainFactorLevels: e.target.value }))} 
+                            className={INPUT} 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-amber-700 uppercase mb-1">Factor B Levels (comma-separated)</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. 0 N, 50 N, 100 N" 
+                            value={randomizeForm.subFactorLevels} 
+                            onChange={e => setRandomizeForm(p => ({ ...p, subFactorLevels: e.target.value }))} 
+                            className={INPUT} 
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={generateFactorialCombinations}
+                            className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition"
+                          >
+                            Generate Combinations
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Tabular Treatments Setup */}
                     <div className="space-y-3">
@@ -2905,10 +3280,25 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           </div>
           <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
           
-          {/* Default Plot Info Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Replications (Blocks)</label>
+        {/* Default Plot Info Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Trial Design Type</label>
+            <select 
+              value={randomizeForm.trialDesign} 
+              onChange={e => setRandomizeForm(p => ({ ...p, trialDesign: e.target.value }))} 
+              className={INPUT}
+            >
+              <option value="RCBD">RCBD (Block)</option>
+              <option value="CRD">CRD (Completely Random)</option>
+              <option value="Split-Plot">Split-Plot</option>
+              <option value="Lattice">Alpha-Lattice</option>
+              <option value="Factorial">Factorial</option>
+              <option value="Strip-Plot">Strip-Plot</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Replications (Blocks)</label>
               <select 
                 value={randomizeForm.replications} 
                 onChange={e => setRandomizeForm(p => ({ ...p, replications: e.target.value }))} 
@@ -2959,6 +3349,41 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               />
             </div>
           </div>
+
+        {/* Factorial / Split-Plot combinations generator */}
+        {(randomizeForm.trialDesign === 'Split-Plot' || randomizeForm.trialDesign === 'Factorial' || randomizeForm.trialDesign === 'Strip-Plot') && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
+            <div>
+              <label className="block text-[10px] font-bold text-amber-700 uppercase mb-1">Factor A Levels (comma-separated)</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Irrigated, Dry" 
+                value={randomizeForm.mainFactorLevels} 
+                onChange={e => setRandomizeForm(p => ({ ...p, mainFactorLevels: e.target.value }))} 
+                className={INPUT} 
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-amber-700 uppercase mb-1">Factor B Levels (comma-separated)</label>
+              <input 
+                type="text" 
+                placeholder="e.g. 0 N, 50 N, 100 N" 
+                value={randomizeForm.subFactorLevels} 
+                onChange={e => setRandomizeForm(p => ({ ...p, subFactorLevels: e.target.value }))} 
+                className={INPUT} 
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={generateFactorialCombinations}
+                className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition"
+              >
+                Generate Combinations
+              </button>
+            </div>
+          </div>
+        )}
 
           {/* Tabular Treatments Setup */}
           <div className="space-y-3">

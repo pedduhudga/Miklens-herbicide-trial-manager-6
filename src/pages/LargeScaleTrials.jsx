@@ -25,6 +25,8 @@ import { calculateDAA, toDatetimeLocal, formatDate, formatDateTime, formatPhotoD
 import { safeJsonParse } from '../utils/helpers.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
+import { EPPO_CODES, BBCH_STAGES, lookupEPPO } from '../utils/eppoBBCHData.js';
+import { exportToARM, importARMCSV } from '../services/armExporter.js';
 
 export function getThemeClasses(accentColor = 'emerald') {
   const accentMap = {
@@ -223,6 +225,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const [weedIdLoading, setWeedIdLoading] = useState(false);
   const [weedIdResult, setWeedIdResult] = useState(null);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [eppoSearchQuery, setEppoSearchQuery] = useState('');
+  const [showEppoDropdown, setShowEppoDropdown] = useState(false);
 
   const [viewMode, setViewMode] = useState('gis'); // 'gis' | 'spots'
   const [search, setSearch] = useState('');
@@ -234,6 +238,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const quickActionTrialRef = useRef(null);
   const cropCallbackRef = useRef(null);
   const fileInputRef = useRef(null);
+  const armFileInputRef = useRef(null);
   const qrCanvasRef = useRef(null);
   const [qrGenerated, setQrGenerated] = useState(false);
   const [qrMode, setQrMode] = useState('offline'); // 'offline' | 'online'
@@ -1136,6 +1141,51 @@ export default function LargeScaleTrials({ onMenuClick }) {
     return () => window.removeEventListener('app:select-subtrial', handleSelectST);
   }, []);
 
+  const handleARMImportClick = () => {
+    armFileInputRef.current?.click();
+  };
+
+  const handleARMImportChange = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const csvText = evt.target?.result;
+      try {
+        const importedTrials = importARMCSV(csvText);
+        if (importedTrials.length === 0) {
+          throw new Error('No valid trials found in the CSV.');
+        }
+
+        // Map imported trials to large-scale subtrials
+        const mappedTrials = importedTrials.map(t => {
+          const formMatch = state.formulations?.find(f => f.Name.toLowerCase() === t.FormulationName.toLowerCase());
+          return {
+            ...emptySubTrialForm(),
+            ...t,
+            ProjectID: activeProjectId,
+            FormulationID: formMatch?.ID || '',
+            IsLive: true,
+            CreatedAt: new Date().toISOString(),
+            UpdatedAt: new Date().toISOString(),
+            Category: activeCategory
+          };
+        });
+
+        // Add them to database and state
+        await Promise.all(mappedTrials.map(t => addTrial(t, getAppState)));
+        updateState({ trials: [...(state.trials || []), ...mappedTrials] });
+
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Imported ${mappedTrials.length} trials from ARM CSV!`, type: 'success' } }));
+      } catch (err) {
+        console.error(err);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to import ARM CSV: ' + err.message, type: 'error' } }));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // clear input
+  }, [activeProjectId, activeCategory, state.formulations, state.trials, updateState, getAppState]);
+
   // Fetch coordinates
   const handleGetGPS = () => {
     if (!navigator.geolocation) {
@@ -1694,24 +1744,40 @@ export default function LargeScaleTrials({ onMenuClick }) {
               <Plus className="w-4 h-4" /> Create Master Workspace
             </button>
             {activeProjectId && (
-              <button
-                onClick={() => {
-                  setEditingSubTrial(null);
-                  const matchedForm = state.formulations?.find(f =>
-                    f.Name.toLowerCase() === activeProject?.Name?.toLowerCase() ||
-                    activeProject?.Name?.toLowerCase().includes(f.Name.toLowerCase())
-                  );
-                  setSubTrialForm({
-                    ...emptySubTrialForm(),
-                    FormulationName: matchedForm ? matchedForm.Name : '',
-                    InvestigatorName: state.auth?.user?.Name || ''
-                  });
-                  setIsSubTrialModalOpen(true);
-                }}
-                className={`px-4 py-2 ${theme.bg} text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm`}
-              >
-                <Plus className="w-4 h-4" /> Add Sub-Trial / Spot
-              </button>
+              <>
+                <button
+                  onClick={handleARMImportClick}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                  title="Import spots from ARM CSV"
+                >
+                  <Download className="w-4 h-4 text-emerald-600 rotate-180" /> Import ARM CSV
+                </button>
+                <input
+                  type="file"
+                  ref={armFileInputRef}
+                  onChange={handleARMImportChange}
+                  accept=".csv"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => {
+                    setEditingSubTrial(null);
+                    const matchedForm = state.formulations?.find(f =>
+                      f.Name.toLowerCase() === activeProject?.Name?.toLowerCase() ||
+                      activeProject?.Name?.toLowerCase().includes(f.Name.toLowerCase())
+                    );
+                    setSubTrialForm({
+                      ...emptySubTrialForm(),
+                      FormulationName: matchedForm ? matchedForm.Name : '',
+                      InvestigatorName: state.auth?.user?.Name || ''
+                    });
+                    setIsSubTrialModalOpen(true);
+                  }}
+                  className={`px-4 py-2 ${theme.bg} text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm`}
+                >
+                  <Plus className="w-4 h-4" /> Add Sub-Trial / Spot
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -2413,6 +2479,30 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           <TrendingUp className="w-4 h-4 text-purple-600" /> CSV Dataset
                         </button>
                         <button
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating ARM exchange file...', type: 'info' } }));
+                            try {
+                              const blob = exportToARM(activeSubTrial, activeCategory, activeProject);
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `ARM_Export_${activeSubTrial.FormulationName || 'SubTrial'}_${activeCategory}.csv`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                              window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'ARM file exported successfully!', type: 'success' } }));
+                            } catch (err) {
+                              console.error(err);
+                              window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to generate ARM file.', type: 'error' } }));
+                            }
+                          }}
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
+                          title="Export sub-trial data to ARM CSV format"
+                        >
+                          <TrendingUp className="w-4 h-4 text-emerald-600" /> ARM CSV Exchange
+                        </button>
+                        <button
                           onClick={() => exportHtmlReport(activeSubTrial)}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
@@ -2613,6 +2703,30 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <TrendingUp className="w-4 h-4 text-purple-600" /> CSV Dataset
+                          </button>
+                          <button
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating ARM exchange file...', type: 'info' } }));
+                              try {
+                                const blob = exportToARM(subTrials, activeCategory, activeProject);
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `ARM_Export_${activeProject?.Name || 'Master'}_${activeCategory}.csv`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                                window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'ARM file exported successfully!', type: 'success' } }));
+                              } catch (err) {
+                                console.error(err);
+                                window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to generate ARM file.', type: 'error' } }));
+                              }
+                            }}
+                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                            title="Export master project trials to ARM CSV format"
+                          >
+                            <TrendingUp className="w-4 h-4 text-emerald-600" /> ARM CSV Exchange
                           </button>
                           <button
                             onClick={() => exportMasterHtml(activeProject, subTrials)}
@@ -3024,15 +3138,64 @@ export default function LargeScaleTrials({ onMenuClick }) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Target {config.targetLabel}</label>
+            <div className="relative">
+              <label className="block text-slate-600 font-bold mb-1">Target {config.targetLabel} (EPPO)</label>
               <input
                 type="text"
-                placeholder={`e.g. Target ${config.targetLabel}`}
+                placeholder={`Search EPPO code or type...`}
                 value={subTrialForm.WeedSpecies || ''}
-                onChange={e => setSubTrialForm(p => ({ ...p, WeedSpecies: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none"
+                onChange={e => {
+                  setSubTrialForm(p => ({ ...p, WeedSpecies: e.target.value }));
+                  setEppoSearchQuery(e.target.value);
+                  setShowEppoDropdown('WeedSpecies');
+                }}
+                onFocus={() => {
+                  setEppoSearchQuery(subTrialForm.WeedSpecies || '');
+                  setShowEppoDropdown('WeedSpecies');
+                }}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none text-xs"
               />
+              {showEppoDropdown === 'WeedSpecies' && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {EPPO_CODES.filter(item => 
+                    item.type === (activeCategory === 'herbicide' ? 'weed' : activeCategory === 'fungicide' ? 'disease' : 'pest') &&
+                    (item.commonName.toLowerCase().includes(eppoSearchQuery.toLowerCase()) || 
+                     item.scientificName.toLowerCase().includes(eppoSearchQuery.toLowerCase()) ||
+                     item.code.toLowerCase().includes(eppoSearchQuery.toLowerCase()))
+                  ).map(item => (
+                    <div 
+                      key={item.code} 
+                      onClick={() => {
+                        setSubTrialForm(prev => ({...prev, WeedSpecies: `${item.commonName} (${item.scientificName}) [${item.code}]`}));
+                        setShowEppoDropdown(false);
+                      }}
+                      className="px-3 py-2 text-xs hover:bg-slate-100 cursor-pointer flex justify-between text-slate-700"
+                    >
+                      <span className="font-semibold">{item.commonName}</span>
+                      <span className="text-slate-400 italic text-[10px]">{item.scientificName} ({item.code})</span>
+                    </div>
+                  ))}
+                  <div 
+                    onClick={() => setShowEppoDropdown(false)}
+                    className="px-3 py-1.5 text-[10px] text-center text-slate-400 bg-slate-50 border-t cursor-pointer"
+                  >
+                    Close Options
+                  </div>
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="block text-slate-600 font-bold mb-1">Growth Stage (BBCH)</label>
+              <select
+                value={subTrialForm.WeedGrowthStage || ''}
+                onChange={e => setSubTrialForm(p => ({ ...p, WeedGrowthStage: e.target.value }))}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none bg-white text-xs"
+              >
+                <option value="">-- Choose Growth Stage --</option>
+                {BBCH_STAGES.map(s => (
+                  <option key={s.value} value={s.label}>{s.label}</option>
+                ))}
+              </select>
             </div>
             {activeCategory !== 'herbicide' && config.specificFields.map(field => {
               if (field.key === config.targetField) return null;
