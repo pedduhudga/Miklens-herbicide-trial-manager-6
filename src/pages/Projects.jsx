@@ -1101,20 +1101,38 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   const handleRandomizeLayout = () => {
     if (!activeProject) return;
     const pBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
+    const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     
-    // Auto-populate treatments list scientifically
-    const initialTreatments = [
-      { id: 'control_' + Date.now(), name: 'Untreated Control', formulationId: '', dosage: '', role: 'control' }
-    ];
-    activeFormulations.forEach((f, idx) => {
-      initialTreatments.push({
-        id: f.ID + '_' + idx,
-        name: f.Name,
-        formulationId: f.ID,
-        dosage: '',
-        role: f.Name.toLowerCase().includes('check') || f.Name.toLowerCase().includes('standard') ? 'standard' : 'experimental'
+    const initialTreatments = [];
+    
+    if (pTrials.length > 0) {
+      const seen = new Set();
+      pTrials.forEach((t, idx) => {
+        const key = `${t.FormulationID || ''}_${t.FormulationName || ''}_${t.Dosage || ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const isCtrl = String(t.IsControl).toLowerCase() === 'true';
+          initialTreatments.push({
+            id: `trt_${Date.now()}_${idx}`,
+            name: t.FormulationName || (isCtrl ? 'Untreated Control' : 'Unnamed'),
+            formulationId: t.FormulationID || '',
+            dosage: t.Dosage || '',
+            role: isCtrl ? 'control' : (String(t.IsStandardCheck).toLowerCase() === 'true' ? 'standard' : 'experimental')
+          });
+        }
       });
-    });
+    }
+    
+    if (initialTreatments.length === 0) {
+      initialTreatments.push({
+        id: 'control_' + Date.now(),
+        name: 'Untreated Control',
+        formulationId: '',
+        dosage: '',
+        role: 'control'
+      });
+    }
+    
     setRandomizeTreatments(initialTreatments);
     
     setRandomizeForm({
