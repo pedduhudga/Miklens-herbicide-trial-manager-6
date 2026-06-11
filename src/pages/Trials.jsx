@@ -649,7 +649,7 @@ export default function Trials({ onMenuClick }) {
     }
   }, [activeTrial]);
 
-  const identifyWeedFromPhoto = useCallback(async (imageDataUrl, openAnalyzer = false) => {
+  const identifyWeedFromPhoto = useCallback(async (imageDataUrl, openAnalyzer = false, photoIndex = null) => {
     if (openAnalyzer) {
       setPhotoAnalyzerUrl(imageDataUrl);
       setPhotoAnalyzerLoading(true);
@@ -658,6 +658,34 @@ export default function Trials({ onMenuClick }) {
     }
     setWeedIdLoading(true);
     setWeedIdResult(null);
+
+    // Try to retrieve cached bounds from targetPhoto to save tokens and load instantly
+    const photos = activeTrial ? safeJsonParse(activeTrial.PhotoURLs, []) : [];
+    const targetPhoto = (photoIndex !== null && photos[photoIndex]) 
+      ? photos[photoIndex] 
+      : photos.find(p => (p.fileData || p.url) === imageDataUrl || p === imageDataUrl);
+
+    if (targetPhoto && typeof targetPhoto === 'object' && targetPhoto.bounds) {
+      setWeedIdResult(targetPhoto.bounds);
+      if (openAnalyzer) {
+        setPhotoAnalyzerResults(targetPhoto.bounds);
+        setPhotoAnalyzerLoading(false);
+      }
+      setWeedIdLoading(false);
+      
+      // Sync with coverDetectResult to avoid contradiction
+      const totalCover = targetPhoto.bounds.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
+      const avgConf = Math.round((targetPhoto.bounds.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / (targetPhoto.bounds.length || 1)) * 100);
+      setCoverDetectResult({
+        cover: totalCover,
+        confidence: avgConf || 85,
+        source: 'AI (Weed ID Sum)',
+        greenPct: totalCover,
+        brownPct: 0
+      });
+      return;
+    }
+
     try {
       const weeds = await identifyWeedFromPhotoService(imageDataUrl, activeCategory);
       setWeedIdResult(weeds);
@@ -673,6 +701,26 @@ export default function Trials({ onMenuClick }) {
         greenPct: totalCover,
         brownPct: 0
       });
+
+      // Save to memory (cache bounds in targetPhoto and persist)
+      if (activeTrial && targetPhoto && typeof targetPhoto === 'object') {
+        const updatedPhotos = photos.map(p => {
+          const pSrc = p.fileData || p.url;
+          const targetSrc = targetPhoto.fileData || targetPhoto.url;
+          if (pSrc === targetSrc) {
+            return { ...p, bounds: weeds };
+          }
+          return p;
+        });
+        const updatedTrial = { ...activeTrial, PhotoURLs: JSON.stringify(updatedPhotos) };
+        updateState({ trials: trials.map(t => t.ID === updatedTrial.ID ? updatedTrial : t) });
+        setActiveTrial(updatedTrial);
+        try {
+          await updateTrial({ ID: updatedTrial.ID, PhotoURLs: updatedTrial.PhotoURLs }, getAppState);
+        } catch (dbErr) {
+          console.error('Failed to save cached bounds:', dbErr);
+        }
+      }
     } catch (e) {
       console.error('Weed ID failed:', e);
       const errFallback = [{ name: 'Unknown', commonName: e.message || 'No response from AI', cover: 0, growthStage: '', confidence: 0.5 }];
@@ -682,7 +730,7 @@ export default function Trials({ onMenuClick }) {
       setWeedIdLoading(false);
       if (openAnalyzer) setPhotoAnalyzerLoading(false);
     }
-  }, [activeCategory, updateState]);
+  }, [activeCategory, activeTrial, trials, updateState, getAppState]);
 
   const openObsModal = (idx = null) => {
     const primaryObsField = getPrimaryObservationField(activeCategory);
@@ -3831,11 +3879,11 @@ If none are present, write "None".`;
                               {photo.date && <p className="text-[10px] text-slate-400">{formatPhotoDate(photo.date)}</p>}
                             </div>
                             <div className="px-2 pb-2 flex gap-1 flex-wrap">
-                              <button onClick={() => identifyWeedFromPhoto(src)} title="AI Weed ID"
+                              <button onClick={() => identifyWeedFromPhoto(src, false, idx)} title="AI Weed ID"
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100">
                                 <Leaf className="w-3 h-3" />Weed ID
                               </button>
-                              <button onClick={() => identifyWeedFromPhoto(src, true)} title="AI Bounding Box Analysis"
+                              <button onClick={() => identifyWeedFromPhoto(src, true, idx)} title="AI Bounding Box Analysis"
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-cyan-50 text-cyan-700 rounded-lg hover:bg-cyan-100">
                                 <Eye className="w-3 h-3" />Bounds
                               </button>
