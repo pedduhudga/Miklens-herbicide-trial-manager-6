@@ -591,14 +591,13 @@ export async function identifyWeedFromPhoto(imageDataUrl, category = 'herbicide'
   const isHerbicide = category === 'herbicide';
   const targetName = isHerbicide ? 'weed' : 'target/symptom/pest/disease';
 
-  const promptText = `Analyze this agricultural plot photo and identify ALL visible ${targetName} species.
-In agricultural trials, multiple different types of weeds are typically present simultaneously (e.g., broadleaf weeds, grass weeds, sedges, etc.). You must be extremely thorough and find all of them.
-For EVERY weed species you identify:
-1. You MUST detect and draw bounding boxes (box_2d) enclosing their location.
-2. If there are multiple different weed species (like a broadleaf weed mixed with grasses), draw separate bounding boxes for each species. Do NOT just draw a box for one species and ignore the other.
-3. For dense stands, overlapping weeds, or scattered patches of the same species, draw a single large bounding box enclosing that entire stand/patch, or draw multiple bounding boxes.
-4. Do not treat surrounding weeds or grasses as empty background or crop. Unless it is clearly a crop, identify it and map it.
-5. Identify and bound at least 2-4 major species or weed patches if they are present in the image.
+  const promptText = `Analyze this agricultural plot photo and identify ALL visible ${targetName} species (including broadleaves, grasses, sedges, etc.).
+You MUST search the entire image frame thoroughly. Do NOT just identify the single most prominent weed. If there are other weeds or grasses surrounding the main patch, you MUST detect, identify, and draw bounding boxes around them as well.
+In agricultural trials, multiple different types of weeds are typically present simultaneously (e.g. a broadleaf weed mixed with grasses). You must draw separate bounding boxes for each category/species:
+1. Identify the prominent broadleaf weed patch (e.g. Richardia brasiliensis or Spergula arvensis) and draw its bounding box.
+2. Identify the surrounding grass weeds (e.g. Barnyard Grass, Crabgrass, or general Grasses) and draw separate bounding boxes enclosing those grassy areas.
+3. Every single weed species you detect must have a bounding box. Do not leave any major weed area unbounded.
+4. If a species grows in a dense group or overlaps (like dense grass patches), draw a single large bounding box enclosing that entire patch/stand.
 
 Coordinates MUST be in normalized 0-1000 format [ymin, xmin, ymax, xmax] (where 0,0 is top-left of the image and 1000,1000 is bottom-right).
 
@@ -614,8 +613,8 @@ Each item in the array MUST have this format:
 }
 Example output (always returns an array of ALL detected weeds):
 [
-  {"name": "Trianthema portulacastrum", "commonName": "Horse Purslane", "cover": 40, "growthStage": "Flowering", "box_2d": [200, 150, 800, 750], "confidence": 0.9},
-  {"name": "Echinochloa crus-galli", "commonName": "Barnyard Grass", "cover": 35, "growthStage": "Vegetative", "box_2d": [400, 100, 950, 900], "confidence": 0.88}
+  {"name": "Richardia brasiliensis", "commonName": "Tropical Mexican Clover", "cover": 35, "growthStage": "Flowering", "box_2d": [250, 260, 530, 440], "confidence": 0.9},
+  {"name": "Echinochloa crus-galli", "commonName": "Barnyard Grass", "cover": 40, "growthStage": "Vegetative", "box_2d": [290, 210, 800, 520], "confidence": 0.85}
 ]
 JSON ONLY. Do not write any conversational text or explanation. Only output the JSON array.`;
 
@@ -637,10 +636,16 @@ JSON ONLY. Do not write any conversational text or explanation. Only output the 
         const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [
-            { text: promptText },
-            imagePart
-          ]}] })
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: promptText },
+              imagePart
+            ]}],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.1
+            }
+          })
         });
 
         if (!resp.ok) {
