@@ -1,4 +1,4 @@
-﻿ <!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -26391,19 +26391,23 @@ Respond in structured JSON format:
                     );
                 }
 
-                /**
-                 * Fetch optimized analysis data from backend
-                 */
                 async fetchBackendData() {
                     try {
-                        const result = await apiCall('getProjectAnalysisData', { projectId: this.projectId });
+                        const fetchPromise = apiCall('getProjectAnalysisData', { projectId: this.projectId }, false);
+                        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ _timeout: true }), 800));
+                        
+                        const result = await Promise.race([fetchPromise, timeoutPromise]);
+                        if (result && result._timeout) {
+                            console.warn('[AnalysisEngine] Backend fetch timed out (800ms limit), falling back to local data');
+                            return null;
+                        }
+
                         if (result && result.success) {
                             this.backendData = result;
                             return result;
                         }
-                        throw new Error(result.message || 'Failed to fetch backend data');
                     } catch (e) {
-                        console.error('[AnalysisEngine] Backend fetch failed, falling back to local:', e);
+                        console.warn('[AnalysisEngine] Backend fetch failed, falling back to local:', e.message || e);
                         return null;
                     }
                 }
@@ -26450,6 +26454,25 @@ Respond in structured JSON format:
 
                 // Main Analysis Method
                 async analyze(metric, species = null, daa = null, options = {}) {
+                    if (!this.trials || this.trials.length === 0) {
+                        return {
+                            means: {},
+                            efficacy: {},
+                            anova: {
+                                ssTreat: 0, ssBlock: 0, ssError: 0, ssTotal: 0,
+                                dfTreat: 0, dfBlock: 0, dfError: 0, dfTotal: 0,
+                                msTreat: 0, msBlock: 0, msError: 0,
+                                fVal: 0, pVal: 1, grandMean: 0, cv: 0
+                            },
+                            postHoc: { letters: {}, method: 'lsd', value: 0 },
+                            grouping: [],
+                            raw: {},
+                            balance: { isBalanced: true, counts: {} },
+                            timestamp: new Date().toISOString(),
+                            metric: metric
+                        };
+                    }
+
                     // Try to use backend data first
                     await this.fetchBackendData();
                     
@@ -26514,7 +26537,7 @@ Respond in structured JSON format:
                             await apiCall('saveAnalysisResults', { 
                                 projectId: this.projectId, 
                                 results: results 
-                            });
+                            }, false);
                             await apiCall('logAnalysisRun', {
                                 projectId: this.projectId,
                                 metric: metric,
@@ -26522,10 +26545,10 @@ Respond in structured JSON format:
                                 pValue: anovaResults.pVal,
                                 significance: formatSignificance(anovaResults.pVal).symbol,
                                 results: results
-                            });
+                            }, false);
                             console.log('[AnalysisEngine] Results persisted to sheet');
                         } catch (e) {
-                            console.error('[AnalysisEngine] Failed to persist results:', e);
+                            console.warn('[AnalysisEngine] Failed to persist results:', e.message || e);
                         }
                     }
 
