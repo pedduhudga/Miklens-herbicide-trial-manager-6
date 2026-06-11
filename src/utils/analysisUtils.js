@@ -588,7 +588,7 @@ export class AnalysisEngine {
                     this.trials = state.trials.filter(t => String(t.ProjectID) === String(projectId));
                     this.blocks = state.blocks.filter(b => String(b.ProjectID) === String(projectId));
                     this.project = (state.projects || []).find(p => String(p.ID) === String(projectId));
-                    this.category = this.project?.Category || 'herbicide';
+                    this.category = this.project?.Category || state.activeCategory || 'herbicide';
 
                     // Identify treatments (Formulations)
                     this.treatments = [...new Set(this.trials.map(t => t.FormulationName))];
