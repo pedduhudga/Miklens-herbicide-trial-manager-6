@@ -623,9 +623,8 @@ export class AnalysisEngine {
                             this.backendData = result;
                             return result;
                         }
-                        throw new Error(result?.message || 'Failed to fetch backend data');
                     } catch (e) {
-                        console.error('[AnalysisEngine] Backend fetch failed, falling back to local:', e);
+                        console.warn('[AnalysisEngine] Backend fetch failed, falling back to local:', e.message || e);
                         return null;
                     }
                 }
@@ -676,6 +675,25 @@ export class AnalysisEngine {
 
                 // Main Analysis Method
                 async analyze(metric, species = null, daa = null, options = {}) {
+                    if (!this.trials || this.trials.length === 0) {
+                        return {
+                            means: {},
+                            efficacy: {},
+                            anova: {
+                                ssTreat: 0, ssBlock: 0, ssError: 0, ssTotal: 0,
+                                dfTreat: 0, dfBlock: 0, dfError: 0, dfTotal: 0,
+                                msTreat: 0, msBlock: 0, msError: 0,
+                                fVal: 0, pVal: 1, grandMean: 0, cv: 0
+                            },
+                            postHoc: { letters: {}, method: 'lsd', value: 0 },
+                            grouping: [],
+                            raw: {},
+                            balance: { isBalanced: true, counts: {} },
+                            timestamp: new Date().toISOString(),
+                            metric: metric
+                        };
+                    }
+
                     // Try to use backend data first
                     await this.fetchBackendData();
 
@@ -757,9 +775,9 @@ export class AnalysisEngine {
                                 }, false, this.getAppState);
                                 console.log('[AnalysisEngine] Results persisted to sheet');
                             } catch (e) {
-                                console.error('[AnalysisEngine] Failed to persist results:', e);
+                                console.warn('[AnalysisEngine] Failed to persist results:', e.message || e);
                             }
-                        }).catch(e => console.error('[AnalysisEngine] Async persistence error:', e));
+                        }).catch(e => console.warn('[AnalysisEngine] Async persistence error:', e.message || e));
                     }
 
                     return results;
