@@ -17,13 +17,27 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
     const queueItem = (errType, msg) => {
         if (OFFLINE_ACTIONS.includes(action)) {
             const queuedAction = {
-                id: Date.now().toString(),
+                id: `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 action: action,
                 payload: payload,
                 timestamp: new Date().toISOString(),
                 status: 'pending',
                 attempts: 0
             };
+            try {
+                const rawQueue = localStorage.getItem('syncQueue');
+                const queue = rawQueue ? JSON.parse(rawQueue) : [];
+                const isDup = queue.some(item => item.action === action && JSON.stringify(item.payload) === JSON.stringify(payload));
+                if (!isDup) {
+                    queue.push(queuedAction);
+                    localStorage.setItem('syncQueue', JSON.stringify(queue));
+                    if (window.updateState) {
+                        window.updateState({ syncQueue: queue });
+                    }
+                }
+            } catch (e) {
+                console.error('[OfflineQueue] Failed to append to syncQueue:', e);
+            }
             return { success: true, offline: true, _queuedAction: queuedAction, ...payload };
         }
         return { _errType: errType, message: msg };
@@ -119,7 +133,12 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
             body: JSON.stringify({ action, payload: fullPayload, auth: getAuthPayload() }),
         });
 
-        if (!res.ok) return buildQueueError('network', `HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) {
+            if (OFFLINE_ACTIONS.includes(action)) {
+                return queueItem('network', `HTTP ${res.status}: ${res.statusText}`);
+            }
+            return buildQueueError('network', `HTTP ${res.status}: ${res.statusText}`);
+        }
 
         const text = await res.text();
         let rawResult;
@@ -127,6 +146,9 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
 
         return processRawResult(rawResult);
     } catch (error) {
+        if (OFFLINE_ACTIONS.includes(action)) {
+            return queueItem('fetch', error.message);
+        }
         return buildQueueError('fetch', error.message);
     } finally {
         if (showOverlay) if(getAppState().platformAdapter?.showLoading) getAppState().platformAdapter.showLoading(false);

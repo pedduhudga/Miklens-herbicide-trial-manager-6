@@ -1,8 +1,8 @@
 // src/services/firebase.js
 // Firebase initialization — config is loaded from app settings at runtime.
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 let _app = null;
@@ -34,6 +34,16 @@ export function initFirebase(config) {
 
   _db = getFirestore(_app);
   _auth = getAuth(_app);
+
+  if (typeof window !== 'undefined') {
+    enableIndexedDbPersistence(_db).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('[Firebase] Persistence failed-precondition: Multiple tabs open.');
+      } else if (err.code === 'unimplemented') {
+        console.warn('[Firebase] Persistence unimplemented by browser.');
+      }
+    });
+  }
 
   return { app: _app, db: _db, auth: _auth };
 }

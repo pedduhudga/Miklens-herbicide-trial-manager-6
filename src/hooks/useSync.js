@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAppState } from './useAppState.jsx';
 import { processSyncQueue } from '../services/sync.js';
+import { flushMirrorQueue } from '../services/sheetMirror.js';
 
 export function useSync() {
   const { state, dispatch, getAppState, updateState } = useAppState();
@@ -20,6 +21,7 @@ export function useSync() {
     const handleOnline = () => {
       setIsOnline(true);
       showToast('Back online! Syncing data...', 'info');
+      flushMirrorQueue(getAppState);
     };
 
     const handleOffline = () => {
@@ -34,7 +36,13 @@ export function useSync() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [showToast]);
+  }, [showToast, getAppState]);
+
+  useEffect(() => {
+    if (isOnline) {
+      flushMirrorQueue(getAppState);
+    }
+  }, [isOnline, getAppState]);
 
   const runSync = useCallback(async () => {
     if (isSyncing || !isOnline) return;
