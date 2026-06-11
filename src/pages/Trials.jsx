@@ -697,7 +697,7 @@ export default function Trials({ onMenuClick }) {
           brownPct: 0
         });
       } else {
-        const fallback = [{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }];
+        const fallback = [{ name: 'Unknown', commonName: txt.trim() ? txt.slice(0, 120) : 'No weeds detected or response blocked by AI safety filters.', cover: 0, growthStage: '', confidence: 0.5 }];
         setWeedIdResult(fallback);
         if (openAnalyzer) setPhotoAnalyzerResults(fallback);
         setCoverDetectResult({

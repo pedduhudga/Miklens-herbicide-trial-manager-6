@@ -766,7 +766,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
           brownPct: 0
         });
       } else {
-        setWeedIdResult([{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }]);
+        setWeedIdResult([{ name: 'Unknown', commonName: txt.trim() ? txt.slice(0, 120) : 'No weeds detected or response blocked by AI safety filters.', cover: 0, growthStage: '', confidence: 0.5 }]);
         setCoverDetectResult({
           cover: 0,
           confidence: 50,
