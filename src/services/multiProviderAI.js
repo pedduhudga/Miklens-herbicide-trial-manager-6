@@ -582,37 +582,75 @@ export function getAIKey(providerId) {
   return localStorage.getItem(`AI_KEY_${providerId.toUpperCase()}`) || '';
 }
 
-export async function identifyWeedFromPhoto(imageDataUrl) {
+export async function identifyWeedFromPhoto(imageDataUrl, category = 'herbicide') {
   const mimeType = imageDataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
   const base64 = imageDataUrl.split(',')[1];
   
-  const geminiKeys = getAPIKeys('gemini-3-flash');
+  const geminiKeys = getAPIKeys('gemini-3.5-flash');
   if (!geminiKeys.length) {
     throw new Error('No Gemini API key available in Settings');
   }
-  const apiKey = geminiKeys[0];
-  
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [
-      { text: 'Identify weed species in this field photo. For each weed, provide: 1) Scientific name, 2) Common name, 3) Estimated cover% of that species in the frame, 4) Growth stage, 5) Bounding box coordinate in normalized 0-1000 format [ymin, xmin, ymax, xmax] if visible. Format as JSON array: [{"name":"...","commonName":"...","cover":0,"growthStage":"...","box_2d":[ymin, xmin, ymax, xmax],"confidence":0.0}]. Confidence 0-1.' },
-      { inlineData: { mimeType, data: base64 } }
-    ]}] })
-  });
-  
-  if (!resp.ok) {
-    throw new Error(`Gemini API error: ${resp.status}`);
+
+  const isHerbicide = category === 'herbicide';
+  const targetName = isHerbicide ? 'weed' : 'target/symptom/pest/disease';
+
+  const promptText = `Identify ${targetName} species and draw bounding boxes around ${targetName} plants, patches, or infected/damaged regions in this agricultural plot photo.
+You MUST detect and draw bounding boxes around the main ${targetName} plants, patches, or regions.
+Coordinates MUST be in normalized 0-1000 format [ymin, xmin, ymax, xmax] (where 0,0 is top-left and 1000,1000 is bottom-right).
+Return a JSON array containing the detected entities.
+Each item in the array MUST have this format:
+{
+  "name": "Scientific or descriptive name of the ${targetName}",
+  "commonName": "Common name or description of the ${targetName}",
+  "cover": 25, // estimated percentage cover of this ${targetName} patch in the frame (1-100)
+  "growthStage": "Vegetative/Seedling/Flowering/Mature/Infected/etc.",
+  "box_2d": [ymin, xmin, ymax, xmax], // MUST be provided around the plant/patch/region
+  "confidence": 0.85 // confidence level (0.0 to 1.0)
+}
+Example output:
+[
+  {"name": "Trianthema portulacastrum", "commonName": "Horse Purslane", "cover": 40, "growthStage": "Flowering", "box_2d": [200, 150, 800, 750], "confidence": 0.9}
+]
+JSON ONLY. Do not write any conversational text or explanation. Only output the JSON array.`;
+
+  const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  let lastError = null;
+
+  for (const model of models) {
+    for (const apiKey of geminiKeys) {
+      try {
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [
+            { text: promptText },
+            { inlineData: { mimeType, data: base64 } }
+          ]}] })
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          throw new Error(`Model ${model} returned HTTP ${resp.status}: ${errText}`);
+        }
+
+        const d = await resp.json();
+        const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const jsonMatch = txt.match(/\[.*\]/s);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+        
+        if (txt.trim()) {
+          return [{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }];
+        }
+      } catch (err) {
+        console.warn(`Bounds detection failed with model ${model}:`, err.message);
+        lastError = err;
+      }
+    }
   }
-  
-  const d = await resp.json();
-  const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const jsonMatch = txt.match(/\[.*\]/s);
-  if (jsonMatch) {
-    return JSON.parse(jsonMatch[0]);
-  } else {
-    return [{ name: 'Unknown', commonName: txt.slice(0, 120), cover: 0, growthStage: '', confidence: 0.5 }];
-  }
+
+  throw lastError || new Error('All Gemini models failed to analyze bounding boxes');
 }
 
 export { PROVIDERS, getAPIKeys };

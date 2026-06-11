@@ -20,7 +20,7 @@ import {
   Eye, CheckCircle, ChevronRight, BarChart2, Edit, ArrowLeft, FileText, Download,
   TrendingUp, Leaf, SlidersHorizontal, BookOpen, Layers3, Activity, FolderPlus, Hash, Clock, Navigation, Lock, Unlock, Copy, Share2, MoreVertical, Image as ImageIcon
 } from 'lucide-react';
-import { getAPIKeys, analyzePhoto } from '../services/multiProviderAI.js';
+import { getAPIKeys, analyzePhoto, identifyWeedFromPhoto as identifyWeedFromPhotoService } from '../services/multiProviderAI.js';
 import { calculateDAA, toDatetimeLocal, formatDate, formatDateTime, formatPhotoDate } from '../utils/dateUtils.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
@@ -730,57 +730,27 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const identifyWeedFromPhoto = useCallback(async (imageDataUrl) => {
     setWeedIdLoading(true);
     setWeedIdResult(null);
-    const rawApiKey = state.settings?.geminiApiKey || (state.settings?.geminiApiKeys || state.settings?.apiKeys || [])[0];
-    const apiKey = typeof rawApiKey === 'object' ? rawApiKey?.key : rawApiKey;
-    if (!apiKey) {
-      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings', type: 'error' } }));
-      setWeedIdLoading(false);
-      return;
-    }
     try {
-      const mimeType = imageDataUrl.split(';')[0].split(':')[1];
-      const base64 = imageDataUrl.split(',')[1];
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [
-          { text: 'Identify weed species in this field photo. For each weed, provide: 1) Scientific name, 2) Common name, 3) Estimated cover% of that species in the frame, 4) Growth stage. Format as JSON array: [{"name":"...","commonName":"...","cover":0,"growthStage":"...","confidence":0.0}]. Confidence 0-1.' },
-          { inlineData: { mimeType, data: base64 } }
-        ]}] })
+      const weeds = await identifyWeedFromPhotoService(imageDataUrl, activeCategory);
+      setWeedIdResult(weeds);
+      
+      // Sync with coverDetectResult to avoid contradiction
+      const totalCover = weeds.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
+      const avgConf = Math.round((weeds.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / (weeds.length || 1)) * 100);
+      setCoverDetectResult({
+        cover: totalCover,
+        confidence: avgConf || 85,
+        source: 'AI (Weed ID Sum)',
+        greenPct: totalCover,
+        brownPct: 0
       });
-      const d = await resp.json();
-      const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const jsonMatch = txt.match(/\[.*\]/s);
-      if (jsonMatch) {
-        const weeds = JSON.parse(jsonMatch[0]);
-        setWeedIdResult(weeds);
-        
-        // Sync with coverDetectResult to avoid contradiction
-        const totalCover = weeds.reduce((sum, w) => sum + (Number(w.cover) || 0), 0);
-        const avgConf = Math.round((weeds.reduce((sum, w) => sum + (Number(w.confidence) || 0), 0) / (weeds.length || 1)) * 100);
-        setCoverDetectResult({
-          cover: totalCover,
-          confidence: avgConf || 85,
-          source: 'AI (Weed ID Sum)',
-          greenPct: totalCover,
-          brownPct: 0
-        });
-      } else {
-        setWeedIdResult([{ name: 'Unknown', commonName: txt.trim() ? txt.slice(0, 120) : 'No weeds detected or response blocked by AI safety filters.', cover: 0, growthStage: '', confidence: 0.5 }]);
-        setCoverDetectResult({
-          cover: 0,
-          confidence: 50,
-          source: 'AI (Weed ID Sum)',
-          greenPct: 0,
-          brownPct: 0
-        });
-      }
-    } catch(e) {
-      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weed ID failed: ' + e.message, type: 'error' } }));
+    } catch (e) {
+      console.error('Weed ID failed:', e);
+      setWeedIdResult([{ name: 'Unknown', commonName: e.message || 'No response from AI', cover: 0, growthStage: '', confidence: 0.5 }]);
     } finally {
       setWeedIdLoading(false);
     }
-  }, [state.settings]);
+  }, [activeCategory, updateState]);
 
   const handleCropExistingPhoto = (idx, currentSrc) => {
     openCropperFor(currentSrc, async (croppedUrl) => {
