@@ -47,7 +47,15 @@ export function performANOVA(trials, options = {}) {
     
     if (observations.length > 0) {
       const latest = observations[observations.length - 1];
-      const value = latest[metric] ?? latest.controlPct ?? latest.wce ?? latest.weedCover;
+      const value = latest[metric] ?? 
+                    latest[metric === 'yield' ? 'yieldKgPlot' : metric] ?? 
+                    latest.controlPct ?? 
+                    latest.wce ?? 
+                    latest.weedCover ?? 
+                    latest.diseaseSeverity ?? 
+                    latest.pestCount ?? 
+                    latest.yieldKgPlot ?? 
+                    latest.overallVigor;
       if (value !== null && !isNaN(value)) {
         treatments[trt][blockId].push(parseFloat(value));
       }
