@@ -136,7 +136,7 @@ function InlineBarChart({ data, color = '#10b981', height = 120 }) {
 }
 
 // ── Plot mini card ─────────────────────────────────────────────────────────
-function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick, outlierInfo }) {
+function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick, outlierInfo, isDimmed }) {
   const isControl = String(trial.IsControl).toLowerCase() === 'true';
   const isCheck = String(trial.IsStandardCheck).toLowerCase() === 'true';
   const isCompleted = String(trial.IsCompleted).toLowerCase() === 'true';
@@ -163,7 +163,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick, outlierInf
   const borderStyle = outlierInfo ? 'border-red-400 ring-1 ring-red-400 ring-opacity-50 shadow-red-50' : '';
 
   return (
-    <div onClick={onClick} className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition relative overflow-hidden cursor-pointer ${bg} ${borderStyle}`}>
+    <div onClick={onClick} className={`w-40 flex-shrink-0 border-2 rounded-lg p-3 shadow-sm hover:shadow-md transition-all relative overflow-hidden cursor-pointer ${bg} ${borderStyle} ${isDimmed ? 'opacity-20 scale-95 border-dashed pointer-events-none' : ''}`}>
       <div className={`absolute top-0 left-0 w-1 h-full ${ribbon}`} />
       <div className="flex justify-between items-start mb-1">
         <span className="text-[9px] font-bold text-slate-400">PLOT {plotNum}</span>
@@ -205,7 +205,7 @@ function PlotMiniCard({ trial, activeCategory = 'herbicide', onClick, outlierInf
 }
 
 // ── Block card ─────────────────────────────────────────────────────────────
-function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, onAddPlot, isLocked, outliers }) {
+function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, onAddPlot, isLocked, outliers, highlightedTreatment }) {
   const projectConfig = getCategoryConfig(activeCategory);
   const theme = getThemeClasses(projectConfig.color.accent);
   const controls = trials.filter(t => String(t.IsControl).toLowerCase() === 'true');
@@ -238,7 +238,10 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
               <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Main Factor: {mainFactor}</div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
+                  .map(t => {
+                    const isDimmed = highlightedTreatment !== 'all' && t.FormulationName !== highlightedTreatment;
+                    return <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} isDimmed={isDimmed} />;
+                  })}
               </div>
             </div>
           ))}
@@ -260,7 +263,10 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
               <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Sub-Block: {subBlock}</div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
+                  .map(t => {
+                    const isDimmed = highlightedTreatment !== 'all' && t.FormulationName !== highlightedTreatment;
+                    return <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} isDimmed={isDimmed} />;
+                  })}
               </div>
             </div>
           ))}
@@ -282,7 +288,10 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
               <div className="text-[10px] font-bold text-indigo-600 mb-1.5 uppercase tracking-wider">Row Factor (Main): {mainFactor}</div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {[...groupTrials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-                  .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
+                  .map(t => {
+                    const isDimmed = highlightedTreatment !== 'all' && t.FormulationName !== highlightedTreatment;
+                    return <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} isDimmed={isDimmed} />;
+                  })}
               </div>
             </div>
           ))}
@@ -293,7 +302,10 @@ function BlockCard({ block, trials, activeCategory, onPlotClick, onDeleteBlock, 
     return (
       <div className="flex gap-3 min-w-max pb-1">
         {[...trials].sort((a, b) => (parseInt(a.RandomizationOrder) || 999) - (parseInt(b.RandomizationOrder) || 999))
-          .map(t => <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} />)}
+          .map(t => {
+            const isDimmed = highlightedTreatment !== 'all' && t.FormulationName !== highlightedTreatment;
+            return <PlotMiniCard key={t.ID} trial={t} activeCategory={activeCategory} onClick={() => onPlotClick && onPlotClick(t.ID)} outlierInfo={outliers?.[t.ID]} isDimmed={isDimmed} />;
+          })}
       </div>
     );
   };
@@ -494,6 +506,14 @@ export default function Projects({ onMenuClick }) {
   const [showMap, setShowMap] = useState(false);
   const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'report'
   const [blocksViewMode, setBlocksViewMode] = useState('list'); // 'list' | 'grid'
+
+  const [selectedLayoutBlock, setSelectedLayoutBlock] = useState('all');
+  const [selectedLayoutTreatment, setSelectedLayoutTreatment] = useState('all');
+
+  useEffect(() => {
+    setSelectedLayoutBlock('all');
+    setSelectedLayoutTreatment('all');
+  }, [activeProjectId]);
 
   const wceChartRef = useRef(null);
   const perfChartRef = useRef(null);
@@ -1225,11 +1245,19 @@ export default function Projects({ onMenuClick }) {
         const colorClasses = getTreatmentColor(trtName);
         const dataStatus = trial?.Status || 'No Data';
 
+        const matchesBlock = selectedLayoutBlock === 'all' || (trial && String(trial.BlockID) === String(selectedLayoutBlock));
+        const matchesTreatment = selectedLayoutTreatment === 'all' || (trial && trial.FormulationName === selectedLayoutTreatment);
+        const isHighlighted = matchesBlock && matchesTreatment;
+
         rowCells.push(
           <div 
             key={`${r}-${c}`}
             onClick={() => trial && navigate(`/trials?focus=${trial.ID}`)}
-            className={`flex-1 aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-1.5 cursor-pointer transition-all ${colorClasses} shadow-sm relative group`}
+            className={`flex-1 aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-1.5 cursor-pointer shadow-sm relative group transition-all duration-300 ${colorClasses} ${
+              isHighlighted 
+                ? 'scale-100 ring-2 ring-emerald-500 ring-offset-1 z-10' 
+                : 'opacity-10 scale-90 border-dashed pointer-events-none'
+            }`}
             title={`Pot R${r}C${c}: ${trtName}`}
           >
             <span className="text-[10px] font-bold">{trial?.PotLabel || `R${r}C${c}`}</span>
@@ -2893,15 +2921,66 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </form>
                   )}
 
+                  {/* Highlight / Filter Panel */}
+                  {projectBlocks.length > 0 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-wrap gap-4 items-center justify-between text-xs mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">Filter & Highlight Layout:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center gap-1.5">
+                          <label className="font-medium text-slate-600">Block:</label>
+                          <select 
+                            value={selectedLayoutBlock} 
+                            onChange={e => setSelectedLayoutBlock(e.target.value)} 
+                            className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold text-slate-700 cursor-pointer"
+                          >
+                            <option value="all">All Blocks</option>
+                            {projectBlocks.map(b => (
+                              <option key={b.ID} value={b.ID}>{b.Name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="font-medium text-slate-600">Treatment:</label>
+                          <select 
+                            value={selectedLayoutTreatment} 
+                            onChange={e => setSelectedLayoutTreatment(e.target.value)} 
+                            className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold text-slate-700 cursor-pointer"
+                          >
+                            <option value="all">All Treatments</option>
+                            {treatments.map(tName => (
+                              <option key={tName} value={tName}>{tName}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {(selectedLayoutBlock !== 'all' || selectedLayoutTreatment !== 'all') && (
+                          <button 
+                            type="button" 
+                            onClick={() => { setSelectedLayoutBlock('all'); setSelectedLayoutTreatment('all'); }}
+                            className="text-red-600 hover:text-red-900 font-bold"
+                          >
+                            Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {activeProject.Design === 'PotTrial' ? (
                     <div className="space-y-6">
                       {renderGreenhousePotGrid()}
                     </div>
                   ) : projectBlocks.length > 0 ? (
                     <div className={blocksViewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" : "space-y-4"}>
-                      {projectBlocks.map(b => (
-                        <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} outliers={analysisResults?.outliers} />
-                      ))}
+                      {projectBlocks.map(b => {
+                        const isBlockMatch = selectedLayoutBlock === 'all' || String(b.ID) === String(selectedLayoutBlock);
+                        return (
+                          <div key={b.ID} className={`transition-all duration-300 ${isBlockMatch ? 'scale-100 opacity-100' : 'opacity-20 scale-95 pointer-events-none'}`}>
+                            <BlockCard block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} outliers={analysisResults?.outliers} highlightedTreatment={selectedLayoutTreatment} />
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-slate-400 text-sm">
