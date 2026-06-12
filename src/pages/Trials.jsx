@@ -1375,7 +1375,7 @@ export default function Trials({ onMenuClick }) {
     }
   };
 
-  const saveAndAnalyzePhoto = async (dataUrl, photoDateStr, targetTrialOverride = null) => {
+  const saveAndAnalyzePhoto = async (dataUrl, photoDateStr, targetTrialOverride = null, photoTag = 'Whole Canopy') => {
     const targetTrial = targetTrialOverride || activeTrial;
     if (!targetTrial) return;
     setAiGenRunning(dataUrl || true);
@@ -1397,7 +1397,7 @@ export default function Trials({ onMenuClick }) {
     const folderPath = [projectName, trialNameWithDate];
 
     // Optimistically add a placeholder with tempId so the photo appears immediately
-    const photoEntry = { tempId, fileData: dataUrl, date: photoDate, label: cameraMode === 'weed' ? 'Weed Photo' : 'Field Observation', identifications: [] };
+    const photoEntry = { tempId, fileData: dataUrl, date: photoDate, label: cameraMode === 'weed' ? 'Weed Photo' : 'Field Observation', tag: photoTag, identifications: [] };
     const photosOptimistic = [...safeJsonParse(targetTrial.PhotoURLs, []), photoEntry];
     const optimisticTrial = { ...targetTrial, PhotoURLs: JSON.stringify(photosOptimistic) };
     updateState({ trials: getAppState().trials.map(t => t.ID === optimisticTrial.ID ? optimisticTrial : t) });
@@ -1478,7 +1478,7 @@ export default function Trials({ onMenuClick }) {
       // 2. Replace placeholder with final Drive URL entry
       const currentPhotos = safeJsonParse(targetTrial.PhotoURLs, []).filter(p => p.tempId !== tempId);
       const finalEntry = driveUrl
-        ? { url: driveUrl, date: photoDate, label: photoEntry.label, identifications: [] }
+        ? { url: driveUrl, date: photoDate, label: photoEntry.label, tag: photoTag, identifications: [] }
         : { ...photoEntry, tempId: undefined };
       currentPhotos.push(finalEntry);
 
@@ -1544,7 +1544,8 @@ export default function Trials({ onMenuClick }) {
         treatment: targetTrial.FormulationName,
         daa,
         rep: targetTrial.Replication || 1,
-        category: targetTrial.Category || activeCategory
+        category: targetTrial.Category || activeCategory,
+        photoTag: photoTag
       }, (msg) => {
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type: 'info' } }));
       });
@@ -4174,7 +4175,14 @@ If none are present, write "None".`;
                               </div>
                             </div>
                             <div className="px-2 pt-1.5 pb-1">
-                              <p className="text-xs font-semibold text-slate-700 truncate">{photo.label || `Photo ${idx+1}`}</p>
+                              <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <p className="text-xs font-semibold text-slate-700 truncate">{photo.label || `Photo ${idx+1}`}</p>
+                                {photo.tag && (
+                                  <span className="text-[8px] font-extrabold bg-slate-200 text-slate-700 px-1 py-0.5 rounded uppercase shrink-0">
+                                    {photo.tag}
+                                  </span>
+                                )}
+                              </div>
                               {photo.date && <p className="text-[10px] text-slate-400">{formatPhotoDate(photo.date)}</p>}
                             </div>
                             <div className="px-2 pb-2 flex gap-1 flex-wrap">
@@ -5439,11 +5447,11 @@ If none are present, write "None".`;
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-violet-500" /> When was this photo taken?
+                <Sparkles className="w-4 h-4 text-violet-500" /> Photo details & setup
               </h3>
               <button onClick={() => setPendingPhotoAnalysis(null)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-xs text-slate-500">The date determines the <strong>Days After Application (DAA)</strong> for the observation record.</p>
+            <p className="text-xs text-slate-500 font-semibold">"For best results, upload photos from different representative plants within this observation unit."</p>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Photo Date</label>
               <input type="datetime-local"
@@ -5451,6 +5459,20 @@ If none are present, write "None".`;
                 max={toDatetimeLocal(new Date())}
                 onChange={e => setPendingPhotoAnalysis(p => ({ ...p, date: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Photo Tag / Focus Type</label>
+              <select
+                value={pendingPhotoAnalysis.tag || 'Whole Canopy'}
+                onChange={e => setPendingPhotoAnalysis(p => ({ ...p, tag: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+              >
+                <option value="Whole Canopy">Whole Canopy</option>
+                <option value="Leaf Close-up">Leaf Close-up</option>
+                <option value="Plant 1">Plant 1 (Pot A)</option>
+                <option value="Plant 2">Plant 2 (Pot B)</option>
+                <option value="Plant 3">Plant 3 (Pot C)</option>
+              </select>
             </div>
             {(() => {
               const targetTrialForPhoto = pendingPhotoAnalysis.targetTrial || activeTrial;
@@ -5465,9 +5487,9 @@ If none are present, write "None".`;
               <button onClick={() => setPendingPhotoAnalysis(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancel</button>
               <button
                 onClick={() => {
-                  const { dataUrl, date, targetTrial } = pendingPhotoAnalysis;
+                  const { dataUrl, date, targetTrial, tag } = pendingPhotoAnalysis;
                   setPendingPhotoAnalysis(null);
-                  saveAndAnalyzePhoto(dataUrl, date, targetTrial);
+                  saveAndAnalyzePhoto(dataUrl, date, targetTrial, tag || 'Whole Canopy');
                 }}
                 className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5" /> Analyse Photo

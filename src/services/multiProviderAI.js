@@ -180,6 +180,10 @@ function incrementUsage(provider, keyIndex, usage) {
 
 function buildPrompt(context) {
   const historyNote = context.historyPrompt ? `\n${context.historyPrompt}\n` : '';
+  const photoTag = context.photoTag || 'Whole Canopy';
+  const tagInstruction = photoTag === 'Leaf Close-up'
+    ? '\nSPECIAL FOCUS: This is a LEAF CLOSE-UP photo. Please focus closely on leaf spot count, disease symptoms/severity, chlorosis, and necrosis. Do not estimate whole canopy coverage from this close-up.'
+    : `\nSPECIAL FOCUS: This is a CANOPY/PLANT photo (Tag: ${photoTag}). Please focus on overall plant vigor, canopy coverage (%), greenness, and overall plant structure.`;
 
   // If a non-herbicide category is specified, use its custom AI prompt
   if (context.category && context.category !== 'herbicide') {
@@ -193,6 +197,7 @@ function buildPrompt(context) {
       });
 
       return `${catConfig.aiPhotoPrompt}
+${tagInstruction}
 
 PLOT INFORMATION:
 - Treatment/Product: ${context.treatment || 'Unknown'}
@@ -225,6 +230,7 @@ OUTPUT FORMAT - JSON ONLY (no extra text, no markdown wrapper around the JSON):
 
   // Default herbicide prompt (existing)
   return `You are an agricultural weed science expert analyzing a herbicide trial plot photo. Provide a rigorous, scientifically accurate assessment.
+${tagInstruction}
 
 PLOT INFORMATION:
 - Treatment/Herbicide: ${context.treatment || 'Unknown'}

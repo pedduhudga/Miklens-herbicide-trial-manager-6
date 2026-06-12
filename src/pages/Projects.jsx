@@ -1334,7 +1334,10 @@ export default function Projects({ onMenuClick }) {
       const rowCells = [];
       for (let c = 1; c <= potCols; c++) {
         let trial;
-        if (potObsMode === 'row-wise') {
+        const blockNum = Math.floor((r - 1) / rowsPerBlock) + 1;
+        if (potLayout === 'rcbd-pot' && potObsMode === 'column-wise') {
+          trial = projectTrials.find(t => String(t.Replication) === String(blockNum) && String(t.PotCol) === String(c));
+        } else if (potObsMode === 'row-wise') {
           if (potStripeDirection === 'Horizontal Rows') {
             trial = projectTrials.find(t => String(t.PotRow) === String(r) || String(t.Replication) === String(r));
           } else {
@@ -1363,7 +1366,7 @@ export default function Projects({ onMenuClick }) {
             }`}
             title={`Pot R${r}C${c}: ${trtName}`}
           >
-            <span className="text-[10px] font-bold">{trial?.PotLabel || `R${r}C${c}`}</span>
+            <span className="text-[10px] font-bold">{(potLayout === 'rcbd-pot' || potObsMode === 'column-wise') ? `R${r}C${c}` : (trial?.PotLabel || `R${r}C${c}`)}</span>
             {trial && (
               <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">
                 Block {trial.Replication || '1'}
@@ -1404,6 +1407,30 @@ export default function Projects({ onMenuClick }) {
 
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+        {/* Project Summary Card */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+          <div>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase">Design</span>
+            <span className="font-semibold text-slate-700">{potLayout === 'rcbd-pot' ? 'RCBD Pot Trial' : 'Pot Trial'}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase">Observation Mode</span>
+            <span className="font-semibold text-slate-700">
+              {potObsMode === 'column-wise' ? 'Treatment Column-Wise (12 Units)' : 'Plant-Wise (36 Units)'}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase">Blocks × Treatments</span>
+            <span className="font-semibold text-slate-700">{blocksCount} × {uniqueTreatments.length || 4}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-slate-400 uppercase">Physical Pots × Analysis</span>
+            <span className="font-semibold text-slate-700">
+              {potRows * potCols} Pots · {potLayout === 'rcbd-pot' ? 'RCBD ANOVA' : 'Standard ANOVA'}
+            </span>
+          </div>
+        </div>
+
         <div className="flex justify-between items-center border-b pb-3">
           <div>
             <h3 className="font-bold text-slate-800 text-sm">Greenhouse Layout Visualization</h3>
@@ -3242,9 +3269,27 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         <div className="shrink-0">
                           <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Post-hoc test</label>
                           <select value={postHocMethod} onChange={e => handlePostHocChange(e.target.value)} className={`text-xs border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 ${theme.ring}`}>
-                            <option value="lsd">Fisher's LSD</option>
-                            <option value="tukey">Tukey HSD</option>
-                            <option value="duncan">Duncan's MRT</option>
+                            <optgroup label="Primary Measurements (Default)">
+                              <option value="Yield">Yield</option>
+                              <option value="Fruit Count">Fruit Count</option>
+                              <option value="Flower Count">Flower Count</option>
+                              <option value="Plant Height">Plant Height</option>
+                              <option value="Branches">Branches</option>
+                              <option value="Biomass">Biomass</option>
+                              <option value="Root Weight">Root Weight</option>
+                            </optgroup>
+                            <optgroup label="Secondary Estimates (AI-Derived)">
+                              <option value="Canopy Coverage">Canopy Coverage (AI-Derived)</option>
+                              <option value="Greenness">Greenness (AI-Derived)</option>
+                              <option value="Vigor">Vigor (AI-Derived)</option>
+                              <option value="Chlorosis">Chlorosis (AI-Derived)</option>
+                              <option value="Phytotoxicity">Phytotoxicity (AI-Derived)</option>
+                            </optgroup>
+                            <optgroup label="Post-Hoc Options">
+                              <option value="lsd">Fisher's LSD</option>
+                              <option value="tukey">Tukey HSD</option>
+                              <option value="duncan">Duncan's MRT</option>
+                            </optgroup>
                           </select>
                         </div>
                       </div>
