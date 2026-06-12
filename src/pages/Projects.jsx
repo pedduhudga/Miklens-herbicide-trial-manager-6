@@ -2599,6 +2599,121 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       </div>
                     </div>
 
+                    {/* ── Agronomic Diagnostics & Quality Report ── */}
+                    {(() => {
+                      const cv = analysisResults.anova?.cv;
+                      const dfError = analysisResults.anova?.dfError || analysisResults.anova?.error?.df;
+                      
+                      let qualityGrade = 'Acceptable';
+                      let qualityColor = 'text-amber-600 bg-amber-50 border-amber-100';
+                      if (cv !== undefined && cv !== null && isFinite(cv)) {
+                        if (cv < 10 && dfError >= 12) {
+                          qualityGrade = 'Excellent (A)';
+                          qualityColor = 'text-emerald-700 bg-emerald-50 border-emerald-100';
+                        } else if (cv < 15 && dfError >= 10) {
+                          qualityGrade = 'Good (B)';
+                          qualityColor = 'text-blue-700 bg-blue-50 border-blue-100';
+                        } else if (cv > 20) {
+                          qualityGrade = 'Caution (C/D)';
+                          qualityColor = 'text-rose-700 bg-rose-50 border-rose-100';
+                        }
+                      }
+
+                      let transformationSuggestion = 'None required. Assumptions met.';
+                      const isHomogeneous = analysisResults.bartlett?.homogeneous !== false;
+                      const isNormal = analysisResults.normality?.normal !== false;
+
+                      if (!isHomogeneous || !isNormal) {
+                        if (config.primaryMetric?.key === 'wce' || activeProject?.Category === 'herbicide' || activeProject?.Category === 'pesticide') {
+                          transformationSuggestion = 'Logarithmic Log10(x + 1) or Square Root √(x + 0.5) is recommended for count/percentage variability.';
+                        } else {
+                          transformationSuggestion = 'Arcsine Square Root transformation is recommended for percentage efficacy data to stabilize variances.';
+                        }
+                      }
+
+                      return (
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+                          <div className="flex items-center justify-between border-b pb-3">
+                            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                              <Beaker className="w-4 h-4 text-emerald-600" /> Agronomic Diagnostics & Quality Report (ARM Standard)
+                            </h3>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${qualityColor}`}>
+                              Quality Grade: {qualityGrade}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Bartlett's Test */}
+                            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-1.5">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Variance Homogeneity</h4>
+                              {analysisResults.bartlett?.error ? (
+                                <p className="text-xs text-slate-500 italic">{analysisResults.bartlett.error}</p>
+                              ) : (
+                                <>
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">Bartlett p-value:</span>
+                                    <strong className={isHomogeneous ? "text-emerald-600" : "text-rose-600"}>
+                                      {analysisResults.bartlett?.pVal !== undefined ? analysisResults.bartlett.pVal.toFixed(4) : '—'}
+                                    </strong>
+                                  </div>
+                                  <div className="flex gap-1.5 items-center mt-1 text-xs">
+                                    <span className={`w-2 h-2 rounded-full ${isHomogeneous ? "bg-emerald-500" : "bg-rose-500"}`} />
+                                    <span className="text-slate-600 font-semibold">
+                                      {isHomogeneous ? 'Pass (Equal Variances)' : 'Fail (Unequal Variances)'}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Normality Check */}
+                            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-1.5">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Residual Normality</h4>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500">Residual Skewness:</span>
+                                <strong className={isNormal ? "text-slate-800" : "text-rose-600"}>
+                                  {analysisResults.normality?.skewness !== undefined ? analysisResults.normality.skewness.toFixed(3) : '—'}
+                                </strong>
+                              </div>
+                              <div className="flex gap-1.5 items-center mt-1 text-xs">
+                                <span className={`w-2 h-2 rounded-full ${isNormal ? "bg-emerald-500" : "bg-rose-500"}`} />
+                                <span className="text-slate-600 font-semibold">
+                                  {analysisResults.normality?.status || '—'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Blocking Efficiency */}
+                            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-1.5">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">RCBD Block Efficiency</h4>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500">Relative Efficiency (RE):</span>
+                                <strong className="text-slate-800">
+                                  {analysisResults.blockingEfficiency !== undefined ? `${analysisResults.blockingEfficiency}x` : '—'}
+                                </strong>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                                {analysisResults.blockingEfficiency > 1.0 
+                                  ? `Blocking reduced error by ${Math.round((analysisResults.blockingEfficiency - 1) * 100)}% compared to a CRD layout.` 
+                                  : 'Blocking had no efficiency gains over a completely randomized design (CRD).'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Recommendations banner */}
+                          {(!isHomogeneous || !isNormal) && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 flex items-start gap-2">
+                              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                              <div>
+                                <strong className="font-bold">Assumption Warning:</strong> One or more statistical assumptions of standard ANOVA are violated.
+                                <p className="mt-1 font-medium">{transformationSuggestion}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Charts */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Per-treatment WCE timeline */}

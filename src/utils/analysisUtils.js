@@ -852,11 +852,19 @@ export class AnalysisEngine {
                          grouping: postHoc.letters[t] || '-'
                     })).sort((a, b) => b.mean - a.mean);
 
+                    const bartlettResult = calculateBartlettsTest(anovaData);
+                    const normalityResult = calculateResidualsDiagnostics(this.trials, dataMap, means, anovaResults);
+                    const repsCount = this.trials.length / (treatments.length || 1);
+                    const blockingEff = calculateBlockingEfficiency(anovaResults, repsCount);
+
                     const results = {
                         means,
                         efficacy,
                         anova: anovaResults,
                         postHoc: postHoc,
+                        bartlett: bartlettResult,
+                        normality: normalityResult,
+                        blockingEfficiency: blockingEff,
                         lsdResults: postHoc.method === 'lsd' ? { ...postHoc, groupings: formattedGrouping } : null,
                         tukeyResults: postHoc.method === 'tukey' ? { ...postHoc, groupings: formattedGrouping } : null,
                         duncanResults: postHoc.method === 'duncan' ? { ...postHoc, groupings: formattedGrouping } : null,
@@ -1176,3 +1184,128 @@ export class AnalysisEngine {
                     if (m) ts.rank = m.rank.split('').sort().join('');
                 });
             }
+
+export function calculateBartlettsTest(groups) {
+  const k = groups.length;
+  if (k < 2) return null;
+
+  const validGroups = groups.map(g => g.filter(v => v !== undefined && !isNaN(v) && v !== null));
+  
+  if (validGroups.some(g => g.length < 2)) {
+    return { error: 'Replications too low (n < 2) for variance check' };
+  }
+
+  const ns = validGroups.map(g => g.length);
+  const N = ns.reduce((a, b) => a + b, 0);
+  const vars = validGroups.map(g => {
+    const mean = g.reduce((a, b) => a + b, 0) / g.length;
+    const sqDiff = g.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0);
+    return sqDiff / (g.length - 1);
+  });
+
+  const correctedVars = vars.map(v => v === 0 ? 0.0001 : v);
+  const dfPooled = N - k;
+  if (dfPooled <= 0) return null;
+
+  let pooledVarNum = 0;
+  for (let i = 0; i < k; i++) {
+    pooledVarNum += (ns[i] - 1) * correctedVars[i];
+  }
+  const pooledVar = pooledVarNum / dfPooled;
+  if (pooledVar <= 0) return null;
+
+  let sumTerm = 0;
+  for (let i = 0; i < k; i++) {
+    sumTerm += (ns[i] - 1) * Math.log(correctedVars[i]);
+  }
+  const B = (dfPooled * Math.log(pooledVar) - sumTerm);
+
+  let sumInv = 0;
+  for (let i = 0; i < k; i++) {
+    sumInv += 1 / (ns[i] - 1);
+  }
+  const C = 1 + (1 / (3 * (k - 1))) * (sumInv - (1 / dfPooled));
+
+  const chiSq = B / C;
+  const df = k - 1;
+
+  let pVal = 1;
+  if (typeof jStat !== 'undefined' && jStat.chisquare) {
+    pVal = 1 - jStat.chisquare.cdf(chiSq, df);
+  } else {
+    pVal = chiSq > 3.84 ? 0.05 : 0.5; 
+  }
+
+  return {
+    chiSq: parseFloat(chiSq.toFixed(4)),
+    df,
+    pVal: parseFloat(pVal.toFixed(5)),
+    homogeneous: pVal >= 0.05
+  };
+}
+
+export function calculateResidualsDiagnostics(trials, dataMap, trMeans, anovaResults) {
+  const blocks = [...new Set(trials.map(t => t.BlockID).filter(Boolean))];
+  const trNames = Object.keys(dataMap);
+  const grandMean = anovaResults.grandMean || 0;
+
+  const blSums = {};
+  const blCounts = {};
+  trials.forEach(t => {
+    if (!t.BlockID || !t.FormulationName) return;
+    const reps = trials.filter(r => r.FormulationName === t.FormulationName);
+    const idx = reps.indexOf(t);
+    const val = dataMap[t.FormulationName]?.[idx];
+    if (val !== undefined && !isNaN(val)) {
+      blSums[t.BlockID] = (blSums[t.BlockID] || 0) + val;
+      blCounts[t.BlockID] = (blCounts[t.BlockID] || 0) + 1;
+    }
+  });
+
+  const blMeans = {};
+  blocks.forEach(bId => {
+    blMeans[bId] = blCounts[bId] ? blSums[bId] / blCounts[bId] : grandMean;
+  });
+
+  const residuals = [];
+  trials.forEach(t => {
+    if (!t.FormulationName) return;
+    const reps = trials.filter(r => r.FormulationName === t.FormulationName);
+    const idx = reps.indexOf(t);
+    const val = dataMap[t.FormulationName]?.[idx];
+    if (val !== undefined && !isNaN(val)) {
+      const trMean = trMeans[t.FormulationName] || grandMean;
+      const blMean = t.BlockID ? (blMeans[t.BlockID] ?? grandMean) : grandMean;
+      const res = val - trMean - blMean + grandMean;
+      residuals.push(res);
+    }
+  });
+
+  const N = residuals.length;
+  if (N < 3) return { skewness: 0, kurtosis: 0, normal: true, status: 'N/A' };
+
+  const mean = residuals.reduce((a, b) => a + b, 0) / N;
+  const variance = residuals.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (N - 1);
+  const std = Math.sqrt(variance);
+
+  if (std === 0) return { skewness: 0, kurtosis: 0, normal: true, status: 'Symmetric' };
+
+  const skewness = (residuals.reduce((acc, val) => acc + Math.pow(val - mean, 3), 0) / N) / Math.pow(std, 3);
+  const kurtosis = (residuals.reduce((acc, val) => acc + Math.pow(val - mean, 4), 0) / N) / Math.pow(std, 4) - 3;
+
+  return {
+    skewness: parseFloat(skewness.toFixed(4)),
+    kurtosis: parseFloat(kurtosis.toFixed(4)),
+    normal: Math.abs(skewness) <= 1.0,
+    status: Math.abs(skewness) <= 0.5 ? 'Excellent (Symmetric)' : Math.abs(skewness) <= 1.0 ? 'Acceptable' : 'Highly Skewed'
+  };
+}
+
+export function calculateBlockingEfficiency(anovaResults, r) {
+  const msBlock = anovaResults.msBlock || anovaResults.ssBlock / (anovaResults.dfBlock || 1);
+  const msError = anovaResults.msError || anovaResults.ssError / (anovaResults.dfError || 1);
+  if (!msBlock || !msError || !r || r <= 1) return 1.0;
+
+  const re = (msBlock + (r - 1) * msError) / (r * msError);
+  return parseFloat(re.toFixed(3));
+}
