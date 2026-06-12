@@ -86,9 +86,9 @@ export default function Trials({ onMenuClick }) {
   const catConfig = getCategoryConfig(activeCategory);
 
   // ── DERIVED DATA ───────────────────────────────────────────────────
-  const trials = state.trials || [];
-  const formulations = state.formulations || [];
-  const projects = state.projects || [];
+  const trials = (state.trials || []).filter(t => t.Category === activeCategory || (!t.Category && activeCategory === 'herbicide'));
+  const formulations = (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'));
+  const projects = (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide'));
 
   // --- List view state ---
   const [activeTab, setActiveTab] = useState('all');
@@ -1175,7 +1175,7 @@ export default function Trials({ onMenuClick }) {
     const efficacyData = validateEfficacyData(safeJsonParse(activeTrial.EfficacyDataJSON, []));
     efficacyData.splice(idx, 1);
 
-    const resultRating = calculateResultRating(efficacyData, activeTrial?.IsControl === true || activeTrial?.IsControl === 'true');
+    const resultRating = calculateResultRating(efficacyData, activeTrial?.IsControl === true || activeTrial?.IsControl === 'true', activeCategory);
     const observedWeeds = getObservedWeedsList(efficacyData);
 
     const updated = { 
@@ -2522,16 +2522,22 @@ export default function Trials({ onMenuClick }) {
     const chartData = detailEfficacy.filter(o => o.daa !== undefined);
     if (chartData.length === 0) return null;
     const maxDaa = Math.max(...chartData.map(o => o.daa)) || 1;
-    const maxCover = Math.max(...chartData.map(o => o.weedCover ?? 0), 10);
-    const baseCover = chartData[0]?.weedCover ?? 0;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const maxVal = Math.max(...chartData.map(o => parseFloat(o[primaryObsField] ?? o.weedCover ?? 0)), 10);
+    const baseVal = parseFloat(chartData[0]?.[primaryObsField] ?? chartData[0]?.weedCover ?? 0);
     const W = 340, H = 180, PX = 40, PY = 20, PB = 30;
     const cx = d => PX + (d / (maxDaa || 1)) * (W - PX - 16);
-    const cy = v => PY + (1 - (v / maxCover)) * (H - PY - PB);
-    const pts = chartData.map(o => `${cx(o.daa)},${cy(o.weedCover ?? 0)}`).join(' ');
-    const wcePts = baseCover > 0 ? chartData.map(o => `${cx(o.daa)},${cy((1 - (o.weedCover ?? 0) / baseCover) * maxCover)}`).join(' ') : null;
-    const lastWce = baseCover > 0 ? Math.round((1 - ((chartData[chartData.length-1]?.weedCover ?? 0) / baseCover)) * 100) : null;
-    return { chartData, maxDaa, maxCover, baseCover, W, H, PX, PY, PB, cx, cy, pts, wcePts, lastWce };
-  }, [detailEfficacy]);
+    const cy = v => PY + (1 - (v / maxVal)) * (H - PY - PB);
+    const pts = chartData.map(o => `${cx(o.daa)},${cy(parseFloat(o[primaryObsField] ?? o.weedCover ?? 0))}`).join(' ');
+    const wcePts = baseVal > 0 ? chartData.map(o => {
+      const val = parseFloat(o[primaryObsField] ?? o.weedCover ?? 0);
+      const eff = calculateEfficacy(activeCategory, val, baseVal);
+      return `${cx(o.daa)},${cy((eff / 100) * maxVal)}`;
+    }).join(' ') : null;
+    const finalVal = parseFloat(chartData[chartData.length-1]?.[primaryObsField] ?? chartData[chartData.length-1]?.weedCover ?? 0);
+    const lastWce = baseVal > 0 ? Math.round(calculateEfficacy(activeCategory, finalVal, baseVal)) : null;
+    return { chartData, maxDaa, maxCover: maxVal, baseCover: baseVal, W, H, PX, PY, PB, cx, cy, pts, wcePts, lastWce };
+  }, [detailEfficacy, activeCategory]);
 
   // Status class mapping for observations
   const STATUS_CLS = useMemo(() => ({ Controlled: 'bg-emerald-100 text-emerald-800', Eliminated: 'bg-emerald-200 text-emerald-900', Suppressed: 'bg-blue-100 text-blue-800', 'Top-kill': 'bg-teal-100 text-teal-800', Burndown: 'bg-orange-100 text-orange-800', Regrowth: 'bg-red-100 text-red-800', 'Re-emerged': 'bg-red-200 text-red-800', Resistant: 'bg-rose-200 text-rose-900', Unaffected: 'bg-slate-200 text-slate-700', Emerged: 'bg-amber-100 text-amber-800', 'Not detected': 'bg-slate-100 text-slate-500' }), []);
@@ -2539,9 +2545,10 @@ export default function Trials({ onMenuClick }) {
   // Pre-compute observations sorting and values
   const obsData = useMemo(() => {
     const sorted = [...detailEfficacy].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
-    const baseCover = parseFloat(sorted[0]?.weedCover ?? 0) || 0;
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const baseCover = parseFloat(sorted[0]?.[primaryObsField] ?? sorted[0]?.weedCover ?? 0) || 0;
     return { sorted, baseCover };
-  }, [detailEfficacy]);
+  }, [detailEfficacy, activeCategory]);
 
   // ── QR CODE GENERATOR ─────────────────────────────────────────────
   const buildQrText = useCallback((trial, mode) => {
@@ -4024,11 +4031,33 @@ If none are present, write "None".`;
                     {sorted.length > 0 ? (
                       <div className="space-y-3">
                         {sorted.map((obs, idx) => {
-                          const cover = parseFloat(obs.weedCover ?? 0);
+                          const primaryObsField = getPrimaryObservationField(activeCategory);
+                          const obsField = catConfig.observationFields?.find(f => f.key === primaryObsField);
+                          const obsLabel = obsField ? obsField.label.replace(/\s*\(.*?\)/, '') : 'Value';
+                          const hasPct = obsField?.label.includes('%');
+                          const displayUnit = hasPct ? '%' : obsField?.label.includes('kg/plot') ? ' kg' : '';
+                          const obsValue = parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0);
                           const isBaseline = obs.daa === sorted[0]?.daa;
-                          const wce = baseCover > 0 && !isBaseline ? Math.max(0, Math.min(100, (1 - cover / baseCover) * 100)) : null;
-                          const wceRating = wce === null ? null : wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
-                          const wceCls = wce === null ? '' : wce >= 85 ? 'text-emerald-700 bg-emerald-50' : wce >= 70 ? 'text-blue-700 bg-blue-50' : wce >= 50 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
+                          const efficacyVal = !isBaseline && baseCover > 0 ? calculateEfficacy(activeCategory, obsValue, baseCover) : null;
+                          const efficacyLabel = catConfig.primaryMetric.key;
+                          const efficacyUnit = catConfig.primaryMetric.unit || '';
+                          const efficacyRating = efficacyVal === null ? null : (() => {
+                            if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+                              if (efficacyVal >= 15) return 'Excellent';
+                              if (efficacyVal >= 8) return 'Good';
+                              if (efficacyVal >= 3) return 'Fair';
+                              return 'Poor';
+                            } else {
+                              if (efficacyVal >= 85) return 'Excellent';
+                              if (efficacyVal >= 70) return 'Good';
+                              if (efficacyVal >= 50) return 'Fair';
+                              return 'Poor';
+                            }
+                          })();
+                          const ratingCls = efficacyRating === null ? '' : 
+                            efficacyRating === 'Excellent' ? 'text-emerald-700 bg-emerald-50' : 
+                            efficacyRating === 'Good' ? 'text-blue-700 bg-blue-50' : 
+                            efficacyRating === 'Fair' ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
                           const risks = getClimateRisks(obs.weatherTemp, obs.weatherWind, obs.weatherRain);
                           return (
                             <div key={idx} className="bg-white border rounded-xl p-4 shadow-sm">
@@ -4036,7 +4065,7 @@ If none are present, write "None".`;
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="bg-slate-700 text-white font-bold px-2 py-1 rounded text-xs">DAA {obs.daa ?? 0}</span>
                                   <span className="text-xs text-slate-500">{obs.date ? formatPhotoDate(obs.date) : ''}</span>
-                                  {wceRating && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${wceCls}`}>{wceRating}</span>}
+                                  {efficacyRating && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ratingCls}`}>{efficacyRating}</span>}
                                   {obs.source === 'AI' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-semibold">AI</span>}
                                   {obs.aiConfidence && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${obs.aiConfidence === 'HIGH' ? 'bg-emerald-100 text-emerald-700' : obs.aiConfidence === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{obs.aiConfidence}</span>}
                                   {obs.competitionLevel && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">{obs.competitionLevel}</span>}
@@ -4048,21 +4077,21 @@ If none are present, write "None".`;
                               </div>
                               <div className="grid grid-cols-3 gap-2 mb-2">
                                 <div className="bg-slate-50 p-2 rounded-lg text-center">
-                                  <p className="text-[10px] text-slate-500 font-semibold mb-0.5">Total Cover</p>
-                                  <p className="text-base font-bold text-slate-800">{cover.toFixed(1)}%</p>
+                                  <p className="text-[10px] text-slate-500 font-semibold mb-0.5">{obsLabel}</p>
+                                  <p className="text-base font-bold text-slate-800">{obsValue.toFixed(1)}{displayUnit}</p>
                                 </div>
-                                <div className={`p-2 rounded-lg text-center ${wce !== null ? wceCls : 'bg-slate-50'}`}>
-                                  <p className="text-[10px] font-semibold mb-0.5 opacity-70">WCE %</p>
-                                  <p className="text-base font-bold">{wce !== null ? `${wce.toFixed(1)}%` : isBaseline ? 'Baseline' : '—'}</p>
+                                <div className={`p-2 rounded-lg text-center ${efficacyVal !== null ? ratingCls : 'bg-slate-50'}`}>
+                                  <p className="text-[10px] font-semibold mb-0.5 opacity-70">{efficacyLabel} {efficacyUnit}</p>
+                                  <p className="text-base font-bold">{efficacyVal !== null ? `${efficacyVal.toFixed(1)}${efficacyUnit}` : isBaseline ? 'Baseline' : '—'}</p>
                                 </div>
                                 <div className="bg-slate-50 p-2 rounded-lg text-center">
-                                  <p className="text-[10px] text-slate-500 font-semibold mb-0.5">Species</p>
+                                  <p className="text-[10px] text-slate-500 font-semibold mb-0.5">{activeCategory === 'herbicide' ? 'Species' : catConfig.targetLabel}</p>
                                   <p className="text-base font-bold text-slate-700">{(obs.weedDetails || []).filter(w => w.species && w.species !== 'Total').length || '—'}</p>
                                 </div>
                               </div>
                               {(obs.weedDetails || []).length > 0 && (
                                 <div className="mt-2 border-t pt-2">
-                                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">Species Breakdown</p>
+                                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">{activeCategory === 'herbicide' ? 'Species Breakdown' : `${catConfig.targetLabel} Breakdown`}</p>
                                   <div className="space-y-1.5">
                                     {obs.weedDetails.map((wd, wIdx) => (
                                       <div key={wIdx} className="flex items-center justify-between text-xs gap-2">
@@ -4538,7 +4567,7 @@ If none are present, write "None".`;
                       <p><span className="font-semibold text-slate-500">Date:</span> {fmtDate(detailTrial?.Date)}</p>
                       <p><span className="font-semibold text-slate-500">Dosage:</span> {detailTrial?.Dosage || '—'}</p>
                       <p><span className="font-semibold text-slate-500">Location:</span> {detailTrial?.Location || '—'}</p>
-                      <p><span className="font-semibold text-slate-500">Weeds:</span> {detailTrial?.WeedSpecies || '—'}</p>
+                      <p><span className="font-semibold text-slate-500">{catConfig.targetLabel}:</span> {detailTrial?.[catConfig.targetField] || detailTrial?.WeedSpecies || '—'}</p>
                       <p><span className="font-semibold text-slate-500">Replication:</span> {detailTrial?.Replication || '—'}</p>
                       <p className="mt-2 text-slate-400">Works without internet. Scan with Plot Scanner to open this trial.</p>
                     </div>
@@ -4549,7 +4578,7 @@ If none are present, write "None".`;
                       { key: 'showDate', label: 'Application Date' },
                       { key: 'showDosage', label: 'Dosage' },
                       { key: 'showLocation', label: 'Location' },
-                      { key: 'showWeedSpecies', label: 'Target Weeds' },
+                      { key: 'showWeedSpecies', label: `Target ${activeCategory === 'herbicide' ? 'Weeds' : catConfig.targetLabel}s` },
                       { key: 'showResult', label: 'Result' },
                       { key: 'showWeather', label: 'Weather' },
                       { key: 'showIngredients', label: 'Ingredients' },
