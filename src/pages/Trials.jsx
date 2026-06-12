@@ -457,6 +457,9 @@ export default function Trials({ onMenuClick }) {
         MainFactor: trial.MainFactor || '',
         SubFactor: trial.SubFactor || '',
         SubBlockID: trial.SubBlockID || '',
+        PotRow: trial.PotRow || '',
+        PotCol: trial.PotCol || '',
+        PotLabel: trial.PotLabel || '',
       });
     } else {
       setFormData({ ...emptyForm(activeCategory), InvestigatorName: state.auth?.user?.Name || state.auth?.user?.Username || '' });
@@ -3327,6 +3330,7 @@ If none are present, write "None".`;
                 <option value="Split-Plot">Split-Plot Design</option>
                 <option value="Lattice">Alpha-Lattice Design</option>
                 <option value="Factorial">Factorial Design</option>
+                <option value="PotTrial">Pot Trial (Row-Based)</option>
               </select>
             </div>
             {(formData.TrialDesign === 'Split-Plot' || formData.TrialDesign === 'Factorial') && (
@@ -3508,14 +3512,33 @@ If none are present, write "None".`;
                   {(state.blocks || []).filter(b => b.ProjectID === formData.ProjectID).map(b => <option key={b.ID} value={b.ID}>{b.Name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Replication #</label>
-                <input type="number" value={formData.Replication} onChange={e => setFormData({...formData, Replication: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Plot #</label>
-                <input type="number" value={formData.PlotNumber} onChange={e => setFormData({...formData, PlotNumber: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-              </div>
+              {formData.TrialDesign === 'PotTrial' ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Row #</label>
+                    <input type="number" value={formData.PotRow || ''} onChange={e => setFormData({...formData, PotRow: parseInt(e.target.value) || null})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Col #</label>
+                    <input type="number" value={formData.PotCol || ''} onChange={e => setFormData({...formData, PotCol: parseInt(e.target.value) || null})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Pot Label</label>
+                    <input type="text" value={formData.PotLabel || ''} onChange={e => setFormData({...formData, PotLabel: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="e.g. Row 1, Col 2" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Replication #</label>
+                    <input type="number" value={formData.Replication} onChange={e => setFormData({...formData, Replication: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Plot #</label>
+                    <input type="number" value={formData.PlotNumber} onChange={e => setFormData({...formData, PlotNumber: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -3822,11 +3845,20 @@ If none are present, write "None".`;
                         infoFields.push([catConfig.targetLabel, detailTrial[catConfig.targetField] || detailTrial.WeedSpecies || '—', Activity]);
                       }
 
-                      infoFields.push(
-                        ['Project', projects.find(p => p.ID === detailTrial.ProjectID)?.Name || '—', FolderPlus],
-                        ['Replication', detailTrial.Replication || '—', Hash],
-                        ['Plot #', detailTrial.PlotNumber || '—', Hash]
-                      );
+                      if (detailTrial.TrialDesign === 'PotTrial') {
+                        const proj = projects.find(p => String(p.ID) === String(detailTrial.ProjectID));
+                        const potObsMode = proj?.PotObsMode || 'row-wise';
+                        infoFields.push(
+                          ['Project', proj?.Name || '—', FolderPlus],
+                          [potObsMode === 'row-wise' ? 'Row Position' : 'Pot Position', detailTrial.PotLabel || detailTrial.PlotNumber || '—', Hash]
+                        );
+                      } else {
+                        infoFields.push(
+                          ['Project', projects.find(p => p.ID === detailTrial.ProjectID)?.Name || '—', FolderPlus],
+                          ['Replication', detailTrial.Replication || '—', Hash],
+                          ['Plot #', detailTrial.PlotNumber || '—', Hash]
+                        );
+                      }
 
                       if (activeCategory === 'herbicide') {
                         infoFields.push(

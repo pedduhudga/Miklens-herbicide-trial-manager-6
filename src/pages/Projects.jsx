@@ -509,7 +509,14 @@ export default function Projects({ onMenuClick }) {
     replications: '4',
     trialDesign: 'RCBD',
     mainFactorLevels: '',
-    subFactorLevels: ''
+    subFactorLevels: '',
+    potRows: '9',
+    potCols: '4',
+    potLayout: 'stripe',
+    potStripeDirection: 'horizontal',
+    potObsMode: 'row-wise',
+    potDataMethod: 'total',
+    potFields: ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield']
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
   const [randomizeTreatments, setRandomizeTreatments] = useState([]);
@@ -517,6 +524,105 @@ export default function Projects({ onMenuClick }) {
   const activeFormulations = useMemo(() => {
     return (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'));
   }, [state.formulations, activeCategory]);
+
+  const allocationPreview = useMemo(() => {
+    if (randomizeForm.trialDesign !== 'PotTrial') return null;
+    const potRows = parseInt(randomizeForm.potRows) || 9;
+    const potCols = parseInt(randomizeForm.potCols) || 4;
+    const potLayout = randomizeForm.potLayout || 'stripe';
+    const potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
+    const potObsMode = randomizeForm.potObsMode || 'row-wise';
+
+    const trtList = randomizeTreatments.map(t => {
+      const f = activeFormulations.find(form => String(form.ID) === String(t.formulationId));
+      return t.name.trim() || f?.Name || 'Unnamed Treatment';
+    });
+
+    if (trtList.length === 0) return null;
+
+    const allocations = {};
+    trtList.forEach(tName => {
+      allocations[tName] = 0;
+    });
+
+    const isHorizontal = potStripeDirection === 'Horizontal Rows';
+
+    if (potObsMode === 'row-wise') {
+      const numUnits = isHorizontal ? potRows : potCols;
+      if (potLayout === 'stripe') {
+        for (let i = 0; i < numUnits; i++) {
+          const tName = trtList[i % trtList.length];
+          allocations[tName] = (allocations[tName] || 0) + 1;
+        }
+      } else {
+        const baseList = [];
+        while (baseList.length < numUnits) {
+          trtList.forEach(tName => {
+            if (baseList.length < numUnits) {
+              baseList.push(tName);
+            }
+          });
+        }
+        baseList.forEach(tName => {
+          allocations[tName] = (allocations[tName] || 0) + 1;
+        });
+      }
+    } else {
+      if (potLayout === 'stripe' || potLayout === 'randomized-row') {
+        const numUnits = isHorizontal ? potRows : potCols;
+        const multiplier = isHorizontal ? potCols : potRows;
+        
+        const unitAllocations = {};
+        trtList.forEach(tName => {
+          unitAllocations[tName] = 0;
+        });
+
+        if (potLayout === 'stripe') {
+          for (let i = 0; i < numUnits; i++) {
+            const tName = trtList[i % trtList.length];
+            unitAllocations[tName] = (unitAllocations[tName] || 0) + 1;
+          }
+        } else {
+          const baseList = [];
+          while (baseList.length < numUnits) {
+            trtList.forEach(tName => {
+              if (baseList.length < numUnits) {
+                baseList.push(tName);
+              }
+            });
+          }
+          baseList.forEach(tName => {
+            unitAllocations[tName] = (unitAllocations[tName] || 0) + 1;
+          });
+        }
+
+        Object.keys(unitAllocations).forEach(tName => {
+          allocations[tName] = unitAllocations[tName] * multiplier;
+        });
+      } else if (potLayout === 'balanced-pot') {
+        for (let r = 1; r <= potRows; r++) {
+          const baseList = [];
+          while (baseList.length < potCols) {
+            trtList.forEach(tName => {
+              if (baseList.length < potCols) {
+                baseList.push(tName);
+              }
+            });
+          }
+          baseList.forEach(tName => {
+            allocations[tName] = (allocations[tName] || 0) + 1;
+          });
+        }
+      }
+    }
+
+    const counts = Object.values(allocations);
+    const minCount = Math.min(...counts);
+    const maxCount = Math.max(...counts);
+    const isUnbalanced = minCount > 0 && maxCount >= minCount * 2;
+
+    return { allocations, isUnbalanced, potObsMode };
+  }, [randomizeForm, randomizeTreatments, activeFormulations]);
 
   const projects = useMemo(() => {
     return (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide'));
@@ -1009,6 +1115,137 @@ export default function Projects({ onMenuClick }) {
     } catch { toast('Failed to save block', 'error'); }
   };
 
+  const getTreatmentColor = (name) => {
+    if (!name) return 'bg-slate-100 border-slate-300 text-slate-400';
+    const lower = name.toLowerCase();
+    if (lower.includes('control') || lower.includes('utc')) {
+      return 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-600';
+    }
+    if (lower.includes('liquid') || lower.includes('liq')) {
+      return 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-700';
+    }
+    if (lower.includes('powder') || lower.includes('pwd')) {
+      return 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-700';
+    }
+    if (lower.includes('synthetic') || lower.includes('syn')) {
+      return 'bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700';
+    }
+    const colors = [
+      'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-700',
+      'bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700',
+      'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-700',
+      'bg-pink-50 hover:bg-pink-100 border-pink-300 text-pink-700',
+      'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-700',
+      'bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700'
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  };
+
+  const renderGreenhousePotGrid = () => {
+    if (activeProject?.Design !== 'PotTrial') return null;
+
+    const potRows = activeProject.PotRows || 9;
+    const potCols = activeProject.PotCols || 4;
+    const potLayout = activeProject.PotLayout || 'stripe';
+    const potStripeDirection = activeProject.PotStripeDirection || 'Horizontal Rows';
+    const potObsMode = activeProject.PotObsMode || 'row-wise';
+
+    const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    const uniqueTreatments = [...new Set(projectTrials.map(t => t.FormulationName || 'Unnamed Treatment'))];
+
+    const gridRows = [];
+    for (let r = 1; r <= potRows; r++) {
+      const rowCells = [];
+      for (let c = 1; c <= potCols; c++) {
+        let trial;
+        if (potObsMode === 'row-wise') {
+          if (potStripeDirection === 'Horizontal Rows') {
+            trial = projectTrials.find(t => t.PotRow === r || t.Replication === String(r));
+          } else {
+            trial = projectTrials.find(t => t.PotCol === c || t.Replication === String(c));
+          }
+        } else {
+          trial = projectTrials.find(t => (t.PotRow === r && t.PotCol === c) || t.PlotNumber === r * 100 + c);
+        }
+
+        const trtName = trial?.FormulationName || 'No Treatment';
+        const colorClasses = getTreatmentColor(trtName);
+        const dataStatus = trial?.Status || 'No Data';
+
+        rowCells.push(
+          <div 
+            key={`${r}-${c}`}
+            onClick={() => trial && navigate(`/trials?focus=${trial.ID}`)}
+            className={`flex-1 aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-1.5 cursor-pointer transition-all ${colorClasses} shadow-sm relative group`}
+            title={`Pot R${r}C${c}: ${trtName}`}
+          >
+            <span className="text-[10px] font-bold">R{r}C{c}</span>
+            {trial && <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">{trtName}</span>}
+            
+            <div className="absolute z-20 hidden group-hover:block bg-slate-900 text-white text-[10px] rounded-lg p-2.5 shadow-xl -top-20 left-1/2 -translate-x-1/2 w-48 pointer-events-none">
+              <p className="font-bold border-b border-slate-700 pb-1 mb-1">Pot Position: Row {r}, Col {c}</p>
+              <p><span className="text-slate-400">Treatment:</span> {trtName}</p>
+              {trial?.Dosage && <p><span className="text-slate-400">Dosage:</span> {trial.Dosage}</p>}
+              <p><span className="text-slate-400">Status:</span> <span className={dataStatus === 'Final' ? 'text-emerald-400 font-bold' : 'text-amber-400'}>{dataStatus}</span></p>
+              <p className="text-[8px] text-slate-500 mt-1 italic text-center">Click to open data entry sheet</p>
+            </div>
+          </div>
+        );
+      }
+      gridRows.push(
+        <div key={r} className="flex gap-2 items-center">
+          <div className="w-12 text-[10px] font-bold text-slate-400 uppercase text-right pr-2">Row {r}</div>
+          <div className="flex-1 flex gap-2">{rowCells}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+        <div className="flex justify-between items-center border-b pb-3">
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm">Greenhouse Layout Visualization</h3>
+            <p className="text-xs text-slate-400">Interactive 2D pot matrix. Click any pot to enter observation records.</p>
+          </div>
+          <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Greenhouse: {potRows} Rows × {potCols} Columns
+          </div>
+        </div>
+
+        <div className="flex gap-2 items-center">
+          <div className="w-12" />
+          <div className="flex-1 flex gap-2">
+            {Array.from({ length: potCols }).map((_, idx) => (
+              <div key={idx} className="flex-1 text-center text-[10px] font-bold text-slate-400 uppercase">Col {idx + 1}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+          {gridRows}
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Treatments Legend</h4>
+          <div className="flex flex-wrap gap-3">
+            {uniqueTreatments.map(name => (
+              <div key={name} className="flex items-center gap-1.5">
+                <span className={`w-3 h-3 rounded border ${getTreatmentColor(name)}`} />
+                <span className="text-xs font-semibold text-slate-700">{name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Delete block ────────────────────────────────────────────────────────
   const handleDeleteBlock = async (blockId, blockName) => {
     if (!activeProjectId) return;
@@ -1189,7 +1426,15 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       dosage: '',
       weedSpecies: activeProject.TargetWeed || '',
       date: activeProject.StartDate ? activeProject.StartDate.split('T')[0] : new Date().toISOString().split('T')[0],
-      replications: String(pBlocks.length || 4)
+      replications: String(pBlocks.length || 4),
+      trialDesign: activeProject.Design || 'RCBD',
+      potRows: String(activeProject.PotRows || 9),
+      potCols: String(activeProject.PotCols || 4),
+      potLayout: activeProject.PotLayout || 'stripe',
+      potStripeDirection: activeProject.PotStripeDirection || 'Horizontal Rows',
+      potObsMode: activeProject.PotObsMode || 'row-wise',
+      potDataMethod: activeProject.PotDataMethod || 'total',
+      potFields: activeProject.PotFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield']
     });
     
     setIsRandomizeModalOpen(true);
@@ -1232,6 +1477,38 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const rowName = row && row.name ? `"${row.name}"` : 'this row';
     if (!window.confirm(`Delete ${rowName}?`)) return;
     setRandomizeTreatments(prev => prev.filter(t => t.id !== id));
+  };
+
+  const handleAddPotField = (newField) => {
+    if (!newField.trim()) return;
+    if ((randomizeForm.potFields || []).includes(newField.trim())) {
+      toast('Field already exists', 'error');
+      return;
+    }
+    setRandomizeForm(p => ({
+      ...p,
+      potFields: [...(p.potFields || []), newField.trim()]
+    }));
+  };
+
+  const handleRemovePotField = (field) => {
+    setRandomizeForm(p => ({
+      ...p,
+      potFields: (p.potFields || []).filter(f => f !== field)
+    }));
+  };
+
+  const handleMovePotField = (index, direction) => {
+    const newFields = [...(randomizeForm.potFields || [])];
+    if (direction === 'up' && index > 0) {
+      [newFields[index], newFields[index - 1]] = [newFields[index - 1], newFields[index]];
+    } else if (direction === 'down' && index < newFields.length - 1) {
+      [newFields[index], newFields[index + 1]] = [newFields[index + 1], newFields[index]];
+    }
+    setRandomizeForm(p => ({
+      ...p,
+      potFields: newFields
+    }));
   };
 
   const generateFactorialCombinations = () => {
@@ -1567,6 +1844,192 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
           });
         }
       }
+
+    } else if (designType === 'PotTrial') {
+      const blockId = 'block_' + Date.now() + '_pot_' + Math.random().toString(36).substring(2, 7);
+      const block = {
+        ID: blockId,
+        ProjectID: activeProject.ID,
+        Name: 'Greenhouse Pot Layout',
+        ReplicationNum: '1',
+        CreatedAt: new Date().toISOString(),
+        Category: activeCategory
+      };
+      blocksToSave.push(block);
+
+      const potRows = parseInt(randomizeForm.potRows) || 9;
+      const potCols = parseInt(randomizeForm.potCols) || 4;
+      const potLayout = randomizeForm.potLayout || 'stripe';
+      const potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
+      const potObsMode = randomizeForm.potObsMode || 'row-wise';
+      const potDataMethod = randomizeForm.potDataMethod || 'total';
+
+      if (potObsMode === 'row-wise') {
+        const isHorizontal = potStripeDirection === 'Horizontal Rows';
+        const numUnits = isHorizontal ? potRows : potCols;
+
+        let assignedTreatments = [];
+        if (potLayout === 'stripe') {
+          for (let i = 0; i < numUnits; i++) {
+            assignedTreatments.push(trtList[i % trtList.length]);
+          }
+        } else {
+          const baseList = [];
+          while (baseList.length < numUnits) {
+            trtList.forEach(t => {
+              if (baseList.length < numUnits) {
+                baseList.push(t);
+              }
+            });
+          }
+          for (let i = baseList.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
+          }
+          assignedTreatments = baseList;
+        }
+
+        assignedTreatments.forEach((t, index) => {
+          const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+          const targetField = config.targetField || 'WeedSpecies';
+          const unitIndex = index + 1;
+          const label = isHorizontal ? `Row ${unitIndex}` : `Column ${unitIndex}`;
+
+          const tToSave = {
+            ID: trialId,
+            ProjectID: activeProject.ID,
+            BlockID: block.ID,
+            FormulationID: t.fid,
+            FormulationName: t.name,
+            InvestigatorName: randomizeForm.investigatorName || '',
+            Dosage: t.dosage || randomizeForm.dosage || '',
+            Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+            Replication: String(unitIndex),
+            RandomizationOrder: unitIndex,
+            IsControl: t.role === 'control',
+            IsStandardCheck: t.role === 'standard',
+            Status: 'Draft',
+            IsLive: true,
+            EfficacyDataJSON: '[]',
+            PhotoURLs: '[]',
+            WeedPhotosJSON: '[]',
+            PlotNumber: unitIndex,
+            AISummariesJSON: JSON.stringify({ plotNum: unitIndex, label }),
+            Category: activeCategory,
+            TrialDesign: 'PotTrial',
+            PotRow: isHorizontal ? unitIndex : null,
+            PotCol: isHorizontal ? null : unitIndex,
+            PotLabel: label,
+            [targetField]: randomizeForm.weedSpecies || ''
+          };
+          trialsToSave.push(tToSave);
+        });
+      } else {
+        const isHorizontal = potStripeDirection === 'Horizontal Rows';
+        let rowColAssignments = {};
+
+        if (potLayout === 'stripe') {
+          const numUnits = isHorizontal ? potRows : potCols;
+          for (let i = 1; i <= numUnits; i++) {
+            rowColAssignments[i] = trtList[(i - 1) % trtList.length];
+          }
+        } else if (potLayout === 'randomized-row') {
+          const numUnits = isHorizontal ? potRows : potCols;
+          const baseList = [];
+          while (baseList.length < numUnits) {
+            trtList.forEach(t => {
+              if (baseList.length < numUnits) {
+                baseList.push(t);
+              }
+            });
+          }
+          for (let i = baseList.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
+          }
+          for (let i = 1; i <= numUnits; i++) {
+            rowColAssignments[i] = baseList[i - 1];
+          }
+        }
+
+        let plotIndex = 1;
+        for (let r = 1; r <= potRows; r++) {
+          let rowTreatments = [];
+          if (potLayout === 'balanced-pot') {
+            const numUnits = potCols;
+            const baseList = [];
+            while (baseList.length < numUnits) {
+              trtList.forEach(t => {
+                if (baseList.length < numUnits) {
+                  baseList.push(t);
+                }
+              });
+            }
+            for (let i = baseList.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
+            }
+            rowTreatments = baseList;
+          }
+
+          for (let c = 1; c <= potCols; c++) {
+            let t;
+            if (potLayout === 'balanced-pot') {
+              t = rowTreatments[c - 1];
+            } else {
+              const unitKey = isHorizontal ? r : c;
+              t = rowColAssignments[unitKey];
+            }
+
+            const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+            const targetField = config.targetField || 'WeedSpecies';
+            const label = `Row ${r}, Col ${c}`;
+            const plotNum = r * 100 + c;
+
+            const tToSave = {
+              ID: trialId,
+              ProjectID: activeProject.ID,
+              BlockID: block.ID,
+              FormulationID: t.fid,
+              FormulationName: t.name,
+              InvestigatorName: randomizeForm.investigatorName || '',
+              Dosage: t.dosage || randomizeForm.dosage || '',
+              Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+              Replication: String(plotNum),
+              RandomizationOrder: plotIndex,
+              IsControl: t.role === 'control',
+              IsStandardCheck: t.role === 'standard',
+              Status: 'Draft',
+              IsLive: true,
+              EfficacyDataJSON: '[]',
+              PhotoURLs: '[]',
+              WeedPhotosJSON: '[]',
+              PlotNumber: plotNum,
+              AISummariesJSON: JSON.stringify({ plotNum, label, row: r, col: c }),
+              Category: activeCategory,
+              TrialDesign: 'PotTrial',
+              PotRow: r,
+              PotCol: c,
+              PotLabel: label,
+              [targetField]: randomizeForm.weedSpecies || ''
+            };
+            trialsToSave.push(tToSave);
+            plotIndex++;
+          }
+        }
+      }
+
+      await updateProject({
+        ID: activeProject.ID,
+        Design: 'PotTrial',
+        PotRows: potRows,
+        PotCols: potCols,
+        PotLayout: potLayout,
+        PotStripeDirection: potStripeDirection,
+        PotObsMode: potObsMode,
+        PotDataMethod: potDataMethod,
+        PotFields: randomizeForm.potFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield']
+      }, getAppState);
 
     } else {
       for (let r = 1; r <= numReps; r++) {
@@ -2378,7 +2841,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </form>
                   )}
 
-                  {projectBlocks.length > 0 ? (
+                  {activeProject.Design === 'PotTrial' ? (
+                    <div className="space-y-6">
+                      {renderGreenhousePotGrid()}
+                    </div>
+                  ) : projectBlocks.length > 0 ? (
                     <div className={blocksViewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" : "space-y-4"}>
                       {projectBlocks.map(b => (
                         <BlockCard key={b.ID} block={b} trials={projectTrials.filter(t => String(t.BlockID) === String(b.ID))} activeCategory={activeCategory} onPlotClick={(trialId) => navigate(`/trials?focus=${trialId}`)} onDeleteBlock={handleDeleteBlock} onAddPlot={handleAddPlotToBlock} isLocked={isLocked} outliers={analysisResults?.outliers} />
@@ -2862,8 +3329,6 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   const temps = projectTrials.map(t => parseFloat(t.Temperature)).filter(n => isFinite(n));
                   const hums = projectTrials.map(t => parseFloat(t.Humidity)).filter(n => isFinite(n));
                   const rains = projectTrials.map(t => parseFloat(t.Rain)).filter(n => isFinite(n));
-                  if (temps.length === 0) return null;
-                  const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 'N/A';
                   return (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                       <h3 className="font-bold text-slate-800 mb-3 text-sm">Avg Weather Conditions</h3>
@@ -2911,6 +3376,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           <option value="Lattice">Alpha-Lattice</option>
                           <option value="Factorial">Factorial</option>
                           <option value="Strip-Plot">Strip-Plot</option>
+                          <option value="PotTrial">Pot Trial (Row-Based)</option>
                         </select>
                       </div>
                       <div>
@@ -2966,6 +3432,99 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       </div>
                     </div>
 
+                    {/* Pot Trial Layout Config */}
+                    {randomizeForm.trialDesign === 'PotTrial' && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Greenhouse Rows</label>
+                          <input 
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={randomizeForm.potRows}
+                            onChange={e => setRandomizeForm(p => ({ ...p, potRows: e.target.value }))}
+                            className={INPUT}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Greenhouse Columns</label>
+                          <input 
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={randomizeForm.potCols}
+                            onChange={e => setRandomizeForm(p => ({ ...p, potCols: e.target.value }))}
+                            className={INPUT}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Layout Option</label>
+                          <select
+                            value={randomizeForm.potLayout}
+                            onChange={e => setRandomizeForm(p => ({ ...p, potLayout: e.target.value }))}
+                            className={INPUT}
+                          >
+                            <option value="stripe">Stripe Layout (Sequential)</option>
+                            <option value="randomized-row">Randomized Row Layout</option>
+                            <option value="balanced-pot">Balanced Pot Randomization</option>
+                          </select>
+                        </div>
+                        {randomizeForm.potLayout === 'stripe' && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Stripe Direction</label>
+                            <select
+                              value={randomizeForm.potStripeDirection}
+                              onChange={e => setRandomizeForm(p => ({ ...p, potStripeDirection: e.target.value }))}
+                              className={INPUT}
+                            >
+                              <option value="Horizontal Rows">Horizontal Rows (Default)</option>
+                              <option value="Vertical Columns">Vertical Columns</option>
+                            </select>
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
+                          <select
+                            value={randomizeForm.potObsMode}
+                            onChange={e => {
+                              const mode = e.target.value;
+                              setRandomizeForm(p => ({ 
+                                ...p, 
+                                potObsMode: mode,
+                                replications: mode === 'row-wise' ? 'row' : 'pot'
+                              }));
+                            }}
+                            className={INPUT}
+                          >
+                            <option value="row-wise">Row-Wise Data Entry</option>
+                            <option value="plant-wise">Plant-Wise Data Entry</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Experimental Unit (Locked)</label>
+                          <input 
+                            type="text"
+                            readOnly
+                            value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : 'Pot'}
+                            className={`${INPUT} bg-slate-100 cursor-not-allowed font-semibold text-slate-700`}
+                          />
+                        </div>
+                        {randomizeForm.potObsMode === 'row-wise' && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Row Aggregation Method</label>
+                            <select
+                              value={randomizeForm.potDataMethod}
+                              onChange={e => setRandomizeForm(p => ({ ...p, potDataMethod: e.target.value }))}
+                              className={INPUT}
+                            >
+                              <option value="total">Sum (Total) of Row Pots</option>
+                              <option value="average">Mean (Average) of Row Pots</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Factorial / Split-Plot combinations generator */}
                     {(randomizeForm.trialDesign === 'Split-Plot' || randomizeForm.trialDesign === 'Factorial' || randomizeForm.trialDesign === 'Strip-Plot') && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
@@ -2997,6 +3556,105 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           >
                             Generate Combinations
                           </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Replication Warning Alert */}
+                    {randomizeForm.trialDesign === 'PotTrial' && randomizeForm.potObsMode === 'row-wise' && (
+                      <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs flex items-start gap-2">
+                        <span className="font-bold text-base mt-0.5">⚠️</span>
+                        <div>
+                          <p className="font-bold">Row-Wise Mode Reduces Replications</p>
+                          <p>You have selected Row-Wise observation. This treats each entire Row as the experimental unit. The replication count is reduced to the number of rows ({randomizeForm.potRows || 9}) instead of the total number of pots ({parseInt(randomizeForm.potRows || 9) * parseInt(randomizeForm.potCols || 4)}). This reduces statistical resolution but simplifies field workload.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Custom Pot Observation Fields Setup */}
+                    {randomizeForm.trialDesign === 'PotTrial' && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Pot Observation Fields Setup</h4>
+                        <p className="text-[11px] text-slate-500">Configure the variables recorded for each experimental unit (e.g. height, flowers, yield). These will appear as observation columns in the data entry sheets.</p>
+                        
+                        <div className="flex flex-wrap gap-2 items-center bg-white p-2.5 rounded-lg border">
+                          {(randomizeForm.potFields || []).map((field, idx) => (
+                            <span key={field} className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded text-xs font-medium">
+                              {field}
+                              <div className="flex items-center gap-0.5 border-l border-emerald-200 pl-1.5 ml-1">
+                                <button type="button" onClick={() => handleMovePotField(idx, 'up')} disabled={idx === 0} className="hover:text-emerald-900 disabled:opacity-30">▲</button>
+                                <button type="button" onClick={() => handleMovePotField(idx, 'down')} disabled={idx === (randomizeForm.potFields || []).length - 1} className="hover:text-emerald-900 disabled:opacity-30">▼</button>
+                                <button type="button" onClick={() => handleRemovePotField(field)} className="text-red-600 hover:text-red-900 ml-1">×</button>
+                              </div>
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            id="new_pot_field_input" 
+                            placeholder="Add Custom Field (e.g., Shoot weight)" 
+                            className={`${INPUT} max-w-xs`} 
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddPotField(e.target.value);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById('new_pot_field_input');
+                              if (input) {
+                                handleAddPotField(input.value);
+                                input.value = '';
+                              }
+                            }}
+                            className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+                          >
+                            Add Field
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Treatment Allocation Preview */}
+                    {allocationPreview && (
+                      <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4 space-y-2">
+                        <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Treatment Allocation Preview</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs text-left">
+                              <thead>
+                                <tr className="border-b border-emerald-200 text-emerald-800 font-bold">
+                                  <th className="py-1.5 pr-4">Treatment</th>
+                                  <th className="py-1.5 text-right">Count ({allocationPreview.potObsMode === 'row-wise' ? 'Rows' : 'Pots'})</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-emerald-100">
+                                {Object.keys(allocationPreview.allocations).map(name => (
+                                  <tr key={name} className="text-slate-700">
+                                    <td className="py-1.5 pr-4 font-medium">{name}</td>
+                                    <td className="py-1.5 text-right font-semibold">{allocationPreview.allocations[name]}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="space-y-2 flex flex-col justify-center">
+                            {allocationPreview.isUnbalanced ? (
+                              <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2.5 text-xs font-medium">
+                                ⚠️ <strong>Allocation Warning:</strong> Treatments are heavily unbalanced (e.g. some have double the replicates of others). Adjust greenhouse rows/columns or treatments count for scientific balance.
+                              </div>
+                            ) : (
+                              <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
+                                ✓ Treatments are statistically balanced across the greenhouse layout.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -3435,6 +4093,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               <option value="Lattice">Alpha-Lattice</option>
               <option value="Factorial">Factorial</option>
               <option value="Strip-Plot">Strip-Plot</option>
+              <option value="PotTrial">Pot Trial (Row-Based)</option>
             </select>
           </div>
           <div>
@@ -3490,6 +4149,99 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             </div>
           </div>
 
+        {/* Pot Trial Layout Config */}
+        {randomizeForm.trialDesign === 'PotTrial' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+            <div>
+              <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Greenhouse Rows</label>
+              <input 
+                type="number"
+                min="1"
+                max="100"
+                value={randomizeForm.potRows}
+                onChange={e => setRandomizeForm(p => ({ ...p, potRows: e.target.value }))}
+                className={INPUT}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Greenhouse Columns</label>
+              <input 
+                type="number"
+                min="1"
+                max="100"
+                value={randomizeForm.potCols}
+                onChange={e => setRandomizeForm(p => ({ ...p, potCols: e.target.value }))}
+                className={INPUT}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Layout Option</label>
+              <select
+                value={randomizeForm.potLayout}
+                onChange={e => setRandomizeForm(p => ({ ...p, potLayout: e.target.value }))}
+                className={INPUT}
+              >
+                <option value="stripe">Stripe Layout (Sequential)</option>
+                <option value="randomized-row">Randomized Row Layout</option>
+                <option value="balanced-pot">Balanced Pot Randomization</option>
+              </select>
+            </div>
+            {randomizeForm.potLayout === 'stripe' && (
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Stripe Direction</label>
+                <select
+                  value={randomizeForm.potStripeDirection}
+                  onChange={e => setRandomizeForm(p => ({ ...p, potStripeDirection: e.target.value }))}
+                  className={INPUT}
+                >
+                  <option value="Horizontal Rows">Horizontal Rows (Default)</option>
+                  <option value="Vertical Columns">Vertical Columns</option>
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
+              <select
+                value={randomizeForm.potObsMode}
+                onChange={e => {
+                  const mode = e.target.value;
+                  setRandomizeForm(p => ({ 
+                    ...p, 
+                    potObsMode: mode,
+                    replications: mode === 'row-wise' ? 'row' : 'pot'
+                  }));
+                }}
+                className={INPUT}
+              >
+                <option value="row-wise">Row-Wise Data Entry</option>
+                <option value="plant-wise">Plant-Wise Data Entry</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Experimental Unit (Locked)</label>
+              <input 
+                type="text"
+                readOnly
+                value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : 'Pot'}
+                className={`${INPUT} bg-slate-100 cursor-not-allowed font-semibold text-slate-700`}
+              />
+            </div>
+            {randomizeForm.potObsMode === 'row-wise' && (
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Row Aggregation Method</label>
+                <select
+                  value={randomizeForm.potDataMethod}
+                  onChange={e => setRandomizeForm(p => ({ ...p, potDataMethod: e.target.value }))}
+                  className={INPUT}
+                >
+                  <option value="total">Sum (Total) of Row Pots</option>
+                  <option value="average">Mean (Average) of Row Pots</option>
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Factorial / Split-Plot combinations generator */}
         {(randomizeForm.trialDesign === 'Split-Plot' || randomizeForm.trialDesign === 'Factorial' || randomizeForm.trialDesign === 'Strip-Plot') && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
@@ -3521,6 +4273,105 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               >
                 Generate Combinations
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Replication Warning Alert */}
+        {randomizeForm.trialDesign === 'PotTrial' && randomizeForm.potObsMode === 'row-wise' && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs flex items-start gap-2">
+            <span className="font-bold text-base mt-0.5">⚠️</span>
+            <div>
+              <p className="font-bold">Row-Wise Mode Reduces Replications</p>
+              <p>You have selected Row-Wise observation. This treats each entire Row as the experimental unit. The replication count is reduced to the number of rows ({randomizeForm.potRows || 9}) instead of the total number of pots ({parseInt(randomizeForm.potRows || 9) * parseInt(randomizeForm.potCols || 4)}). This reduces statistical resolution but simplifies field workload.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Pot Observation Fields Setup */}
+        {randomizeForm.trialDesign === 'PotTrial' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Pot Observation Fields Setup</h4>
+            <p className="text-[11px] text-slate-500">Configure the variables recorded for each experimental unit (e.g. height, flowers, yield). These will appear as observation columns in the data entry sheets.</p>
+            
+            <div className="flex flex-wrap gap-2 items-center bg-white p-2.5 rounded-lg border">
+              {(randomizeForm.potFields || []).map((field, idx) => (
+                <span key={field} className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded text-xs font-medium">
+                  {field}
+                  <div className="flex items-center gap-0.5 border-l border-emerald-200 pl-1.5 ml-1">
+                    <button type="button" onClick={() => handleMovePotField(idx, 'up')} disabled={idx === 0} className="hover:text-emerald-900 disabled:opacity-30">▲</button>
+                    <button type="button" onClick={() => handleMovePotField(idx, 'down')} disabled={idx === (randomizeForm.potFields || []).length - 1} className="hover:text-emerald-900 disabled:opacity-30">▼</button>
+                    <button type="button" onClick={() => handleRemovePotField(field)} className="text-red-600 hover:text-red-900 ml-1">×</button>
+                  </div>
+                </span>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                id="new_pot_field_input_2" 
+                placeholder="Add Custom Field (e.g., Shoot weight)" 
+                className={`${INPUT} max-w-xs`} 
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddPotField(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const input = document.getElementById('new_pot_field_input_2');
+                  if (input) {
+                    handleAddPotField(input.value);
+                    input.value = '';
+                  }
+                }}
+                className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+              >
+                Add Field
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Treatment Allocation Preview */}
+        {allocationPreview && (
+          <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4 space-y-2">
+            <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Treatment Allocation Preview</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs text-left">
+                  <thead>
+                    <tr className="border-b border-emerald-200 text-emerald-800 font-bold">
+                      <th className="py-1.5 pr-4">Treatment</th>
+                      <th className="py-1.5 text-right">Count ({allocationPreview.potObsMode === 'row-wise' ? 'Rows' : 'Pots'})</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-emerald-100">
+                    {Object.keys(allocationPreview.allocations).map(name => (
+                      <tr key={name} className="text-slate-700">
+                        <td className="py-1.5 pr-4 font-medium">{name}</td>
+                        <td className="py-1.5 text-right font-semibold">{allocationPreview.allocations[name]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-2 flex flex-col justify-center">
+                {allocationPreview.isUnbalanced ? (
+                  <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2.5 text-xs font-medium">
+                    ⚠️ <strong>Allocation Warning:</strong> Treatments are heavily unbalanced (e.g. some have double the replicates of others). Adjust greenhouse rows/columns or treatments count for scientific balance.
+                  </div>
+                ) : (
+                  <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
+                    ✓ Treatments are statistically balanced across the greenhouse layout.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -739,10 +739,13 @@ export class AnalysisEngine {
                         means[t] = jStat.mean(dataMap[t]);
                     });
 
-                    const isTwoWay = this.trials[0]?.TrialDesign === 'Factorial' || this.trials[0]?.TrialDesign === 'Split-Plot' || this.project?.TrialDesign === 'Factorial' || this.project?.TrialDesign === 'Split-Plot';
+                    const isPotTrial = this.project?.Design === 'PotTrial' || this.trials[0]?.TrialDesign === 'PotTrial';
+                    const isTwoWay = !isPotTrial && (this.trials[0]?.TrialDesign === 'Factorial' || this.trials[0]?.TrialDesign === 'Split-Plot' || this.project?.TrialDesign === 'Factorial' || this.project?.TrialDesign === 'Split-Plot');
 
                     let anovaResults;
-                    if (isTwoWay) {
+                    if (isPotTrial) {
+                        anovaResults = calculateCRD_ANOVA(anovaData);
+                    } else if (isTwoWay) {
                         anovaResults = performTwoWayANOVA(this.trials, {
                             metric,
                             species,
@@ -855,7 +858,21 @@ export class AnalysisEngine {
                     const bartlettResult = calculateBartlettsTest(anovaData);
                     const normalityResult = calculateResidualsDiagnostics(this.trials, dataMap, means, anovaResults);
                     const repsCount = this.trials.length / (treatments.length || 1);
-                    const blockingEff = calculateBlockingEfficiency(anovaResults, repsCount);
+                    const blockingEff = isPotTrial ? 1.0 : calculateBlockingEfficiency(anovaResults, repsCount);
+
+                    const potObsMode = this.project?.PotObsMode || 'row-wise';
+                    const potLayout = this.project?.PotLayout || 'stripe';
+                    const potStripeDir = this.project?.PotStripeDirection || 'Horizontal Rows';
+                    const potRows = this.project?.PotRows || 9;
+                    const potCols = this.project?.PotCols || 4;
+
+                    let analysisNotes = '';
+                    if (isPotTrial) {
+                        const allocationStr = treatments.map(name => `  ${name} = ${counts[name]} ${potObsMode === 'row-wise' ? 'rows' : 'pots'}`).join('\n');
+                        analysisNotes = `Design: Pot Trial (${potLayout === 'stripe' ? 'Stripe Layout' : potLayout === 'randomized-row' ? 'Randomized Row Layout' : 'Balanced Pot Randomization'})\nExperimental Unit: ${potObsMode === 'row-wise' ? 'Row' : 'Pot'}\nStripe Direction: ${potStripeDir}\nRows: ${potRows}\nColumns: ${potCols}\nObservation Mode: ${potObsMode === 'row-wise' ? 'Row-Wise' : 'Plant-Wise'}\nAnalysis Method: CRD-style comparison\nTreatment Allocation:\n${allocationStr}`;
+                    } else {
+                        analysisNotes = `Design: ${this.project?.Design || 'RCBD'}\nExperimental Unit: Plot\nReplications: ${this.blocks.length}\nTreatments: ${treatments.length}\nAnalysis Method: ${isTwoWay ? 'Two-way RCBD ANOVA' : 'One-way RCBD ANOVA'}`;
+                    }
 
                     const results = {
                         means,
@@ -865,6 +882,7 @@ export class AnalysisEngine {
                         bartlett: bartlettResult,
                         normality: normalityResult,
                         blockingEfficiency: blockingEff,
+                        analysisNotes: analysisNotes,
                         lsdResults: postHoc.method === 'lsd' ? { ...postHoc, groupings: formattedGrouping } : null,
                         tukeyResults: postHoc.method === 'tukey' ? { ...postHoc, groupings: formattedGrouping } : null,
                         duncanResults: postHoc.method === 'duncan' ? { ...postHoc, groupings: formattedGrouping } : null,
@@ -1308,4 +1326,64 @@ export function calculateBlockingEfficiency(anovaResults, r) {
 
   const re = (msBlock + (r - 1) * msError) / (r * msError);
   return parseFloat(re.toFixed(3));
+}
+
+export function calculateCRD_ANOVA(groups) {
+  if (!groups || groups.length === 0 || groups.every(g => g.length === 0)) {
+    return {
+      ssTreat: 0, ssError: 0, ssTotal: 0,
+      dfTreat: 0, dfError: 0, dfTotal: 0,
+      msTreat: 0, msError: 0,
+      fVal: 0, pVal: 1, grandMean: 0, cv: 0
+    };
+  }
+
+  const t = groups.length;
+  const flat = groups.map(g => g.filter(v => v !== undefined && !isNaN(v) && v !== null)).flat();
+  const N = flat.length;
+  if (N === 0) {
+    return {
+      ssTreat: 0, ssError: 0, ssTotal: 0,
+      dfTreat: 0, dfError: 0, dfTotal: 0,
+      msTreat: 0, msError: 0,
+      fVal: 0, pVal: 1, grandMean: 0, cv: 0
+    };
+  }
+
+  const grandTotal = flat.reduce((a, b) => a + b, 0);
+  const grandMean = grandTotal / N;
+  const CF = (grandTotal * grandTotal) / N;
+
+  const ssTotal = flat.reduce((acc, val) => acc + Math.pow(val - grandMean, 2), 0);
+
+  let ssTreat = 0;
+  groups.forEach(g => {
+    const validVals = g.filter(v => v !== undefined && !isNaN(v) && v !== null);
+    const trTotal = validVals.reduce((a, b) => a + b, 0);
+    const r_i = validVals.length;
+    if (r_i > 0) {
+      ssTreat += (trTotal * trTotal) / r_i;
+    }
+  });
+  ssTreat = Math.max(0, ssTreat - CF);
+
+  const ssError = Math.max(0, ssTotal - ssTreat);
+
+  const dfTreat = Math.max(0, t - 1);
+  const dfError = Math.max(0, N - t);
+  const dfTotal = Math.max(0, N - 1);
+
+  const msTreat = dfTreat > 0 ? ssTreat / dfTreat : 0;
+  const msError = dfError > 0 ? ssError / dfError : 0;
+
+  const fVal = msError > 0 ? msTreat / msError : 0;
+  const pVal = (msError > 0 && typeof jStat !== 'undefined') ? 1 - jStat.centralF.cdf(fVal, dfTreat, dfError) : 1;
+
+  return {
+    ssTreat, ssError, ssTotal,
+    dfTreat, dfError, dfTotal,
+    msTreat, msError,
+    fVal, pVal, grandMean,
+    cv: grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0
+  };
 }
