@@ -241,8 +241,11 @@ export default function AIAssistant({ onMenuClick }) {
     updateState({ aiChatSessions: newSessions, currentAiChatSessionId: activeSessionId });
 
     try {
-      const trials = (state.trials || []).filter(t => t.Category === activeCategory || (!t.Category && activeCategory === 'herbicide'));
-      const trialsCtx = trials.slice(0, 30).map(t => {
+      const trials = (state.trials || [])
+        .filter(t => t.Category === activeCategory || (!t.Category && activeCategory === 'herbicide'))
+        .sort((a, b) => new Date(b.Date || 0) - new Date(a.Date || 0));
+      
+      const trialsCtx = trials.slice(0, 25).map(t => {
         const eff = safeJsonParse(t.EfficacyDataJSON, []);
         
         const sortedEff = [...eff].sort((a, b) => {
@@ -297,8 +300,6 @@ export default function AIAssistant({ onMenuClick }) {
           date: t.Date,
           status: isCompleted ? 'Finalized' : 'Active',
           performanceDays: calculatedControlDays,
-          hasExplicitDuration: !!t.FinalControlDuration,
-          hasOnlyBaselineDaa0: postTreatmentObs.length === 0,
           finalEfficacyPct: postTreatmentObs.length === 0 ? 0 : calculatedFinalEfficacy,
           observations: eff.map(obs => {
             const daa = obs.daa ?? obs.day ?? obs.DAA ?? 0;
@@ -323,18 +324,16 @@ export default function AIAssistant({ onMenuClick }) {
 
             return {
               daa,
-              controlPct: controlPct,
+              controlPct: controlPct !== null ? Math.round(controlPct * 10) / 10 : null,
               [primaryObsField]: obsVal,
-              wcePct: wce,
-              cropInjury: obs.cropInjury ?? obs.injury ?? obs.injuryPct ?? null,
-              notes: obs.notes || ''
+              cropInjury: obs.cropInjury ?? obs.injury ?? obs.injuryPct ?? null
             };
           })
         };
       });
 
       const systemCtx = `You are a Senior ${config.name} Scientist and expert agricultural research assistant specialized in analyzing ${config.name} efficacy/growth trials. 
-The user has ${trials.length} trial(s) on record for the ${config.name} category. Here is a detailed summary of up to 30 recent trials, including all of their observation records:
+The user has ${trials.length} trial(s) on record for the ${config.name} category. Here is a detailed summary of up to 25 recent trials, including all of their observation records:
 ${JSON.stringify(trialsCtx, null, 2)}
 
 Projects: ${(state.projects || []).filter(p => p.Category === activeCategory).map(p => p.Name).join(', ') || 'None'}

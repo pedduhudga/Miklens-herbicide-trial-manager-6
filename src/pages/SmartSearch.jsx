@@ -24,10 +24,13 @@ function highlight(text, query) {
   ).join('');
 }
 
-function buildIndex(state) {
+function buildIndex(state, activeCategory) {
   const items = [];
+  const cat = activeCategory || 'herbicide';
 
   (state.trials || []).forEach(t => {
+    const tCat = t.Category || 'herbicide';
+    if (tCat !== cat) return;
     const obs = safeJsonParse(t.EfficacyDataJSON, []);
     const weedDetails = obs.flatMap(o => (o.weedDetails || []).map(w => w.species)).filter(Boolean);
     items.push({
@@ -40,15 +43,21 @@ function buildIndex(state) {
     });
   });
 
-  (state.projects || []).forEach(p => items.push({
-    type: 'project', id: p.ID,
-    title: p.Name || 'Unknown Project',
-    sub: [p.Metric, p.TargetWeed, p.Crop, p.Location].filter(Boolean).join(' · '),
-    tags: [p.Name, p.TargetWeed, p.Crop, p.Location, p.Metric].filter(Boolean),
-    raw: p,
-  }));
+  (state.projects || []).forEach(p => {
+    const pCat = p.Category || 'herbicide';
+    if (pCat !== cat) return;
+    items.push({
+      type: 'project', id: p.ID,
+      title: p.Name || 'Unknown Project',
+      sub: [p.Metric, p.TargetWeed, p.Crop, p.Location].filter(Boolean).join(' · '),
+      tags: [p.Name, p.TargetWeed, p.Crop, p.Location, p.Metric].filter(Boolean),
+      raw: p,
+    });
+  });
 
   (state.formulations || []).forEach(f => {
+    const fCat = f.Category || 'herbicide';
+    if (fCat !== cat) return;
     const ings = safeJsonParse(f.IngredientsJSON, []).map(i => i.name).filter(Boolean);
     items.push({
       type: 'formulation', id: f.ID,
@@ -59,21 +68,29 @@ function buildIndex(state) {
     });
   });
 
-  (state.ingredients || []).forEach(i => items.push({
-    type: 'ingredient', id: i.ID,
-    title: i.Name || 'Unknown Ingredient',
-    sub: [i.Unit && `Unit: ${i.Unit}`, i.Cost && `Cost: ${i.Cost}`].filter(Boolean).join(' · '),
-    tags: [i.Name, i.Unit].filter(Boolean),
-    raw: i,
-  }));
+  (state.ingredients || []).forEach(i => {
+    const iCat = i.Category || 'herbicide';
+    if (iCat !== cat) return;
+    items.push({
+      type: 'ingredient', id: i.ID,
+      title: i.Name || 'Unknown Ingredient',
+      sub: [i.Unit && `Unit: ${i.Unit}`, i.Cost && `Cost: ${i.Cost}`].filter(Boolean).join(' · '),
+      tags: [i.Name, i.Unit].filter(Boolean),
+      raw: i,
+    });
+  });
 
-  (state.organisations || []).forEach(o => items.push({
-    type: 'organisation', id: o.ID,
-    title: o.Name || 'Unknown Organisation',
-    sub: o.Description || '',
-    tags: [o.Name, o.Description].filter(Boolean),
-    raw: o,
-  }));
+  (state.organisations || []).forEach(o => {
+    const oCat = o.Category || 'herbicide';
+    if (oCat !== cat) return;
+    items.push({
+      type: 'organisation', id: o.ID,
+      title: o.Name || 'Unknown Organisation',
+      sub: o.Description || '',
+      tags: [o.Name, o.Description].filter(Boolean),
+      raw: o,
+    });
+  });
 
   return items;
 }
@@ -86,12 +103,15 @@ export default function SmartSearch({ onMenuClick }) {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const [typeFilter, setTypeFilter] = useState('all');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem('smartSearch_recent') || '[]'); } catch { return []; }
   });
   const inputRef = useRef(null);
 
-  const index = useMemo(() => buildIndex(state), [state.trials, state.projects, state.formulations, state.ingredients, state.organisations]);
+  const activeCategory = state.activeCategory || 'herbicide';
+
+  const index = useMemo(() => buildIndex(state, activeCategory), [state.trials, state.projects, state.formulations, state.ingredients, state.organisations, activeCategory]);
 
   useEffect(() => {
     const q = deferredQuery.trim();
@@ -123,6 +143,34 @@ export default function SmartSearch({ onMenuClick }) {
       .sort((a, b) => b.score - a.score)
       .slice(0, 50);
   }, [deferredQuery, index, typeFilter]);
+
+  // Reset keyboard selected index when results change
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [results]);
+
+  // Keyboard navigation shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!query) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter') {
+        if (results[selectedIndex]) {
+          e.preventDefault();
+          handleNavigate(results[selectedIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        setQuery('');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [results, selectedIndex, query]);
 
   const counts = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
@@ -174,7 +222,7 @@ export default function SmartSearch({ onMenuClick }) {
                 type="text"
                 value={query}
                 onChange={e => handleSearch(e.target.value)}
-                placeholder="Search trials, projects, formulations, ingredients, weed species…"
+                placeholder={`Search ${activeCategory} trials, projects, formulations, active ingredients…`}
                 className="w-full pl-11 pr-10 py-3 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-slate-50"
               />
               {query && (
@@ -191,7 +239,7 @@ export default function SmartSearch({ onMenuClick }) {
                 {FILTERS.map(f => (
                   <button key={f.key} onClick={() => setTypeFilter(f.key)}
                     className={`text-xs px-3 py-1 rounded-full font-semibold transition border ${typeFilter === f.key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}>
-                    {f.label}{f.key !== 'all' && counts[f.key] !== undefined ? ` (${counts[f.key]})` : f.key === 'all' && deferredQuery ? ` (${results.length + (typeFilter === 'all' ? 0 : 0)})` : ''}
+                    {f.label}{f.key !== 'all' && counts[f.key] !== undefined ? ` (${counts[f.key]})` : f.key === 'all' && deferredQuery ? ` (${results.length})` : ''}
                   </button>
                 ))}
               </div>
@@ -203,8 +251,8 @@ export default function SmartSearch({ onMenuClick }) {
           {!deferredQuery ? (
             <div className="text-center py-10 text-slate-400">
               <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p className="font-semibold text-slate-500">Search across all your data</p>
-              <p className="text-sm mt-2">Try: formulation name, weed species, location, investigator, result grade…</p>
+              <p className="font-semibold text-slate-500">Search across your {activeCategory} data</p>
+              <p className="text-sm mt-2">Try: formulation name, target species, location, investigator, result rating…</p>
               {recentSearches.length > 0 && (
                 <div className="mt-6 max-w-md mx-auto">
                   <div className="flex items-center justify-between mb-2">
@@ -224,14 +272,14 @@ export default function SmartSearch({ onMenuClick }) {
               )}
               <div className="mt-6 flex flex-wrap gap-2 justify-center">
                 <p className="w-full text-xs text-slate-400 mb-1">Suggestions:</p>
-                {['Excellent', 'Amaranthus', 'Active', 'No observations'].map(s => (
+                {['Excellent', 'Yield', 'Plot', 'Standard'].map(s => (
                   <button key={s} onClick={() => handleSearch(s)}
                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-full text-sm text-slate-600 hover:bg-slate-50 hover:border-emerald-300 transition font-medium">
                     {s}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-slate-300 mt-6">{index.length} items indexed · {(state.trials||[]).length} trials · {(state.projects||[]).length} projects · {(state.formulations||[]).length} formulations · {(state.organisations||[]).length} orgs</p>
+              <p className="text-xs text-slate-300 mt-6">{index.length} items indexed in active category · {activeCategory.toUpperCase()}</p>
             </div>
           ) : results.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
@@ -241,13 +289,24 @@ export default function SmartSearch({ onMenuClick }) {
             </div>
           ) : (
             <>
-              <p className="text-xs text-slate-400 font-semibold pb-1">{results.length} result{results.length !== 1 ? 's' : ''} for "{deferredQuery}"</p>
-              {results.map((item) => {
+              <div className="flex items-center justify-between pb-1">
+                <p className="text-xs text-slate-400 font-semibold">{results.length} result{results.length !== 1 ? 's' : ''} for "{deferredQuery}"</p>
+                <span className="text-2xs text-slate-400">Use ↑↓ keys and Enter to navigate</span>
+              </div>
+              {results.map((item, idx) => {
                 const cfg = TYPE_CONFIG[item.type];
                 const Icon = cfg.icon;
+                const isSelected = idx === selectedIndex;
                 return (
-                  <button key={`${item.type}-${item.id}`} onClick={() => handleNavigate(item)}
-                    className="w-full flex items-center gap-3 bg-white rounded-xl border border-slate-100 p-4 hover:shadow-md hover:border-emerald-200 transition text-left group">
+                  <button 
+                    key={`${item.type}-${item.id}`} 
+                    onClick={() => handleNavigate(item)}
+                    className={`w-full flex items-center gap-3 rounded-xl border p-4 transition text-left group ${
+                      isSelected 
+                        ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-100/50 shadow-md' 
+                        : 'bg-white border-slate-100 hover:shadow-md hover:border-emerald-200'
+                    }`}
+                  >
                     <div className={`p-2.5 rounded-xl shrink-0 ${cfg.color}`}>
                       <Icon className="w-4 h-4" />
                     </div>
@@ -262,7 +321,7 @@ export default function SmartSearch({ onMenuClick }) {
                           dangerouslySetInnerHTML={{ __html: highlight(item.sub, deferredQuery.trim()) }} />
                       )}
                     </div>
-                    <span className="text-xs text-emerald-600 font-semibold opacity-0 group-hover:opacity-100 shrink-0">View →</span>
+                    <span className={`text-xs font-semibold shrink-0 transition ${isSelected ? 'text-emerald-600 opacity-100' : 'text-emerald-600 opacity-0 group-hover:opacity-100'}`}>View →</span>
                   </button>
                 );
               })}
