@@ -833,6 +833,261 @@ export function detectOutliers(values, threshold = 1.5) {
 }
 
 /**
+ * One-way ANCOVA (Analysis of Covariance)
+ * Adjusts primary treatment metric using a covariate (e.g. baseline or temperature).
+ */
+export function performANCOVA(trials, covariateMetric, options = {}) {
+  const { metric = 'controlPct', alpha = 0.05, daa = null } = options;
+  
+  // Gather data pairs (Y = dependent variable, X = covariate) grouped by treatment
+  const treatments = {};
+  const allX = [];
+  const allY = [];
+  
+  trials.forEach(trial => {
+    const trt = trial.FormulationName || 'Unknown';
+    const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
+    const observations = daa 
+      ? efficacy.filter(e => e.daa === daa || e.daysAfterApplication === daa)
+      : efficacy;
+    
+    if (observations.length > 0) {
+      const latest = observations[observations.length - 1];
+      const yVal = latest[metric] ?? latest.controlPct ?? latest.wce ?? latest.weedCover ?? latest.overallVigor;
+      const xVal = latest[covariateMetric] ?? trial[covariateMetric] ?? 0;
+      
+      if (yVal !== null && !isNaN(yVal) && xVal !== null && !isNaN(xVal)) {
+        if (!treatments[trt]) treatments[trt] = [];
+        const xFloat = parseFloat(xVal);
+        const yFloat = parseFloat(yVal);
+        treatments[trt].push({ x: xFloat, y: yFloat });
+        allX.push(xFloat);
+        allY.push(yFloat);
+      }
+    }
+  });
+
+  const trtNames = Object.keys(treatments);
+  if (trtNames.length < 2 || allX.length < 4) {
+    return { error: 'Insufficient data for ANCOVA. Need at least 2 treatments and multiple observations.' };
+  }
+
+  const N = allY.length;
+  const k = trtNames.length;
+
+  const meanX = allX.reduce((a, b) => a + b, 0) / N;
+  const meanY = allY.reduce((a, b) => a + b, 0) / N;
+
+  // Compute Sum of Squares and Cross-Products
+  let ssTotalX = 0, ssTotalY = 0, spTotal = 0;
+  allX.forEach((xVal, i) => {
+    const yVal = allY[i];
+    ssTotalX += Math.pow(xVal - meanX, 2);
+    ssTotalY += Math.pow(yVal - meanY, 2);
+    spTotal += (xVal - meanX) * (yVal - meanY);
+  });
+
+  let ssTreatX = 0, ssTreatY = 0, spTreat = 0;
+  const trtMeans = {};
+  trtNames.forEach(trt => {
+    const pts = treatments[trt];
+    const nTrt = pts.length;
+    if (nTrt === 0) return;
+    const tMeanX = pts.reduce((sum, p) => sum + p.x, 0) / nTrt;
+    const tMeanY = pts.reduce((sum, p) => sum + p.y, 0) / nTrt;
+    trtMeans[trt] = { meanX: tMeanX, meanY: tMeanY, count: nTrt };
+
+    ssTreatX += nTrt * Math.pow(tMeanX - meanX, 2);
+    ssTreatY += nTrt * Math.pow(tMeanY - meanY, 2);
+    spTreat += nTrt * (tMeanX - meanX) * (tMeanY - meanY);
+  });
+
+  const ssErrorX = Math.max(0, ssTotalX - ssTreatX);
+  const ssErrorY = Math.max(0, ssTotalY - ssTreatY);
+  const spError = spTotal - spTreat;
+
+  // Slopes (Beta coefficients)
+  const beta = ssErrorX > 0 ? spError / ssErrorX : 0;
+
+  // Adjusted sums of squares
+  const ssTotalY_adj = Math.max(0, ssTotalY - (spTotal * spTotal) / (ssTotalX || 1));
+  const ssErrorY_adj = Math.max(0, ssErrorY - (spError * spError) / (ssErrorX || 1));
+  const ssTreatY_adj = Math.max(0, ssTotalY_adj - ssErrorY_adj);
+
+  const dfTreat = k - 1;
+  const dfError = N - k - 1;
+  const dfTotal = N - 2;
+
+  const msTreat = dfTreat > 0 ? ssTreatY_adj / dfTreat : 0;
+  const msError = dfError > 0 ? ssErrorY_adj / dfError : 0;
+
+  const fVal = msError > 0 ? msTreat / msError : 0;
+  const pVal = msError > 0 ? approximatePValue(fVal, dfTreat, dfError) : 1;
+
+  // Calculate adjusted treatment means: Y_adj = Y_bar - beta * (X_bar_trt - X_bar_grand)
+  const adjustedMeans = {};
+  trtNames.forEach(trt => {
+    const stats = trtMeans[trt];
+    adjustedMeans[trt] = stats.meanY - beta * (stats.meanX - meanX);
+  });
+
+  return {
+    anovaTable: {
+      source: ['Adjusted Treatments', 'Error (adjusted)', 'Total (adjusted)'],
+      ss: [ssTreatY_adj, ssErrorY_adj, ssTotalY_adj],
+      df: [dfTreat, dfError, dfTotal],
+      ms: [msTreat, msError, null],
+      f: [fVal, null, null],
+      p: [pVal, null, null]
+    },
+    fStatistic: fVal,
+    pValue: pVal,
+    significant: pVal < alpha,
+    treatmentMeans: adjustedMeans,
+    unadjustedMeans: trtMeans,
+    beta,
+    covariateMean: meanX,
+    test: 'ANCOVA',
+    alpha
+  };
+}
+
+/**
+ * Combined Multi-Trial Meta-Analysis
+ * Run combined ANOVA across multiple projects (locations) to identify Treatment, Location, and Treatment x Location effects.
+ */
+export function performMetaAnalysis(projects, allTrials, options = {}) {
+  const { metric = 'controlPct', alpha = 0.05, daa = null } = options;
+
+  const dataPoints = [];
+  const locations = new Set();
+  const treatments = new Set();
+  const blocks = new Set();
+
+  projects.forEach(project => {
+    const projTrials = allTrials.filter(t => String(t.ProjectID) === String(project.ID));
+    projTrials.forEach(trial => {
+      const trt = trial.FormulationName || 'Unknown';
+      const blockId = trial.BlockID || trial.Replication || '1';
+      const loc = project.Location || project.Name || 'Unknown Location';
+
+      const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
+      const observations = daa 
+        ? efficacy.filter(e => e.daa === daa || e.daysAfterApplication === daa)
+        : efficacy;
+      
+      if (observations.length > 0) {
+        const latest = observations[observations.length - 1];
+        const value = latest[metric] ?? latest.controlPct ?? latest.wce ?? latest.weedCover ?? latest.overallVigor;
+        if (value !== null && !isNaN(value)) {
+          dataPoints.push({
+            y: parseFloat(value),
+            trt,
+            loc,
+            block: blockId
+          });
+          locations.add(loc);
+          treatments.add(trt);
+          blocks.add(blockId);
+        }
+      }
+    });
+  });
+
+  const listLocs = [...locations];
+  const listTrts = [...treatments];
+  const N = dataPoints.length;
+
+  if (listLocs.length < 2 || listTrts.length < 2 || N < 6) {
+    return { error: 'Insufficient data for Meta-Analysis. Need at least 2 locations, 2 treatments, and multiple replication plots.' };
+  }
+
+  const grandTotal = dataPoints.reduce((sum, dp) => sum + dp.y, 0);
+  const grandMean = grandTotal / N;
+  const CF = (grandTotal * grandTotal) / N;
+
+  const ssTotal = dataPoints.reduce((sum, dp) => sum + dp.y * dp.y, 0) - CF;
+
+  // SS Locations
+  let ssLoc = 0;
+  listLocs.forEach(loc => {
+    const pts = dataPoints.filter(dp => dp.loc === loc);
+    const sum = pts.reduce((s, dp) => s + dp.y, 0);
+    if (pts.length > 0) ssLoc += (sum * sum) / pts.length;
+  });
+  ssLoc -= CF;
+
+  // SS Treatments
+  let ssTrt = 0;
+  listTrts.forEach(trt => {
+    const pts = dataPoints.filter(dp => dp.trt === trt);
+    const sum = pts.reduce((s, dp) => s + dp.y, 0);
+    if (pts.length > 0) ssTrt += (sum * sum) / pts.length;
+  });
+  ssTrt -= CF;
+
+  // SS Interaction (Treat x Loc)
+  let ssCells = 0;
+  listLocs.forEach(loc => {
+    listTrts.forEach(trt => {
+      const pts = dataPoints.filter(dp => dp.loc === loc && dp.trt === trt);
+      const sum = pts.reduce((s, dp) => s + dp.y, 0);
+      if (pts.length > 0) ssCells += (sum * sum) / pts.length;
+    });
+  });
+  ssCells -= CF;
+
+  const ssTrtLoc = Math.max(0, ssCells - ssLoc - ssTrt);
+
+  // SS Error
+  const ssError = Math.max(0, ssTotal - ssLoc - ssTrt - ssTrtLoc);
+
+  const dfLoc = listLocs.length - 1;
+  const dfTrt = listTrts.length - 1;
+  const dfTrtLoc = dfLoc * dfTrt;
+  const dfTotal = N - 1;
+  const dfError = Math.max(1, dfTotal - dfLoc - dfTrt - dfTrtLoc);
+
+  const msLoc = ssLoc / dfLoc;
+  const msTrt = ssTrt / dfTrt;
+  const msTrtLoc = ssTrtLoc / dfTrtLoc;
+  const msError = ssError / dfError;
+
+  // F-values (using Error mean square as denominator)
+  const fTrt = msError > 0 ? msTrt / msError : 0;
+  const fLoc = msError > 0 ? msLoc / msError : 0;
+  const fTrtLoc = msError > 0 ? msTrtLoc / msError : 0;
+
+  const pTrt = msError > 0 ? approximatePValue(fTrt, dfTrt, dfError) : 1;
+  const pLoc = msError > 0 ? approximatePValue(fLoc, dfLoc, dfError) : 1;
+  const pTrtLoc = msError > 0 ? approximatePValue(fTrtLoc, dfTrtLoc, dfError) : 1;
+
+  // Compute treatment means
+  const treatmentMeans = {};
+  listTrts.forEach(t => {
+    const pts = dataPoints.filter(dp => dp.trt === t);
+    treatmentMeans[t] = pts.reduce((s, dp) => s + dp.y, 0) / (pts.length || 1);
+  });
+
+  return {
+    anovaTable: {
+      source: ['Locations', 'Treatments', 'Interaction (Trt x Loc)', 'Error', 'Total'],
+      ss: [ssLoc, ssTrt, ssTrtLoc, ssError, ssTotal],
+      df: [dfLoc, dfTrt, dfTrtLoc, dfError, dfTotal],
+      ms: [msLoc, msTrt, msTrtLoc, msError, null],
+      f: [fLoc, fTrt, fTrtLoc, null, null],
+      p: [pLoc, pTrt, pTrtLoc, null, null]
+    },
+    fStatistic: fTrt,
+    pValue: pTrt,
+    significant: pTrt < alpha,
+    treatmentMeans,
+    test: 'Meta-Analysis',
+    alpha
+  };
+}
+
+/**
  * Export window bindings
  */
 if (typeof window !== 'undefined') {
@@ -843,6 +1098,8 @@ if (typeof window !== 'undefined') {
   window.calculateStats = calculateStats;
   window.performTwoWayANOVA = performTwoWayANOVA;
   window.detectOutliers = detectOutliers;
+  window.performANCOVA = performANCOVA;
+  window.performMetaAnalysis = performMetaAnalysis;
 }
 
 export default {
@@ -852,6 +1109,8 @@ export default {
   performDunnettTest,
   calculateStats,
   performTwoWayANOVA,
-  detectOutliers
+  detectOutliers,
+  performANCOVA,
+  performMetaAnalysis
 };
 
