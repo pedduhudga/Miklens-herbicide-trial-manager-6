@@ -153,7 +153,8 @@ export default function SyncStatus() {
               <h4 className="font-bold text-slate-800">Sync Status</h4>
               <button 
                 onClick={() => setIsExpanded(false)}
-                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+                aria-label="Close sync status"
+                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-slate-400 outline-none"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -234,7 +235,8 @@ export default function SyncStatus() {
               </div>
               <button 
                 onClick={() => setShowConflicts(false)}
-                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600"
+                aria-label="Close conflict resolution"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-slate-400 outline-none"
               >
                 <X className="w-5 h-5" />
               </button>
