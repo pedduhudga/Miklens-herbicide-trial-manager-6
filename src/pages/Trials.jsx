@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import QRCodeLib from 'qrcode';
 import { jStat } from 'jstat';
 import { useAppState } from '../hooks/useAppState.jsx';
@@ -93,6 +93,8 @@ export default function Trials({ onMenuClick }) {
   // --- List view state ---
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
+  // ⚡ Bolt: Defer search value to prevent blocking the main thread during typing on large datasets
+  const deferredSearch = useDeferredValue(search);
   const [filterFormulation, setFilterFormulation] = useState('');
   const [filterResult, setFilterResult] = useState('');
   const [filterProject, setFilterProject] = useState('');
@@ -382,8 +384,8 @@ export default function Trials({ onMenuClick }) {
     else if (activeTab === 'control') list = list.filter(t => t.IsControl === true || t.IsControl === 'true');
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
-    if (search) {
-      const q = search.toLowerCase();
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase();
       list = list.filter(t =>
         (t.FormulationName || '').toLowerCase().includes(q) ||
         (t.InvestigatorName || '').toLowerCase().includes(q) ||
@@ -424,7 +426,7 @@ export default function Trials({ onMenuClick }) {
       return 0;
     });
     return list;
-  }, [trials, activeTab, search, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd]);
+  }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd]);
 
   // ── CRUD ───────────────────────────────────────────────────────────
   const handleOpenModal = useCallback((trial = null, isDuplicate = false) => {
