@@ -308,8 +308,16 @@ export default function CompareTrials({ onMenuClick }) {
         const sortedPts = points.sort((a, b) => a.daa - b.daa);
         const start = sortedPts[0]?.cover ?? 0;
         const end = sortedPts[sortedPts.length - 1]?.cover ?? 0;
-        const calcVal = start > 0 ? Math.round(((start - end) / start) * 100) : 0;
-        return `${spName}: initial ${start}%, final ${end}%, Efficacy ${calcVal}%`;
+        let calcVal = 0;
+        if (start > 0) {
+          if (activeCategory === 'nutrition' || activeCategory === 'biostimulant') {
+            calcVal = Math.round(((end - start) / start) * 100);
+          } else {
+            calcVal = Math.round(((start - end) / start) * 100);
+          }
+        }
+        const unit = config.primaryMetric.unit || '%';
+        return `${spName}: initial ${start}${unit}, final ${end}${unit}, Efficacy ${calcVal}%`;
       }).join('; ') || 'No specific target breakdowns recorded';
 
       const maxObsDaa = eff.length > 0 ? Math.max(...eff.map(o => Number(o.daa ?? 0))) : 0;
