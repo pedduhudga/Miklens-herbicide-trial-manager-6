@@ -470,24 +470,42 @@ export default function Trials({ onMenuClick }) {
   const fetchGpsWeather = useCallback(async () => {
     if (!navigator.geolocation) return;
     setGpsFetching(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const { latitude: lat, longitude: lon } = pos.coords;
-      setFormData(prev => ({ ...prev, Lat: lat.toFixed(6), Lon: lon.toFixed(6), Location: prev.Location || `${lat.toFixed(4)}, ${lon.toFixed(4)}` }));
-      try {
-        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&wind_speed_unit=kmh`);
-        const d = await r.json();
-        const c = d.current;
-        if (c) setFormData(prev => ({
-          ...prev,
-          Temperature: c.temperature_2m ?? prev.Temperature,
-          Humidity: c.relative_humidity_2m ?? prev.Humidity,
-          Windspeed: c.wind_speed_10m ?? prev.Windspeed,
-          Rain: c.precipitation ?? prev.Rain,
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+        setFormData(prev => ({ 
+          ...prev, 
+          Lat: lat.toFixed(8), 
+          Lon: lon.toFixed(8), 
+          Location: prev.Location || `${lat.toFixed(6)}, ${lon.toFixed(6)}` 
         }));
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'GPS & weather synced!', type: 'success' } }));
-      } catch { window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Location set, weather fetch failed', type: 'info' } })); }
-      setGpsFetching(false);
-    }, () => { setGpsFetching(false); window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Location access denied', type: 'error' } })); });
+        try {
+          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&wind_speed_unit=kmh`);
+          const d = await r.json();
+          const c = d.current;
+          if (c) setFormData(prev => ({
+            ...prev,
+            Temperature: c.temperature_2m ?? prev.Temperature,
+            Humidity: c.relative_humidity_2m ?? prev.Humidity,
+            Windspeed: c.wind_speed_10m ?? prev.Windspeed,
+            Rain: c.precipitation ?? prev.Rain,
+          }));
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `GPS & weather synced! (Accuracy: ±${accuracy.toFixed(1)}m)`, type: 'success' } }));
+        } catch { 
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Location synced (±${accuracy.toFixed(1)}m), weather fetch failed`, type: 'info' } })); 
+        }
+        setGpsFetching(false);
+      }, 
+      (err) => { 
+        setGpsFetching(false); 
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `GPS Error: ${err.message}. Try moving to an open area.`, type: 'error' } })); 
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
   }, []);
 
   const handleMoveToProject = async (trial) => {
@@ -1563,8 +1581,13 @@ export default function Trials({ onMenuClick }) {
         await fetchWeatherForPhoto(targetTrial.Lat, targetTrial.Lon);
       } else if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          pos => fetchWeatherForPhoto(pos.coords.latitude.toFixed(6), pos.coords.longitude.toFixed(6)),
-          () => console.warn('Geolocation denied — weather not fetched')
+          pos => fetchWeatherForPhoto(pos.coords.latitude.toFixed(8), pos.coords.longitude.toFixed(8)),
+          () => console.warn('Geolocation denied — weather not fetched'),
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+          }
         );
       }
 
