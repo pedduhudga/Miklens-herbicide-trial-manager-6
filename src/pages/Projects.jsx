@@ -1264,12 +1264,12 @@ export default function Projects({ onMenuClick }) {
         let trial;
         if (potObsMode === 'row-wise') {
           if (potStripeDirection === 'Horizontal Rows') {
-            trial = projectTrials.find(t => t.PotRow === r || t.Replication === String(r));
+            trial = projectTrials.find(t => String(t.PotRow) === String(r) || String(t.Replication) === String(r));
           } else {
-            trial = projectTrials.find(t => t.PotCol === c || t.Replication === String(c));
+            trial = projectTrials.find(t => String(t.PotCol) === String(c) || String(t.Replication) === String(c));
           }
         } else {
-          trial = projectTrials.find(t => (t.PotRow === r && t.PotCol === c) || t.PlotNumber === r * 100 + c);
+          trial = projectTrials.find(t => (String(t.PotRow) === String(r) && String(t.PotCol) === String(c)) || String(t.PlotNumber) === String(r * 100 + c));
         }
 
         const trtName = trial?.FormulationName || 'No Treatment';
@@ -1292,7 +1292,16 @@ export default function Projects({ onMenuClick }) {
             title={`Pot R${r}C${c}: ${trtName}`}
           >
             <span className="text-[10px] font-bold">{trial?.PotLabel || `R${r}C${c}`}</span>
-            {trial && <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">{trtName}</span>}
+            {trial && (
+              <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">
+                Block {trial.Replication || '1'}
+              </span>
+            )}
+            {trial && (
+              <span className="text-[9px] font-bold mt-1 text-center truncate max-w-full leading-tight">
+                {trtName}
+              </span>
+            )}
             
             <div className="absolute z-20 hidden group-hover:block bg-slate-900 text-white text-[10px] rounded-lg p-2.5 shadow-xl -top-20 left-1/2 -translate-x-1/2 w-48 pointer-events-none">
               <p className="font-bold border-b border-slate-700 pb-1 mb-1">Pot Position: Row {r}, Col {c}</p>
