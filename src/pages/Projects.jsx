@@ -3933,25 +3933,31 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         <div>
                           <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
                           <select
-                            value={randomizeForm.potLayout === 'rcbd-pot' ? 'plant-wise' : randomizeForm.potObsMode}
+                            value={randomizeForm.potObsMode}
                             onChange={e => {
                               const mode = e.target.value;
-                              if (randomizeForm.potLayout === 'rcbd-pot' && mode === 'row-wise') {
-                                return;
-                              }
                               setRandomizeForm(p => ({ 
                                 ...p, 
                                 potObsMode: mode,
-                                replications: mode === 'row-wise' ? 'row' : 'pot'
+                                replications: mode === 'row-wise' ? 'row' : (mode === 'column-wise' ? 'column' : 'pot')
                               }));
                             }}
                             className={INPUT}
                           >
-                            <option value="row-wise">Row-Wise Data Entry</option>
-                            <option value="plant-wise">Plant-Wise Data Entry</option>
+                            {randomizeForm.potLayout === 'rcbd-pot' ? (
+                              <>
+                                <option value="column-wise">Treatment Column-Wise (12 Units - Recommended)</option>
+                                <option value="plant-wise">Plant-Wise (36 Pots - Research Grade)</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="row-wise">Row-Wise Data Entry</option>
+                                <option value="plant-wise">Plant-Wise Data Entry</option>
+                              </>
+                            )}
                           </select>
-                          {randomizeForm.potLayout === 'rcbd-pot' && (
-                            <p className="text-[9px] text-emerald-600 mt-1 font-semibold">ℹ️ RCBD Pot Trial requires Plant-Wise observation mode.</p>
+                          {randomizeForm.potLayout === 'rcbd-pot' && randomizeForm.potObsMode === 'column-wise' && (
+                            <p className="text-[9px] text-emerald-600 mt-1 font-semibold">ℹ️ Recommended: Simplifies observations into 12 units (Block × Treatment).</p>
                           )}
                         </div>
                         <div>
@@ -3959,7 +3965,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           <input 
                             type="text"
                             readOnly
-                            value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : 'Pot'}
+                            value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : (randomizeForm.potObsMode === 'column-wise' ? 'Treatment Column' : 'Pot')}
                             className={`${INPUT} bg-slate-100 cursor-not-allowed font-semibold text-slate-700`}
                           />
                         </div>
@@ -4757,28 +4763,34 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             <div className="md:col-span-3">
               {renderLayoutPreview()}
             </div>
-            <div>
+             <div>
               <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
               <select
-                value={randomizeForm.potLayout === 'rcbd-pot' ? 'plant-wise' : randomizeForm.potObsMode}
+                value={randomizeForm.potObsMode}
                 onChange={e => {
                   const mode = e.target.value;
-                  if (randomizeForm.potLayout === 'rcbd-pot' && mode === 'row-wise') {
-                    return;
-                  }
                   setRandomizeForm(p => ({ 
                     ...p, 
                     potObsMode: mode,
-                    replications: mode === 'row-wise' ? 'row' : 'pot'
+                    replications: mode === 'row-wise' ? 'row' : (mode === 'column-wise' ? 'column' : 'pot')
                   }));
                 }}
                 className={INPUT}
               >
-                <option value="row-wise">Row-Wise Data Entry</option>
-                <option value="plant-wise">Plant-Wise Data Entry</option>
+                {randomizeForm.potLayout === 'rcbd-pot' ? (
+                  <>
+                    <option value="column-wise">Treatment Column-Wise (12 Units - Recommended)</option>
+                    <option value="plant-wise">Plant-Wise (36 Pots - Research Grade)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="row-wise">Row-Wise Data Entry</option>
+                    <option value="plant-wise">Plant-Wise Data Entry</option>
+                  </>
+                )}
               </select>
-              {randomizeForm.potLayout === 'rcbd-pot' && (
-                <p className="text-[9px] text-emerald-600 mt-1 font-semibold">ℹ️ RCBD Pot Trial requires Plant-Wise observation mode.</p>
+              {randomizeForm.potLayout === 'rcbd-pot' && randomizeForm.potObsMode === 'column-wise' && (
+                <p className="text-[9px] text-emerald-600 mt-1 font-semibold">ℹ️ Recommended: Simplifies observations into 12 units (Block × Treatment).</p>
               )}
             </div>
             <div>
@@ -4786,7 +4798,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               <input 
                 type="text"
                 readOnly
-                value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : 'Pot'}
+                value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : (randomizeForm.potObsMode === 'column-wise' ? 'Treatment Column' : 'Pot')}
                 className={`${INPUT} bg-slate-100 cursor-not-allowed font-semibold text-slate-700`}
               />
             </div>
