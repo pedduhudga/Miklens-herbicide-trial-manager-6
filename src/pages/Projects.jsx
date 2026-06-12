@@ -542,88 +542,91 @@ export default function Projects({ onMenuClick }) {
 
     if (trtList.length === 0) return null;
 
-    const allocations = {};
-    trtList.forEach(tName => {
-      allocations[tName] = 0;
-    });
+    const uniqueTrts = [...new Set(trtList)];
 
-    const isHorizontal = potStripeDirection === 'Horizontal Rows';
+    const allocations = uniqueTrts.map(tName => {
+      let rowsVal = null;
+      let colsVal = null;
+      let potsVal = 0;
 
-    if (potObsMode === 'row-wise') {
-      const numUnits = isHorizontal ? potRows : potCols;
-      if (potLayout === 'stripe') {
-        for (let i = 0; i < numUnits; i++) {
-          const tName = trtList[i % trtList.length];
-          allocations[tName] = (allocations[tName] || 0) + 1;
+      if (potLayout === 'stripe' || potLayout === 'randomized-row') {
+        if (potStripeDirection === 'Horizontal Rows') {
+          let rCount = 0;
+          if (potLayout === 'stripe') {
+            for (let r = 0; r < potRows; r++) {
+              if (trtList[r % trtList.length] === tName) rCount++;
+            }
+          } else {
+            const baseList = [];
+            while (baseList.length < potRows) {
+              trtList.forEach(t => { if (baseList.length < potRows) baseList.push(t); });
+            }
+            baseList.forEach(t => { if (t === tName) rCount++; });
+          }
+          rowsVal = rCount;
+          potsVal = rCount * potCols;
+        } else {
+          // Vertical Columns
+          let cCount = 0;
+          if (potLayout === 'stripe') {
+            for (let c = 0; c < potCols; c++) {
+              if (trtList[c % trtList.length] === tName) cCount++;
+            }
+          } else {
+            const baseList = [];
+            while (baseList.length < potCols) {
+              trtList.forEach(t => { if (baseList.length < potCols) baseList.push(t); });
+            }
+            baseList.forEach(t => { if (t === tName) cCount++; });
+          }
+          colsVal = cCount;
+          potsVal = cCount * potRows;
         }
       } else {
-        const baseList = [];
-        while (baseList.length < numUnits) {
-          trtList.forEach(tName => {
-            if (baseList.length < numUnits) {
-              baseList.push(tName);
-            }
-          });
-        }
-        baseList.forEach(tName => {
-          allocations[tName] = (allocations[tName] || 0) + 1;
-        });
-      }
-    } else {
-      if (potLayout === 'stripe' || potLayout === 'randomized-row') {
-        const numUnits = isHorizontal ? potRows : potCols;
-        const multiplier = isHorizontal ? potCols : potRows;
-        
-        const unitAllocations = {};
-        trtList.forEach(tName => {
-          unitAllocations[tName] = 0;
-        });
-
-        if (potLayout === 'stripe') {
-          for (let i = 0; i < numUnits; i++) {
-            const tName = trtList[i % trtList.length];
-            unitAllocations[tName] = (unitAllocations[tName] || 0) + 1;
-          }
-        } else {
-          const baseList = [];
-          while (baseList.length < numUnits) {
-            trtList.forEach(tName => {
-              if (baseList.length < numUnits) {
-                baseList.push(tName);
-              }
-            });
-          }
-          baseList.forEach(tName => {
-            unitAllocations[tName] = (unitAllocations[tName] || 0) + 1;
-          });
-        }
-
-        Object.keys(unitAllocations).forEach(tName => {
-          allocations[tName] = unitAllocations[tName] * multiplier;
-        });
-      } else if (potLayout === 'balanced-pot') {
-        for (let r = 1; r <= potRows; r++) {
+        // balanced-pot
+        let pCount = 0;
+        for (let r = 0; r < potRows; r++) {
           const baseList = [];
           while (baseList.length < potCols) {
-            trtList.forEach(tName => {
-              if (baseList.length < potCols) {
-                baseList.push(tName);
-              }
-            });
+            trtList.forEach(t => { if (baseList.length < potCols) baseList.push(t); });
           }
-          baseList.forEach(tName => {
-            allocations[tName] = (allocations[tName] || 0) + 1;
-          });
+          baseList.forEach(t => { if (t === tName) pCount++; });
         }
+        potsVal = pCount;
       }
+
+      return {
+        name: tName,
+        rows: rowsVal,
+        cols: colsVal,
+        pots: potsVal
+      };
+    });
+
+    let isBalanced = true;
+    if (potLayout === 'stripe' || potLayout === 'randomized-row') {
+      if (potStripeDirection === 'Horizontal Rows') {
+        const rowCounts = allocations.map(a => a.rows);
+        isBalanced = rowCounts.every(c => c === rowCounts[0]);
+      } else {
+        const colCounts = allocations.map(a => a.cols);
+        isBalanced = colCounts.every(c => c === colCounts[0]);
+      }
+    } else {
+      const potCounts = allocations.map(a => a.pots);
+      isBalanced = potCounts.every(c => c === potCounts[0]);
     }
 
-    const counts = Object.values(allocations);
-    const minCount = Math.min(...counts);
-    const maxCount = Math.max(...counts);
-    const isUnbalanced = minCount > 0 && maxCount >= minCount * 2;
-
-    return { allocations, isUnbalanced, potObsMode };
+    return {
+      allocations,
+      isBalanced,
+      potLayout,
+      potStripeDirection,
+      potObsMode,
+      potRows,
+      potCols,
+      trtCount: trtList.length
+    };
   }, [randomizeForm, randomizeTreatments, activeFormulations]);
 
   const projects = useMemo(() => {
@@ -3692,30 +3695,65 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                               <thead>
                                 <tr className="border-b border-emerald-200 text-emerald-800 font-bold">
                                   <th className="py-1.5 pr-4">Treatment</th>
-                                  <th className="py-1.5 text-right">Count ({allocationPreview.potObsMode === 'row-wise' ? 'Rows' : 'Pots'})</th>
+                                  {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Horizontal Rows' ? (
+                                    <>
+                                      <th className="py-1.5 text-right pr-4">Rows</th>
+                                      <th className="py-1.5 text-right">Pots</th>
+                                    </>
+                                  ) : (
+                                    <th className="py-1.5 text-right">Pots</th>
+                                  )}
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-emerald-100">
-                                {Object.keys(allocationPreview.allocations).map(name => (
-                                  <tr key={name} className="text-slate-700">
-                                    <td className="py-1.5 pr-4 font-medium">{name}</td>
-                                    <td className="py-1.5 text-right font-semibold">{allocationPreview.allocations[name]}</td>
+                                {allocationPreview.allocations.map(item => (
+                                  <tr key={item.name} className="text-slate-700">
+                                    <td className="py-1.5 pr-4 font-medium">{item.name}</td>
+                                    {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Horizontal Rows' ? (
+                                      <>
+                                        <td className="py-1.5 text-right pr-4 font-semibold">{item.rows}</td>
+                                        <td className="py-1.5 text-right font-semibold">{item.pots}</td>
+                                      </>
+                                    ) : (
+                                      <td className="py-1.5 text-right font-semibold">{item.pots}</td>
+                                    )}
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           </div>
                           <div className="space-y-2 flex flex-col justify-center">
-                            {allocationPreview.isUnbalanced ? (
-                              <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2.5 text-xs font-medium">
-                                ⚠️ <strong>Allocation Warning:</strong> Treatments are heavily unbalanced (e.g. some have double the replicates of others). Adjust greenhouse rows/columns or treatments count for scientific balance.
+                            {allocationPreview.isBalanced ? (
+                              <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
+                                ✓ <strong>Perfectly Balanced Layout</strong> {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Vertical Columns' ? `(each treatment receives exactly ${allocationPreview.allocations[0]?.pots || 0} pots)` : '(each treatment has equal replicates)'}
                               </div>
                             ) : (
-                              <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
-                                ✓ Treatments are statistically balanced across the greenhouse layout.
+                              <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2.5 text-xs font-medium">
+                                ⚠️ <strong>Near Balanced Layout:</strong> Treatment replication is unequal.
                               </div>
                             )}
                           </div>
+                          {allocationPreview.potLayout === 'stripe' && (
+                            <div className="mt-3 md:col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2 text-xs text-blue-900">
+                              <h5 className="font-bold uppercase tracking-wider text-[10px] text-blue-800">Layout Recommendations</h5>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <span className="inline-block bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase mb-1">Scientific Recommendation</span>
+                                  <p className="font-bold text-slate-800">Vertical Columns</p>
+                                  <p className="text-slate-600 text-[11px] mt-0.5">
+                                    Each treatment receives exactly {allocationPreview.potRows} independent pots. Perfect treatment balance. Stronger statistical comparison.
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="inline-block bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase mb-1">Operational Recommendation</span>
+                                  <p className="font-bold text-slate-800">Horizontal Rows</p>
+                                  <p className="text-slate-600 text-[11px] mt-0.5">
+                                    Easier spraying and treatment application. Suitable for farmer demonstrations and routine product evaluation.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -4421,30 +4459,65 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   <thead>
                     <tr className="border-b border-emerald-200 text-emerald-800 font-bold">
                       <th className="py-1.5 pr-4">Treatment</th>
-                      <th className="py-1.5 text-right">Count ({allocationPreview.potObsMode === 'row-wise' ? 'Rows' : 'Pots'})</th>
+                      {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Horizontal Rows' ? (
+                        <>
+                          <th className="py-1.5 text-right pr-4">Rows</th>
+                          <th className="py-1.5 text-right">Pots</th>
+                        </>
+                      ) : (
+                        <th className="py-1.5 text-right">Pots</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-emerald-100">
-                    {Object.keys(allocationPreview.allocations).map(name => (
-                      <tr key={name} className="text-slate-700">
-                        <td className="py-1.5 pr-4 font-medium">{name}</td>
-                        <td className="py-1.5 text-right font-semibold">{allocationPreview.allocations[name]}</td>
+                    {allocationPreview.allocations.map(item => (
+                      <tr key={item.name} className="text-slate-700">
+                        <td className="py-1.5 pr-4 font-medium">{item.name}</td>
+                        {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Horizontal Rows' ? (
+                          <>
+                            <td className="py-1.5 text-right pr-4 font-semibold">{item.rows}</td>
+                            <td className="py-1.5 text-right font-semibold">{item.pots}</td>
+                          </>
+                        ) : (
+                          <td className="py-1.5 text-right font-semibold">{item.pots}</td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="space-y-2 flex flex-col justify-center">
-                {allocationPreview.isUnbalanced ? (
-                  <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2.5 text-xs font-medium">
-                    ⚠️ <strong>Allocation Warning:</strong> Treatments are heavily unbalanced (e.g. some have double the replicates of others). Adjust greenhouse rows/columns or treatments count for scientific balance.
+                {allocationPreview.isBalanced ? (
+                  <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
+                    ✓ <strong>Perfectly Balanced Layout</strong> {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Vertical Columns' ? `(each treatment receives exactly ${allocationPreview.allocations[0]?.pots || 0} pots)` : '(each treatment has equal replicates)'}
                   </div>
                 ) : (
-                  <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
-                    ✓ Treatments are statistically balanced across the greenhouse layout.
+                  <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2.5 text-xs font-medium">
+                    ⚠️ <strong>Near Balanced Layout:</strong> Treatment replication is unequal.
                   </div>
                 )}
               </div>
+              {allocationPreview.potLayout === 'stripe' && (
+                <div className="mt-3 md:col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2 text-xs text-blue-900">
+                  <h5 className="font-bold uppercase tracking-wider text-[10px] text-blue-800">Layout Recommendations</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <span className="inline-block bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase mb-1">Scientific Recommendation</span>
+                      <p className="font-bold text-slate-800">Vertical Columns</p>
+                      <p className="text-slate-600 text-[11px] mt-0.5">
+                        Each treatment receives exactly {allocationPreview.potRows} independent pots. Perfect treatment balance. Stronger statistical comparison.
+                      </p>
+                    </div>
+                    <div>
+                      <span className="inline-block bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase mb-1">Operational Recommendation</span>
+                      <p className="font-bold text-slate-800">Horizontal Rows</p>
+                      <p className="text-slate-600 text-[11px] mt-0.5">
+                        Easier spraying and treatment application. Suitable for farmer demonstrations and routine product evaluation.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
