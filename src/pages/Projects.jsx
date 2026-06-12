@@ -1275,7 +1275,16 @@ export default function Projects({ onMenuClick }) {
       }
       gridRows.push(
         <div key={r} className="flex gap-2 items-center">
-          <div className="w-12 text-[10px] font-bold text-slate-400 uppercase text-right pr-2">Row {r}</div>
+          <div 
+            onClick={() => {
+              const rowTrial = projectTrials.find(t => t.PotRow === r || t.Replication === String(r));
+              if (rowTrial) navigate(`/trials?focus=${rowTrial.ID}`);
+            }}
+            className="w-12 text-[10px] font-bold text-slate-400 hover:text-emerald-600 cursor-pointer uppercase text-right pr-2 hover:underline transition-colors"
+            title={`Click to edit Row ${r} observations`}
+          >
+            R{r}
+          </div>
           <div className="flex-1 flex gap-2">{rowCells}</div>
         </div>
       );
@@ -1298,7 +1307,7 @@ export default function Projects({ onMenuClick }) {
           <div className="w-12" />
           <div className="flex-1 flex gap-2">
             {Array.from({ length: potCols }).map((_, idx) => (
-              <div key={idx} className="flex-1 text-center text-[10px] font-bold text-slate-400 uppercase">Col {idx + 1}</div>
+              <div key={idx} className="flex-1 text-center text-[10px] font-bold text-slate-400 uppercase">C{idx + 1}</div>
             ))}
           </div>
         </div>
@@ -2181,7 +2190,33 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     const currentTrials = state.trials || [];
     const otherTrials = currentTrials.filter(t => String(t.ProjectID) !== String(activeProject.ID));
 
+    const updatedProjects = (state.projects || []).map(p => {
+      if (String(p.ID) === String(activeProject.ID)) {
+        if (designType === 'PotTrial') {
+          return {
+            ...p,
+            Design: 'PotTrial',
+            PotRows: potRows,
+            PotCols: potCols,
+            PotLayout: potLayout,
+            PotStripeDirection: potStripeDirection,
+            PotObsMode: potObsMode,
+            PotDataMethod: potDataMethod,
+            PotFields: randomizeForm.potFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
+            PotIdentifierFormat: randomizeForm.potIdentifierFormat || 'row-col'
+          };
+        } else {
+          return {
+            ...p,
+            Design: designType
+          };
+        }
+      }
+      return p;
+    });
+
     updateState({
+      projects: updatedProjects,
       blocks: [...otherBlocks, ...blocksToSave],
       trials: [...otherTrials, ...trialsToSave]
     });
