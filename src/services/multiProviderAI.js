@@ -208,10 +208,11 @@ ${historyNote}
 
 ADDITIONAL ANALYSIS FEATURES: ${catConfig.aiFeatures.join(', ')}
 
-RULES FOR SCIENTIFIC ASSESSMENT:
-1. Estimate values only for fields that are visible or relevant to the crop plot in the photo.
-2. Be scientifically precise. Do NOT include recommendations, next steps, or monitoring suggestions.
-3. Identify specific pathogens, pests, or nutrient symptoms visible and list them under target details.
+RULES FOR SCIENTIFIC ASSESSMENT (CRITICAL - AVOID HALLUCINATION):
+1. STAGE & METRIC ACCURACY: Estimate values only for metrics and symptoms that are directly and clearly visible in the crop plot photo. Do NOT invent data.
+2. STRICT VERIFICATION: Only report disease lesions, insect pests, nutrient deficiencies, or vigor differences that you are 100% sure exist based on visual evidence. Do not guess, speculate, or hallucinate symptoms.
+3. If a symptom is ambiguous or invisible, set its estimated metric value to 0 or leave it out of targets.
+4. Do NOT include recommendations, monitoring advice, next steps, or treatment plans. Keep the assessment strictly factual and observation-based.
 
 OUTPUT FORMAT - JSON ONLY (no extra text, no markdown wrapper around the JSON):
 {
