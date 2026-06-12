@@ -1248,9 +1248,11 @@ export default function Projects({ onMenuClick }) {
     );
   };
 
-  const getTreatmentColor = (name) => {
+  const getTreatmentColor = (name, projectTreatments = []) => {
     if (!name) return 'bg-slate-100 border-slate-300 text-slate-400';
     const lower = name.toLowerCase();
+    
+    // Check standard hardcoded matches first
     if (lower === 'c' || lower.includes('control') || lower.includes('utc')) {
       return 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-600';
     }
@@ -1263,14 +1265,27 @@ export default function Projects({ onMenuClick }) {
     if (lower === 's' || lower.includes('synthetic') || lower.includes('syn')) {
       return 'bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700';
     }
+
     const colors = [
       'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-700',
       'bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700',
       'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-700',
       'bg-pink-50 hover:bg-pink-100 border-pink-300 text-pink-700',
       'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-700',
-      'bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700'
+      'bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700',
+      'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700',
+      'bg-cyan-50 hover:bg-cyan-100 border-cyan-300 text-cyan-700',
+      'bg-lime-50 hover:bg-lime-100 border-lime-300 text-lime-700',
+      'bg-violet-50 hover:bg-violet-100 border-violet-300 text-violet-700'
     ];
+
+    if (projectTreatments && projectTreatments.length > 0) {
+      const idx = projectTreatments.findIndex(t => t && t.toLowerCase() === lower);
+      if (idx !== -1) {
+        return colors[idx % colors.length];
+      }
+    }
+
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -1330,7 +1345,7 @@ export default function Projects({ onMenuClick }) {
         }
 
         const trtName = trial?.FormulationName || (trial?.FormulationID ? ((state.formulations || []).find(f => String(f.ID) === String(trial.FormulationID))?.Name) : null) || (trial ? 'Unnamed' : 'No Treatment');
-        const colorClasses = getTreatmentColor(trtName);
+        const colorClasses = getTreatmentColor(trtName, uniqueTreatments);
         const dataStatus = trial?.Status || 'No Data';
 
         const matchesBlock = selectedLayoutBlock === 'all' || (trial && String(trial.BlockID) === String(selectedLayoutBlock));
@@ -1418,7 +1433,7 @@ export default function Projects({ onMenuClick }) {
           <div className="flex flex-wrap gap-3">
             {uniqueTreatments.map(name => (
               <div key={name} className="flex items-center gap-1.5">
-                <span className={`w-3 h-3 rounded border ${getTreatmentColor(name)}`} />
+                <span className={`w-3 h-3 rounded border ${getTreatmentColor(name, uniqueTreatments)}`} />
                 <span className="text-xs font-semibold text-slate-700">{name}</span>
               </div>
             ))}
@@ -1736,6 +1751,13 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   const applyRandomization = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     
+    let potRows = 9;
+    let potCols = 4;
+    let potLayout = 'stripe';
+    let potStripeDirection = 'Horizontal Rows';
+    let potObsMode = 'row-wise';
+    let potDataMethod = 'total';
+    
     // Get list of treatments
     const trtList = randomizeTreatments.map(t => {
       const f = activeFormulations.find(form => String(form.ID) === String(t.formulationId));
@@ -2030,12 +2052,12 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       }
 
     } else if (designType === 'PotTrial') {
-      const potRows = parseInt(randomizeForm.potRows) || 9;
-      const potCols = parseInt(randomizeForm.potCols) || 4;
-      const potLayout = randomizeForm.potLayout || 'stripe';
-      const potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
-      const potObsMode = randomizeForm.potObsMode || 'row-wise';
-      const potDataMethod = randomizeForm.potDataMethod || 'total';
+      potRows = parseInt(randomizeForm.potRows) || 9;
+      potCols = parseInt(randomizeForm.potCols) || 4;
+      potLayout = randomizeForm.potLayout || 'stripe';
+      potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
+      potObsMode = randomizeForm.potObsMode || 'row-wise';
+      potDataMethod = randomizeForm.potDataMethod || 'total';
 
       if (potLayout === 'rcbd-pot') {
         const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
