@@ -865,11 +865,12 @@ export class AnalysisEngine {
                     const potStripeDir = this.project?.PotStripeDirection || 'Horizontal Rows';
                     const potRows = this.project?.PotRows || 9;
                     const potCols = this.project?.PotCols || 4;
+                    const potIdFormat = this.project?.PotIdentifierFormat || 'row-col';
 
                     let analysisNotes = '';
                     if (isPotTrial) {
                         const allocationStr = treatments.map(name => `  ${name} = ${counts[name]} ${potObsMode === 'row-wise' ? 'rows' : 'pots'}`).join('\n');
-                        analysisNotes = `Design: Pot Trial (${potLayout === 'stripe' ? 'Stripe Layout' : potLayout === 'randomized-row' ? 'Randomized Row Layout' : 'Balanced Pot Randomization'})\nExperimental Unit: ${potObsMode === 'row-wise' ? 'Row' : 'Pot'}\nStripe Direction: ${potStripeDir}\nRows: ${potRows}\nColumns: ${potCols}\nObservation Mode: ${potObsMode === 'row-wise' ? 'Row-Wise' : 'Plant-Wise'}\nAnalysis Method: CRD-style comparison\nTreatment Allocation:\n${allocationStr}`;
+                        analysisNotes = `Design: Pot Trial (${potLayout === 'stripe' ? 'Stripe Layout' : potLayout === 'randomized-row' ? 'Randomized Row Layout' : 'Balanced Pot Randomization'})\nExperimental Unit: ${potObsMode === 'row-wise' ? 'Row' : 'Pot'}\nStripe Direction: ${potStripeDir}\nRows: ${potRows}\nColumns: ${potCols}\nObservation Mode: ${potObsMode === 'row-wise' ? 'Row-Wise' : 'Plant-Wise'}\nPot Identifier Format: ${potIdFormat === 'sequential' ? 'Sequential (P001)' : 'Row-Column (R1C1)'}\nAnalysis Method: CRD-style comparison\nTreatment Allocation:\n${allocationStr}`;
                     } else {
                         analysisNotes = `Design: ${this.project?.Design || 'RCBD'}\nExperimental Unit: Plot\nReplications: ${this.blocks.length}\nTreatments: ${treatments.length}\nAnalysis Method: ${isTwoWay ? 'Two-way RCBD ANOVA' : 'One-way RCBD ANOVA'}`;
                     }

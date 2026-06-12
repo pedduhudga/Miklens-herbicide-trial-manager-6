@@ -516,7 +516,8 @@ export default function Projects({ onMenuClick }) {
     potStripeDirection: 'horizontal',
     potObsMode: 'row-wise',
     potDataMethod: 'total',
-    potFields: ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield']
+    potFields: ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
+    potIdentifierFormat: 'row-col'
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
   const [randomizeTreatments, setRandomizeTreatments] = useState([]);
@@ -1184,7 +1185,7 @@ export default function Projects({ onMenuClick }) {
             className={`flex-1 aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-1.5 cursor-pointer transition-all ${colorClasses} shadow-sm relative group`}
             title={`Pot R${r}C${c}: ${trtName}`}
           >
-            <span className="text-[10px] font-bold">R{r}C{c}</span>
+            <span className="text-[10px] font-bold">{trial?.PotLabel || `R${r}C${c}`}</span>
             {trial && <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">{trtName}</span>}
             
             <div className="absolute z-20 hidden group-hover:block bg-slate-900 text-white text-[10px] rounded-lg p-2.5 shadow-xl -top-20 left-1/2 -translate-x-1/2 w-48 pointer-events-none">
@@ -1434,7 +1435,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       potStripeDirection: activeProject.PotStripeDirection || 'Horizontal Rows',
       potObsMode: activeProject.PotObsMode || 'row-wise',
       potDataMethod: activeProject.PotDataMethod || 'total',
-      potFields: activeProject.PotFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield']
+      potFields: activeProject.PotFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
+      potIdentifierFormat: activeProject.PotIdentifierFormat || 'row-col'
     });
     
     setIsRandomizeModalOpen(true);
@@ -1983,7 +1985,9 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 
             const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
             const targetField = config.targetField || 'WeedSpecies';
-            const label = `Row ${r}, Col ${c}`;
+            const label = randomizeForm.potIdentifierFormat === 'sequential' 
+              ? `P${String((r - 1) * potCols + c).padStart(3, '0')}` 
+              : `R${r}C${c}`;
             const plotNum = r * 100 + c;
 
             const tToSave = {
@@ -2028,7 +2032,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
         PotStripeDirection: potStripeDirection,
         PotObsMode: potObsMode,
         PotDataMethod: potDataMethod,
-        PotFields: randomizeForm.potFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield']
+        PotFields: randomizeForm.potFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
+        PotIdentifierFormat: randomizeForm.potIdentifierFormat || 'row-col'
       }, getAppState);
 
     } else {
@@ -3509,6 +3514,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             className={`${INPUT} bg-slate-100 cursor-not-allowed font-semibold text-slate-700`}
                           />
                         </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Pot Identifier Format</label>
+                          <select
+                            value={randomizeForm.potIdentifierFormat || 'row-col'}
+                            onChange={e => setRandomizeForm(p => ({ ...p, potIdentifierFormat: e.target.value }))}
+                            className={INPUT}
+                          >
+                            <option value="row-col">Row-Column Style (R1C1, R1C2...)</option>
+                            <option value="sequential">Sequential Style (P001, P002...)</option>
+                          </select>
+                        </div>
                         {randomizeForm.potObsMode === 'row-wise' && (
                           <div>
                             <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Row Aggregation Method</label>
@@ -4225,6 +4241,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 value={randomizeForm.potObsMode === 'row-wise' ? 'Row' : 'Pot'}
                 className={`${INPUT} bg-slate-100 cursor-not-allowed font-semibold text-slate-700`}
               />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Pot Identifier Format</label>
+              <select
+                value={randomizeForm.potIdentifierFormat || 'row-col'}
+                onChange={e => setRandomizeForm(p => ({ ...p, potIdentifierFormat: e.target.value }))}
+                className={INPUT}
+              >
+                <option value="row-col">Row-Column Style (R1C1, R1C2...)</option>
+                <option value="sequential">Sequential Style (P001, P002...)</option>
+              </select>
             </div>
             {randomizeForm.potObsMode === 'row-wise' && (
               <div>
