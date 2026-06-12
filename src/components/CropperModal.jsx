@@ -196,7 +196,7 @@ export default function CropperModal({ isOpen, onClose, imageSrc, onCropComplete
       <div className="bg-white rounded-2xl p-4 w-full max-w-3xl flex flex-col gap-3">
         <div className="flex justify-between items-center border-b pb-3">
           <h3 className="text-lg font-bold text-slate-800">Crop & Rotate</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close crop modal" className="p-1.5 hover:bg-slate-100 rounded-lg focus-visible:ring-2 focus-visible:ring-slate-400 outline-none"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex justify-center bg-slate-100 rounded-xl overflow-hidden">
@@ -217,10 +217,10 @@ export default function CropperModal({ isOpen, onClose, imageSrc, onCropComplete
 
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex gap-2">
-            <button onClick={rotateCCW} className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition" title="Rotate left">
+            <button onClick={rotateCCW} aria-label="Rotate left" className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition focus-visible:ring-2 focus-visible:ring-slate-400 outline-none" title="Rotate left">
               <RotateCcw className="w-5 h-5" />
             </button>
-            <button onClick={rotateCW} className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition" title="Rotate right">
+            <button onClick={rotateCW} aria-label="Rotate right" className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition focus-visible:ring-2 focus-visible:ring-slate-400 outline-none" title="Rotate right">
               <RotateCw className="w-5 h-5" />
             </button>
           </div>
