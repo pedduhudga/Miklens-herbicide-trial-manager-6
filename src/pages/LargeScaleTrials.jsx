@@ -1471,6 +1471,33 @@ export default function LargeScaleTrials({ onMenuClick }) {
   const handleSaveVisit = async (e) => {
     e.preventDefault();
     if (!activeSubTrial) return;
+
+    // Check if any fields that were previously recorded in this project are missing
+    const projId = activeSubTrial.ProjectID;
+    const projectTrials = (getAppState().trials || []).filter(t => String(t.ProjectID) === String(projId));
+    const previouslyRecordedFields = [];
+
+    config.observationFields?.forEach(field => {
+      const hasValue = projectTrials.some(t => {
+        const eff = validateEfficacyData(safeJsonParse(t.EfficacyDataJSON, []));
+        return eff.some(obs => obs[field.key] !== undefined && obs[field.key] !== null && obs[field.key] !== '');
+      });
+      if (hasValue) {
+        previouslyRecordedFields.push(field);
+      }
+    });
+
+    const missingFields = previouslyRecordedFields.filter(field => {
+      const val = visitForm[field.key];
+      return val === undefined || val === null || val === '';
+    });
+
+    if (missingFields.length > 0) {
+      const fieldLabels = missingFields.map(f => f.label).join(', ');
+      const confirmSave = window.confirm(`You previously recorded data for the following fields in this trial, but they are currently missing:\n\n${fieldLabels}\n\nAre you sure you want to save without this data?`);
+      if (!confirmSave) return;
+    }
+
     setLoading(true);
 
     let drivePhotoUrl = visitForm.photoUrl;
@@ -1506,7 +1533,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
     };
 
     config.observationFields?.forEach(f => {
-      newVisit[f.key] = Number(visitForm[f.key] || 0);
+      const val = visitForm[f.key];
+      newVisit[f.key] = (val === '' || val === undefined || val === null) ? null : Number(val);
     });
 
     if (primaryObsField !== 'weedCover') {
@@ -3300,7 +3328,6 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   <label className="block text-slate-600 font-bold mb-1">{field.label}</label>
                   <input
                     type="number"
-                    required
                     min={field.min !== undefined ? field.min : undefined}
                     max={field.max !== undefined ? field.max : undefined}
                     step="0.1"

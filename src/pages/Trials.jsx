@@ -958,8 +958,35 @@ export default function Trials({ onMenuClick }) {
   const handleSaveObs = async (e) => {
     e.preventDefault();
     if (!activeTrial) return;
+
     const efficacyData = validateEfficacyData(safeJsonParse(activeTrial.EfficacyDataJSON, []));
     const primaryObsField = getPrimaryObservationField(activeCategory);
+
+    // Check if any fields that were previously recorded in this project are missing
+    const projId = activeTrial.ProjectID;
+    const projectTrials = (getAppState().trials || []).filter(t => String(t.ProjectID) === String(projId));
+    const previouslyRecordedFields = [];
+
+    catConfig.observationFields?.forEach(field => {
+      const hasValue = projectTrials.some(t => {
+        const eff = validateEfficacyData(safeJsonParse(t.EfficacyDataJSON, []));
+        return eff.some(obs => obs[field.key] !== undefined && obs[field.key] !== null && obs[field.key] !== '');
+      });
+      if (hasValue) {
+        previouslyRecordedFields.push(field);
+      }
+    });
+
+    const missingFields = previouslyRecordedFields.filter(field => {
+      const val = obsForm[field.key];
+      return val === undefined || val === null || val === '';
+    });
+
+    if (missingFields.length > 0) {
+      const fieldLabels = missingFields.map(f => f.label).join(', ');
+      const confirmSave = window.confirm(`You previously recorded data for the following fields in this trial, but they are currently missing:\n\n${fieldLabels}\n\nAre you sure you want to save without this data?`);
+      if (!confirmSave) return;
+    }
 
     const newObs = {
       daa: Number(obsForm.daa),
@@ -973,7 +1000,8 @@ export default function Trials({ onMenuClick }) {
     };
 
     catConfig.observationFields?.forEach(f => {
-      newObs[f.key] = Number(obsForm[f.key]);
+      const val = obsForm[f.key];
+      newObs[f.key] = (val === '' || val === undefined || val === null) ? null : Number(val);
     });
 
     if (primaryObsField !== 'weedCover') {
@@ -5283,7 +5311,6 @@ If none are present, write "None".`;
                   </div>
                   <input
                     type="number"
-                    required
                     min={field.min !== undefined ? field.min : undefined}
                     max={field.max !== undefined ? field.max : undefined}
                     step="0.1"
