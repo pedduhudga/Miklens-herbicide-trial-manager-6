@@ -341,6 +341,7 @@ export default function Projects({ onMenuClick }) {
   const navigate = useNavigate();
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
+  const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 'N/A';
 
   const theme = useMemo(() => getThemeClasses(config.color.accent), [config.color.accent]);
   const INPUT = `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${theme.ring} bg-white`;
