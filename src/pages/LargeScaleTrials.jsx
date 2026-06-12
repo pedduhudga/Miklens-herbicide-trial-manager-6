@@ -608,37 +608,69 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   const createObservationFromAI = async (trial, daa, aiData, obsDate = null, photoUrl = null) => {
     const latestTrial = state.trials.find(t => t.ID === trial.ID) || trial;
+    const trialCat = latestTrial.Category || activeCategory;
+    const catConfig = getCategoryConfig(trialCat);
     const efficacyData = validateEfficacyData(safeJsonParse(latestTrial.EfficacyDataJSON, []));
 
-    const normalizedWeeds = (aiData.weeds || []).map(w => ({
-      species: w.species || 'Unknown',
-      cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || 0),
+    // Normalize target details list
+    const isHerbicide = trialCat === 'herbicide';
+    const aiTargetsList = isHerbicide ? (aiData.weeds || []) : (aiData.targets || []);
+    
+    const normalizedWeeds = aiTargetsList.map(w => ({
+      species: w.species || w.name || 'Unknown',
+      cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
       status: String(w.status || '').trim(),
       growthStage: String(w.growthStage || '').trim(),
       notes: String(w.notes || '').trim()
     }));
 
-    const totalWeedCover = typeof aiData.totalWeedCover === 'number'
-      ? aiData.totalWeedCover
-      : normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+    // Calculate primary values
+    const primaryObsField = getPrimaryObservationField(trialCat);
+    let primaryValue = 0;
+    
+    if (isHerbicide) {
+      primaryValue = typeof aiData.totalWeedCover === 'number'
+        ? aiData.totalWeedCover
+        : normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+    } else {
+      if (aiData.metrics && typeof aiData.metrics[primaryObsField] === 'number') {
+        primaryValue = aiData.metrics[primaryObsField];
+      } else if (aiData.metrics && aiData.metrics[primaryObsField] !== undefined) {
+        primaryValue = parseFloat(aiData.metrics[primaryObsField] || 0);
+      } else {
+        primaryValue = normalizedWeeds.reduce((sum, w) => sum + (w.cover || 0), 0);
+      }
+    }
 
     const aiNotes = [];
-    if (aiData.efficacyAssessment) aiNotes.push(aiData.efficacyAssessment);
+    if (aiData.efficacyAssessment || aiData.overallAssessment) aiNotes.push(aiData.efficacyAssessment || aiData.overallAssessment);
     if (aiData.notes) aiNotes.push(aiData.notes);
 
     const newObs = {
       date: obsDate || toDatetimeLocal(new Date()),
       daa: Number(daa),
-      weedCover: totalWeedCover,
-      weedDetails: normalizedWeeds.length > 0 ? normalizedWeeds : [{ species: 'No weeds detected', cover: 0, status: '', notes: aiData.notes || 'AI-analyzed' }],
+      weedCover: primaryValue, // mirrored for backwards compatibility
+      weedDetails: normalizedWeeds.length > 0 ? normalizedWeeds : [{ species: isHerbicide ? 'No weeds detected' : `No ${catConfig.targetLabel}s detected`, cover: 0, status: '', notes: aiData.notes || 'AI-analyzed' }],
       notes: aiNotes.join(' | ') || `AI-analyzed on ${formatDateTime(new Date())}`,
       aiConfidence: aiData.confidence || 'MEDIUM',
-      aiEfficacyAssessment: aiData.efficacyAssessment || '',
+      aiEfficacyAssessment: aiData.efficacyAssessment || aiData.overallAssessment || '',
       competitionLevel: aiData.competitionLevel || '',
       status: 'Analyzed',
       source: 'AI',
       photoUrl: photoUrl || ''
     };
+
+    // Save all dynamic metrics fields directly into the observation
+    if (aiData.metrics && typeof aiData.metrics === 'object') {
+      Object.entries(aiData.metrics).forEach(([k, v]) => {
+        const num = parseFloat(v);
+        if (!isNaN(num)) {
+          newObs[k] = num;
+        }
+      });
+    }
+    // ensure primary metric field has its value
+    newObs[primaryObsField] = primaryValue;
 
     const existingIdx = efficacyData.findIndex(o => o.daa === Number(daa));
     if (existingIdx >= 0) {
@@ -651,18 +683,22 @@ export default function LargeScaleTrials({ onMenuClick }) {
     let resultRating = 'Unrated';
     if (efficacyData.length > 0) {
       const latestObs = [...efficacyData].sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
-      const remainingCover = latestObs.weedCover || 0;
-      if (remainingCover <= 10) resultRating = 'Excellent';
-      else if (remainingCover <= 25) resultRating = 'Good';
-      else if (remainingCover <= 50) resultRating = 'Fair';
-      else resultRating = 'Poor';
+      const remainingVal = latestObs[primaryObsField] ?? latestObs.weedCover ?? 0;
+      if (isHerbicide || trialCat === 'fungicide' || trialCat === 'pesticide') {
+        if (remainingVal <= 10) resultRating = 'Excellent';
+        else if (remainingVal <= 25) resultRating = 'Good';
+        else if (remainingVal <= 50) resultRating = 'Fair';
+        else resultRating = 'Poor';
+      } else {
+        resultRating = 'Pending';
+      }
     }
 
     const updated = {
       ...latestTrial,
       EfficacyDataJSON: JSON.stringify(efficacyData),
       Result: resultRating,
-      WeedSpecies: normalizedWeeds.length > 0 ? normalizedWeeds.map(w => w.species).join(', ') : 'No weeds detected',
+      WeedSpecies: normalizedWeeds.length > 0 ? normalizedWeeds.map(w => w.species).join(', ') : (isHerbicide ? 'No weeds detected' : `No ${catConfig.targetLabel}s detected`),
     };
 
     updateState({ trials: state.trials.map(t => t.ID === updated.ID ? updated : t) });
@@ -967,7 +1003,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
       if (result.success) {
         await createObservationFromAI(activeSubTrial, daa, result.data, photoDate, photoSrc);
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Detected ${result.data.weeds?.length || 0} weed species at DAA ${daa}. Observation saved.`, type: 'success' } }));
+        const detectedCount = activeCategory === 'herbicide' ? (result.data.weeds?.length || 0) : (result.data.targets?.length || 0);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Detected ${detectedCount} ${config.targetLabel.toLowerCase()}(s) at DAA ${daa}. Observation saved.`, type: 'success' } }));
       } else {
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis failed: ' + (result.error || 'Unknown error'), type: 'error' } }));
       }
@@ -991,9 +1028,11 @@ export default function LargeScaleTrials({ onMenuClick }) {
     const sorted = [...efficacyData].sort((a, b) => (a.daa ?? 0) - (b.daa ?? 0));
     const baseline = sorted[0];
     const latest = sorted[sorted.length - 1];
-    const baseCover = parseFloat(baseline?.weedCover ?? 100) || 100;
-    const finalCover = parseFloat(latest?.weedCover ?? 0) || 0;
-    const wce = baseCover > 0 ? Math.max(0, Math.min(100, (1 - finalCover / baseCover) * 100)) : 0;
+    
+    const primaryObsField = getPrimaryObservationField(activeCategory);
+    const baseCover = parseFloat(baseline?.[primaryObsField] ?? baseline?.weedCover ?? 100) || 100;
+    const finalCover = parseFloat(latest?.[primaryObsField] ?? latest?.weedCover ?? 0) || 0;
+    const wce = baseCover > 0 ? calculateEfficacy(activeCategory, finalCover, baseCover) : 0;
 
     const allSpecies = new Set();
     const speciesControlStatus = {};
@@ -1012,17 +1051,17 @@ export default function LargeScaleTrials({ onMenuClick }) {
     const daysTracked = latest.daa - baseline.daa;
     const controlRating = wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
 
-    let summaryText = `**Weed Control Summary**\n`;
+    let summaryText = `**${activeCategory === 'herbicide' ? 'Weed Control Summary' : config.primaryMetric.label + ' Summary'}**\n`;
     summaryText += `Treatment: ${activeSubTrial.FormulationName || 'Unknown'}\n`;
     summaryText += `Duration: ${daysTracked} days (DAA ${baseline.daa} to ${latest.daa})\n`;
-    summaryText += `Initial Cover: ${baseCover.toFixed(1)}% → Final Cover: ${finalCover.toFixed(1)}%\n`;
-    summaryText += `Weed Control Efficiency (WCE): ${wce.toFixed(1)}% - ${controlRating} Control\n\n`;
+    summaryText += `Initial ${activeCategory === 'herbicide' ? 'Cover' : config.primaryMetric.key}: ${baseCover.toFixed(1)}${config.primaryMetric.unit || ''} → Final: ${finalCover.toFixed(1)}${config.primaryMetric.unit || ''}\n`;
+    summaryText += `${config.primaryMetric.label} (${config.primaryMetric.key}): ${wce.toFixed(1)}% - ${controlRating} Control\n\n`;
 
-    summaryText += `**Species Observed:** ${Array.from(allSpecies).join(', ') || 'None identified'}\n`;
-    summaryText += `**Control Status by Species:**\n`;
+    summaryText += `**${config.targetLabel}s Observed:** ${Array.from(allSpecies).join(', ') || 'None identified'}\n`;
+    summaryText += `**Control Status by ${config.targetLabel}:**\n`;
     Object.entries(speciesControlStatus).forEach(([sp, data]) => {
-      const spWCE = data.initial > 0 ? ((1 - data.final / data.initial) * 100).toFixed(0) : 0;
-      summaryText += `- ${sp}: ${data.initial}% → ${data.final}% (WCE: ${spWCE}%, Status: ${data.status || 'Unknown'})\n`;
+      const spWCE = data.initial > 0 ? calculateEfficacy(activeCategory, data.final, data.initial).toFixed(0) : 0;
+      summaryText += `- ${sp}: ${data.initial}${config.primaryMetric.unit || ''} → ${data.final}${config.primaryMetric.unit || ''} (Efficacy: ${spWCE}%, Status: ${data.status || 'Unknown'})\n`;
     });
 
     const updated = { ...activeSubTrial, Conclusion: summaryText };
@@ -1644,11 +1683,15 @@ export default function LargeScaleTrials({ onMenuClick }) {
       // Gather all sub-trial logs into a clean text summary
       const subTrialText = subTrials.map(st => {
         const eff = validateEfficacyData(safeJsonParse(st.EfficacyDataJSON, []));
-        const obs = eff.map(o => `DAA ${o.daa}: cover=${o.weedCover}% [${(o.weedDetails || []).map(w => `${w.species} ${w.cover}%`).join(', ')}]`).join('; ');
+        const primaryObsField = getPrimaryObservationField(activeCategory);
+        const obs = eff.map(o => {
+          const val = o[primaryObsField] ?? o.weedCover ?? 0;
+          return `DAA ${o.daa}: value=${val}${config.primaryMetric.unit || '%'} [${(o.weedDetails || []).map(w => `${w.species} ${w.cover}%`).join(', ')}]`;
+        }).join('; ');
         return `Sub-trial formulation: ${st.FormulationName}, dosage: ${st.Dosage || 'N/A'}, replication: ${st.Replication}, plot: ${st.PlotNumber || 'N/A'}. History: ${obs}`;
       }).join('\n\n');
 
-      const prompt = `You are an expert agronomist evaluating a large-scale agricultural herbicide field study. Please write a highly professional, comprehensive executive master summary (4-6 paragraphs) synthesizing study outcomes across all monitoring spots/sub-trials:\n\nProject Name: ${activeProject.Name}\nCrop: ${activeProject.Crop || 'N/A'}\nTarget weeds: ${activeProject.TargetWeed || 'N/A'}\nLocation: ${activeProject.Location || 'N/A'}\n\nSub-Trial Data:\n${subTrialText}\n\nDiscuss: \n1. Overall weed pressure trajectory and general efficacy.\n2. Species-specific outcomes (which weeds were successfully controlled vs which survived/resisted).\n3. Spatial variability (differences across replicates/spots).\n4. Definitive scientific conclusion and recommendation for future applications.`;
+      const prompt = `You are an expert agricultural scientist evaluating a large-scale field study for the ${config.name} category. Please write a highly professional, comprehensive executive master summary (4-6 paragraphs) synthesizing study outcomes across all monitoring spots/sub-trials:\n\nProject Name: ${activeProject.Name}\nCrop: ${activeProject.Crop || 'N/A'}\nTarget ${config.targetLabel.toLowerCase()}s: ${activeProject.TargetWeed || 'N/A'}\nLocation: ${activeProject.Location || 'N/A'}\n\nSub-Trial Data:\n${subTrialText}\n\nDiscuss: \n1. Overall efficacy trajectory (measured as ${config.primaryMetric.label}).\n2. ${config.targetLabel}-specific outcomes (which targets were successfully controlled/suppressed).\n3. Spatial variability (differences across replicates/spots).\n4. Definitive scientific conclusion and recommendation for future applications.`;
 
       const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${keys[0]}`, {
         method: 'POST',
@@ -1706,9 +1749,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
     const datasets = subTrials.map(st => {
       const eff = validateEfficacyData(safeJsonParse(st.EfficacyDataJSON, []));
+      const primaryObsField = getPrimaryObservationField(activeCategory);
       const dataPoints = daas.map(daa => {
         const match = eff.find(o => o.daa === daa);
-        return match ? match.weedCover : null;
+        return match ? (match[primaryObsField] ?? match.weedCover) : null;
       });
       return {
         label: `${st.FormulationName || 'Spot'} (${st.Replication})`,
@@ -2018,7 +2062,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {obsData.sorted.map((visit, idx) => {
                             const isBaseline = visit.daa === obsData.sorted[0]?.daa;
-                            const wce = obsData.baseCover > 0 && !isBaseline ? Math.max(0, Math.min(100, (1 - visit.weedCover / obsData.baseCover) * 100)) : null;
+                            const primaryObsField = getPrimaryObservationField(activeCategory);
+                            const currentVal = parseFloat(visit[primaryObsField] ?? visit.weedCover ?? 0);
+                            const baseVal = parseFloat(obsData.baseCover ?? 0);
+                            const wce = baseVal > 0 && !isBaseline ? calculateEfficacy(activeCategory, currentVal, baseVal) : null;
                             const wceRating = wce === null ? null : wce >= 85 ? 'Excellent' : wce >= 70 ? 'Good' : wce >= 50 ? 'Fair' : 'Poor';
                             const wceCls = wce === null ? '' : wce >= 85 ? `${theme.textDark} ${theme.bgLight}` : wce >= 70 ? 'text-blue-700 bg-blue-50' : wce >= 50 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
                             const risks = getClimateRisks(visit.weatherTemp, visit.weatherWind, visit.weatherRain);
@@ -2035,7 +2082,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                     <button
                                       onClick={() => {
                                         setEditingVisitIdx(idx);
-                                        setVisitForm({
+                                        const formObj = {
                                           daa: visit.daa || '',
                                           date: visit.date || '',
                                           weedCover: visit.weedCover || '',
@@ -2046,7 +2093,11 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                           weatherRain: visit.weatherRain || '',
                                           photoUrl: visit.photoUrl || '',
                                           weedDetails: visit.weedDetails || []
+                                        };
+                                        config.observationFields?.forEach(f => {
+                                          formObj[f.key] = visit[f.key] ?? visit.weedCover ?? '';
                                         });
+                                        setVisitForm(formObj);
                                         setIsVisitModalOpen(true);
                                       }}
                                       className={`text-xs text-slate-500 hover:${theme.textDark} font-bold`}
@@ -2060,15 +2111,15 @@ export default function LargeScaleTrials({ onMenuClick }) {
                                       Delete
                                     </button>
                                   </div>
-                                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <div>
-                                      <span className="text-[9px] text-slate-400 block font-semibold">{config.primaryMetric.label}</span>
-                                      <span className="font-bold text-slate-700">{visit.weedCover}{config.primaryMetric.unit || '%'}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[9px] text-slate-400 block font-semibold">{config.primaryMetric.key} %</span>
-                                      <span className="font-bold text-slate-700">{wce !== null ? `${wce.toFixed(1)}%` : isBaseline ? 'Baseline' : '—'}</span>
-                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <div>
+                                    <span className="text-[9px] text-slate-400 block font-semibold">{config.primaryMetric.label}</span>
+                                    <span className="font-bold text-slate-700">{visit[primaryObsField] ?? visit.weedCover}{config.primaryMetric.unit || '%'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[9px] text-slate-400 block font-semibold">{config.primaryMetric.key} %</span>
+                                    <span className="font-bold text-slate-700">{wce !== null ? `${wce.toFixed(1)}%` : isBaseline ? 'Baseline' : '—'}</span>
                                   </div>
                                 </div>
 
@@ -2208,107 +2259,114 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   )}
 
                   {/* CHART TAB */}
-                  {detailTab === 'chart' && (
-                    <div className="space-y-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Efficacy Curves</span>
-                      {obsData.sorted.length > 0 ? (
-                        <div className="h-72 bg-slate-50/50 p-6 border rounded-2xl flex flex-col justify-between">
-                          <div className="flex-1 relative">
-                            <svg className="w-full h-full" viewBox="0 0 500 200" preserveAspectRatio="none">
-                              {[0, 20, 40, 60, 80, 100].map(yVal => {
-                                const y = 200 - (yVal * 2);
-                                return <line key={yVal} x1="0" y1={y} x2="500" y2={y} stroke="#e2e8f0" strokeWidth="1" />;
-                              })}
-                              <polyline
-                                fill="none"
-                                stroke="#10b981"
-                                strokeWidth="3"
-                                points={obsData.sorted.map((o, idx) => {
-                                  const x = (idx / (obsData.sorted.length - 1 || 1)) * 500;
-                                  const y = 200 - (o.weedCover * 2);
-                                  return `${x},${y}`;
-                                }).join(' ')}
-                              />
-                            </svg>
+                  {detailTab === 'chart' && (() => {
+                    const primaryObsField = getPrimaryObservationField(activeCategory);
+                    return (
+                      <div className="space-y-4">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Efficacy Curves</span>
+                        {obsData.sorted.length > 0 ? (
+                          <div className="h-72 bg-slate-50/50 p-6 border rounded-2xl flex flex-col justify-between">
+                            <div className="flex-1 relative">
+                              <svg className="w-full h-full" viewBox="0 0 500 200" preserveAspectRatio="none">
+                                {[0, 20, 40, 60, 80, 100].map(yVal => {
+                                  const y = 200 - (yVal * 2);
+                                  return <line key={yVal} x1="0" y1={y} x2="500" y2={y} stroke="#e2e8f0" strokeWidth="1" />;
+                                })}
+                                <polyline
+                                  fill="none"
+                                  stroke="#10b981"
+                                  strokeWidth="3"
+                                  points={obsData.sorted.map((o, idx) => {
+                                    const x = (idx / (obsData.sorted.length - 1 || 1)) * 500;
+                                    const val = parseFloat(o[primaryObsField] ?? o.weedCover ?? 0);
+                                    const y = 200 - (val * 2);
+                                    return `${x},${y}`;
+                                  }).join(' ')}
+                                />
+                              </svg>
+                            </div>
+                            <div className="flex justify-between pt-3 border-t text-[10px] font-bold text-slate-400">
+                              {obsData.sorted.map(o => (
+                                <span key={o.daa}>DAA {o.daa} ({o[primaryObsField] ?? o.weedCover ?? 0}{config.primaryMetric.unit || '%'})</span>
+                              ))}
+                            </div>
                           </div>
-                          <div className="flex justify-between pt-3 border-t text-[10px] font-bold text-slate-400">
-                            {obsData.sorted.map(o => (
-                              <span key={o.daa}>DAA {o.daa} ({o.weedCover}%)</span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-slate-400 italic">No efficacy visits logged yet.</div>
-                      )}
-                    </div>
-                  )}
+                        ) : (
+                          <div className="text-center py-8 text-slate-400 italic">No efficacy visits logged yet.</div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* STATISTICS TAB */}
-                  {detailTab === 'statistics' && (
-                    <div className="space-y-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">ANOVA Statistics & WCE Diagnostics</span>
-                      {statsData.hasStats ? (
-                        <div className="space-y-4 text-sm max-w-2xl">
-                          <div className={`${theme.bgLight}/50 border ${theme.borderLight} rounded-xl p-4 ${theme.textDark}`}>
-                            <p className="font-bold text-base">Mean WCE Efficacy: {statsData.renderMeanWce.toFixed(1)}%</p>
-                            <p className="text-xs mt-1">Coefficient of Variation (CV): {statsData.stats.anovaResults?.diagnostics?.cv || 'N/A'}%</p>
+                  {detailTab === 'statistics' && (() => {
+                    const primaryObsField = getPrimaryObservationField(activeCategory);
+                    return (
+                      <div className="space-y-4">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">ANOVA Statistics & {config.primaryMetric.key} Diagnostics</span>
+                        {statsData.hasStats ? (
+                          <div className="space-y-4 text-sm max-w-2xl">
+                            <div className={`${theme.bgLight}/50 border ${theme.borderLight} rounded-xl p-4 ${theme.textDark}`}>
+                              <p className="font-bold text-base">Mean {config.primaryMetric.key} Efficacy: {statsData.renderMeanWce.toFixed(1)}%</p>
+                              <p className="text-xs mt-1">Coefficient of Variation (CV): {statsData.stats.anovaResults?.diagnostics?.cv || 'N/A'}%</p>
+                            </div>
+                            <div className="border rounded-xl overflow-hidden bg-white">
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-50 text-slate-500">
+                                  <tr>
+                                    <th className="px-4 py-2.5 text-left">Source</th>
+                                    <th className="px-4 py-2.5 text-center">DF</th>
+                                    <th className="px-4 py-2.5 text-right">MS</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y text-slate-700 bg-white">
+                                  <tr>
+                                    <td className="px-4 py-2.5 font-medium">Treatment</td>
+                                    <td className="px-4 py-2.5 text-center">{statsData.stats.anovaResults?.anovaTable?.treatment?.df || 0}</td>
+                                    <td className="px-4 py-2.5 text-right">{statsData.stats.anovaResults?.anovaTable?.treatment?.ms || 0}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
-                          <div className="border rounded-xl overflow-hidden bg-white">
-                            <table className="w-full text-xs">
-                              <thead className="bg-slate-50 text-slate-500">
-                                <tr>
-                                  <th className="px-4 py-2.5 text-left">Source</th>
-                                  <th className="px-4 py-2.5 text-center">DF</th>
-                                  <th className="px-4 py-2.5 text-right">MS</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y text-slate-700 bg-white">
-                                <tr>
-                                  <td className="px-4 py-2.5 font-medium">Treatment</td>
-                                  <td className="px-4 py-2.5 text-center">{statsData.stats.anovaResults?.anovaTable?.treatment?.df || 0}</td>
-                                  <td className="px-4 py-2.5 text-right">{statsData.stats.anovaResults?.anovaTable?.treatment?.ms || 0}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-slate-50 p-6 border rounded-2xl text-center space-y-3 max-w-md">
-                          <p className="text-slate-500 text-xs">Run WCE calculations on the sub-trial observations.</p>
-                          <button
-                            onClick={async () => {
-                              if (obsData.sorted.length < 2) {
-                                window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Need at least 2 observations to calculate statistics', type: 'error' } }));
-                                return;
-                              }
-                              const wceRows = obsData.sorted.map(obs => {
-                                const cover = parseFloat(obs.weedCover ?? 0) || 0;
-                                const wce = obs.daa === obsData.sorted[0].daa ? null : (obsData.baseCover > 0 ? Math.max(0, Math.min(100, (1 - cover / obsData.baseCover) * 100)) : 0);
-                                return { daa: obs.daa, wce };
-                              });
-                              const wces = wceRows.map(r => r.wce).filter(v => v !== null);
-                              const meanWce = wces.length ? wces.reduce((s, v) => s + v, 0) / wces.length : 0;
-                              const df = wces.length - 1;
-                              const result = {
-                                wce: wceRows,
-                                anovaResults: { anovaTable: { treatment: { source: 'Treatment', df, ms: 0 } }, diagnostics: { cv: 0 } },
-                                calculatedAt: new Date().toISOString()
-                              };
-                              const updated = { ...activeSubTrial, StatisticsJSON: JSON.stringify(result) };
-                              try {
-                                await updateTrial(updated, getAppState);
-                                updateState({ trials: state.trials.map(t => t.ID === activeSubTrial.ID ? updated : t) });
-                                window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Calculated successfully!', type: 'success' } }));
-                              } catch {}
-                            }}
-                            className={`px-4 py-2 ${theme.bg} text-white rounded-lg text-xs font-bold transition shadow`}
-                          >
+                        ) : (
+                          <div className="bg-slate-50 p-6 border rounded-2xl text-center space-y-3 max-w-md">
+                            <p className="text-slate-500 text-xs">Run {config.primaryMetric.key} calculations on the sub-trial observations.</p>
+                            <button
+                              onClick={async () => {
+                                if (obsData.sorted.length < 2) {
+                                  window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Need at least 2 observations to calculate statistics', type: 'error' } }));
+                                  return;
+                                }
+                                const wceRows = obsData.sorted.map(obs => {
+                                  const val = parseFloat(obs[primaryObsField] ?? obs.weedCover ?? 0) || 0;
+                                  const wce = obs.daa === obsData.sorted[0].daa ? null : (obsData.baseCover > 0 ? calculateEfficacy(activeCategory, val, obsData.baseCover) : 0);
+                                  return { daa: obs.daa, wce };
+                                });
+                                const wces = wceRows.map(r => r.wce).filter(v => v !== null);
+                                const meanWce = wces.length ? wces.reduce((s, v) => s + v, 0) / wces.length : 0;
+                                const df = wces.length - 1;
+                                const result = {
+                                  wce: wceRows,
+                                  anovaResults: { anovaTable: { treatment: { source: 'Treatment', df, ms: 0 } }, diagnostics: { cv: 0 } },
+                                  calculatedAt: new Date().toISOString()
+                                };
+                                const updated = { ...activeSubTrial, StatisticsJSON: JSON.stringify(result) };
+                                try {
+                                  await updateTrial(updated, getAppState);
+                                  updateState({ trials: state.trials.map(t => t.ID === activeSubTrial.ID ? updated : t) });
+                                  window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Calculated successfully!', type: 'success' } }));
+                                } catch {}
+                              }}
+                              className={`px-4 py-2 ${theme.bg} text-white rounded-lg text-xs font-bold transition shadow`}
+                            >
                             Calculate Statistics
                           </button>
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* QR CODE TAB */}
                   {detailTab === 'qr' && (() => {
@@ -3470,7 +3528,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
                   />
                   <input
                     type="number"
-                    placeholder="Cover %"
+                    placeholder={config.primaryMetric.unit ? `Value (${config.primaryMetric.unit})` : 'Value'}
                     value={weed.cover}
                     onChange={e => {
                       const updated = [...visitForm.weedDetails];
