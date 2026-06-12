@@ -245,11 +245,12 @@ function QuickActionModal({ trial, rawQr, onClose, onAction, activeCategory = 'h
 
 // ─── Camera Capture Modal (inline, for "Add Photo" / "Identify Weeds") ────────
 
-function CameraModal({ mode, onClose, onCapture }) {
+function CameraModal({ mode, onClose, onCapture, activeCategory = 'herbicide' }) {
   const videoRef = useRef(null);
   const [stream, setStream] = useState(null);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState(null);
+  const catConfig = getCategoryConfig(activeCategory);
 
   React.useEffect(() => {
     let s = null;
@@ -302,7 +303,7 @@ function CameraModal({ mode, onClose, onCapture }) {
         <span
           className={`px-3 py-1 rounded-full text-xs font-bold text-white ${mode === "weed" ? "bg-emerald-500" : "bg-blue-500"}`}
         >
-          {mode === "weed" ? "🌿 Weed Photo" : "📷 Trial Photo"}
+          {mode === "weed" ? `🌿 ${catConfig.targetLabel} Photo` : "📷 Trial Photo"}
         </span>
       </div>
       {error ? (
@@ -385,6 +386,9 @@ export default function PlotScanner({ onMenuClick }) {
   const { state, getAppState, updateState } = useAppState();
   const navigate = useNavigate();
   const galleryInputRef = useRef(null);
+
+  const activeCategory = state.activeCategory || 'herbicide';
+  const catConfig = getCategoryConfig(activeCategory);
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [quickModal, setQuickModal] = useState(null); // { trial, raw }
@@ -539,13 +543,13 @@ export default function PlotScanner({ onMenuClick }) {
         );
 
         setUploadStatus({
-          msg: `Photo saved to ${isWeed ? "weed" : "trial"} successfully!`,
+          msg: `Photo saved to ${isWeed ? catConfig.targetLabel.toLowerCase() : "trial"} successfully!`,
           type: "success",
         });
         setHistory((prev) =>
           prev.map((h, i) =>
             i === 0
-              ? { ...h, action: isWeed ? "Weed photo added" : "Photo added" }
+              ? { ...h, action: isWeed ? `${catConfig.targetLabel} photo added` : "Photo added" }
               : h,
           ),
         );
@@ -781,6 +785,7 @@ export default function PlotScanner({ onMenuClick }) {
           trialId={cameraModal.trialId}
           onClose={() => setCameraModal(null)}
           onCapture={handleCapture}
+          activeCategory={activeCategory}
         />
       )}
     </div>
