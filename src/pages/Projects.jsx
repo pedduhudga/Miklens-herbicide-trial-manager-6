@@ -3843,7 +3843,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Replications (Blocks)</label>
                         <select 
                           value={randomizeForm.replications} 
-                          onChange={e => setRandomizeForm(p => ({ ...p, replications: e.target.value }))} 
+                          onChange={e => {
+                            const val = e.target.value;
+                            setRandomizeForm(p => ({ ...p, replications: val, potBlocks: val }));
+                          }} 
                           className={INPUT}
                         >
                           {[2, 3, 4, 5, 6, 7, 8].map(n => (
@@ -3927,8 +3930,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                 ...p,
                                 potLayout: layout,
                                 ...(layout === 'rcbd-pot' ? {
-                                  potObsMode: 'plant-wise',
-                                  replications: 'pot',
+                                  potObsMode: 'column-wise',
+                                  replications: 'column',
                                   potStripeDirection: 'Vertical Columns',
                                   potBlocks: p.potBlocks || '3'
                                 } : {})
@@ -4763,8 +4766,8 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     ...p,
                     potLayout: layout,
                     ...(layout === 'rcbd-pot' ? {
-                      potObsMode: 'plant-wise',
-                      replications: 'pot',
+                      potObsMode: 'column-wise',
+                      replications: 'column',
                       potStripeDirection: 'Vertical Columns',
                       potBlocks: p.potBlocks || '3'
                     } : {})
