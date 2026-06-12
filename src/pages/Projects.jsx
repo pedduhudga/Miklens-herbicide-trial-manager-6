@@ -1998,7 +1998,9 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
           }
           for (let i = blockTrtList.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [blockTrtList[i], blockTrtList[j]] = [blockTrtList[j], blockTrtList[i]];
+            const temp = blockTrtList[i];
+            blockTrtList[i] = blockTrtList[j];
+            blockTrtList[j] = temp;
           }
 
           const startRow = (b - 1) * rowsPerBlock + 1;
