@@ -1117,6 +1117,49 @@ export default function Projects({ onMenuClick }) {
     } catch { toast('Failed to save block', 'error'); }
   };
 
+  const renderStripeDirectionPreview = () => {
+    const isHorizontal = randomizeForm.potStripeDirection === 'Horizontal Rows';
+    const trtList = randomizeTreatments.map(t => {
+      const f = activeFormulations.find(form => String(form.ID) === String(t.formulationId));
+      const name = t.name.trim() || f?.Name || 'Unnamed';
+      return name.charAt(0).toUpperCase();
+    });
+
+    if (trtList.length === 0) return null;
+
+    const previewGrid = [];
+    const rows = 4;
+    const cols = 4;
+
+    for (let r = 0; r < rows; r++) {
+      const rowCells = [];
+      for (let c = 0; c < cols; c++) {
+        const trtChar = isHorizontal 
+          ? trtList[r % trtList.length] 
+          : trtList[c % trtList.length];
+        rowCells.push(
+          <span key={c} className="w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-white border border-slate-200 rounded text-slate-700">
+            {trtChar || '?'}
+          </span>
+        );
+      }
+      previewGrid.push(
+        <div key={r} className="flex gap-1 justify-center">
+          {rowCells}
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">Stripe Layout Preview</p>
+        <div className="flex flex-col gap-1 items-center justify-center">
+          {previewGrid}
+        </div>
+      </div>
+    );
+  };
+
   const getTreatmentColor = (name) => {
     if (!name) return 'bg-slate-100 border-slate-300 text-slate-400';
     const lower = name.toLowerCase();
@@ -3486,6 +3529,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                               <option value="Horizontal Rows">Horizontal Rows (Default)</option>
                               <option value="Vertical Columns">Vertical Columns</option>
                             </select>
+                            {renderStripeDirectionPreview()}
                           </div>
                         )}
                         <div>
@@ -4214,6 +4258,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   <option value="Horizontal Rows">Horizontal Rows (Default)</option>
                   <option value="Vertical Columns">Vertical Columns</option>
                 </select>
+                {renderStripeDirectionPreview()}
               </div>
             )}
             <div>
