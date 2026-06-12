@@ -743,8 +743,9 @@ export class AnalysisEngine {
                     const isTwoWay = !isPotTrial && (this.trials[0]?.TrialDesign === 'Factorial' || this.trials[0]?.TrialDesign === 'Split-Plot' || this.project?.TrialDesign === 'Factorial' || this.project?.TrialDesign === 'Split-Plot');
 
                     let anovaResults;
+                    let potLayout = 'stripe';
                     if (isPotTrial) {
-                        const potLayout = this.project?.PotLayout || this.trials[0]?.PotLayout || 'stripe';
+                        potLayout = this.project?.PotLayout || this.trials[0]?.PotLayout || 'stripe';
                         if (potLayout === 'rcbd-pot') {
                             anovaResults = this.calculateANOVA(anovaData);
                         } else {
