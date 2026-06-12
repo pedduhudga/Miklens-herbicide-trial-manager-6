@@ -5469,9 +5469,29 @@ If none are present, write "None".`;
               >
                 <option value="Whole Canopy">Whole Canopy</option>
                 <option value="Leaf Close-up">Leaf Close-up</option>
-                <option value="Plant 1">Plant 1 (Pot A)</option>
-                <option value="Plant 2">Plant 2 (Pot B)</option>
-                <option value="Plant 3">Plant 3 (Pot C)</option>
+                {(() => {
+                  const targetTrialForPhoto = pendingPhotoAnalysis.targetTrial || activeTrial;
+                  const proj = projects.find(p => String(p.ID) === String(targetTrialForPhoto?.ProjectID));
+                  if (proj && proj.Design === 'PotTrial' && proj.PotObsMode === 'column-wise') {
+                    const blocksCount = parseInt(proj.PotBlocks) || 3;
+                    const rowsPerBlock = Math.floor((parseInt(proj.PotRows) || 9) / blocksCount);
+                    return Array.from({ length: rowsPerBlock }).map((_, idx) => {
+                      const potLetter = String.fromCharCode(65 + idx); // A, B, C...
+                      return (
+                        <option key={idx} value={`Plant ${idx + 1}`}>
+                          Plant {idx + 1} (Pot {potLetter})
+                        </option>
+                      );
+                    });
+                  }
+                  return (
+                    <>
+                      <option value="Plant 1">Plant 1 (Pot A)</option>
+                      <option value="Plant 2">Plant 2 (Pot B)</option>
+                      <option value="Plant 3">Plant 3 (Pot C)</option>
+                    </>
+                  );
+                })()}
               </select>
             </div>
             {(() => {

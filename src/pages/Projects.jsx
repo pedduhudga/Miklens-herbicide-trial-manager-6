@@ -2092,6 +2092,12 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
         const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
         const rowsPerBlock = Math.floor(potRows / blocksCount);
 
+        console.log('Randomization parameters:', {
+          potLayout,
+          potObsMode,
+          experimentalUnit: potObsMode === 'row-wise' ? 'Row' : (potObsMode === 'column-wise' ? 'Treatment Column' : 'Pot')
+        });
+
         let plotIndex = 1;
         for (let b = 1; b <= blocksCount; b++) {
           const blockId = 'block_' + Date.now() + '_pot_rcbd_' + b + '_' + Math.random().toString(36).substring(2, 7);
@@ -2124,15 +2130,13 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
           const startRow = (b - 1) * rowsPerBlock + 1;
           const endRow = b * rowsPerBlock;
 
-          for (let r = startRow; r <= endRow; r++) {
+          if (potObsMode === 'column-wise') {
             for (let c = 1; c <= potCols; c++) {
               const t = blockTrtList[c - 1];
               const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
               const targetField = config.targetField || 'WeedSpecies';
-              const label = randomizeForm.potIdentifierFormat === 'sequential' 
-                ? `P${String((r - 1) * potCols + c).padStart(3, '0')}` 
-                : `R${r}C${c}`;
-              const plotNum = r * 100 + c;
+              const label = `Col ${c} (${rowsPerBlock} Pots)`;
+              const plotNum = b * 100 + c;
 
               const tToSave = {
                 ID: trialId,
@@ -2153,16 +2157,58 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
                 PhotoURLs: '[]',
                 WeedPhotosJSON: '[]',
                 PlotNumber: plotNum,
-                AISummariesJSON: JSON.stringify({ plotNum, label, row: r, col: c }),
+                AISummariesJSON: JSON.stringify({ plotNum, label, col: c }),
                 Category: activeCategory,
                 TrialDesign: 'PotTrial',
-                PotRow: r,
                 PotCol: c,
+                PotRow: null,
                 PotLabel: label,
                 [targetField]: randomizeForm.weedSpecies || ''
               };
               trialsToSave.push(tToSave);
               plotIndex++;
+            }
+          } else {
+            for (let r = startRow; r <= endRow; r++) {
+              for (let c = 1; c <= potCols; c++) {
+                const t = blockTrtList[c - 1];
+                const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+                const targetField = config.targetField || 'WeedSpecies';
+                const label = randomizeForm.potIdentifierFormat === 'sequential' 
+                  ? `P${String((r - 1) * potCols + c).padStart(3, '0')}` 
+                  : `R${r}C${c}`;
+                const plotNum = r * 100 + c;
+
+                const tToSave = {
+                  ID: trialId,
+                  ProjectID: activeProject.ID,
+                  BlockID: block.ID,
+                  FormulationID: t.fid,
+                  FormulationName: t.name,
+                  InvestigatorName: randomizeForm.investigatorName || '',
+                  Dosage: t.dosage || randomizeForm.dosage || '',
+                  Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+                  Replication: String(b),
+                  RandomizationOrder: plotIndex,
+                  IsControl: t.role === 'control',
+                  IsStandardCheck: t.role === 'standard',
+                  Status: 'Draft',
+                  IsLive: true,
+                  EfficacyDataJSON: '[]',
+                  PhotoURLs: '[]',
+                  WeedPhotosJSON: '[]',
+                  PlotNumber: plotNum,
+                  AISummariesJSON: JSON.stringify({ plotNum, label, row: r, col: c }),
+                  Category: activeCategory,
+                  TrialDesign: 'PotTrial',
+                  PotRow: r,
+                  PotCol: c,
+                  PotLabel: label,
+                  [targetField]: randomizeForm.weedSpecies || ''
+                };
+                trialsToSave.push(tToSave);
+                plotIndex++;
+              }
             }
           }
         }
@@ -4141,8 +4187,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                 <div className="grid grid-cols-1 gap-y-0.5 font-medium">
                                   <div>Design: <span className="font-bold text-emerald-700">RCBD Pot Trial</span></div>
                                   <div>Replications: <span className="font-bold text-emerald-700">{allocationPreview.potBlocks} Blocks</span></div>
-                                  <div>Experimental Unit: <span className="font-bold text-emerald-700">Pot</span></div>
+                                  <div>Experimental Unit: <span className="font-bold text-emerald-700">{allocationPreview.potObsMode === 'column-wise' ? 'Treatment Column' : 'Pot'}</span></div>
                                   <div>Total Pots: <span className="font-bold text-emerald-700">{allocationPreview.potRows * allocationPreview.potCols}</span></div>
+                                  {allocationPreview.potObsMode === 'column-wise' && (
+                                    <div>Observation Units: <span className="font-bold text-emerald-700">{allocationPreview.potBlocks * allocationPreview.potCols}</span></div>
+                                  )}
                                   <div>Pots per Treatment: <span className="font-bold text-emerald-700">{allocationPreview.potRows}</span></div>
                                   <div>Pots per Block: <span className="font-bold text-emerald-700">{Math.floor(allocationPreview.potRows / allocationPreview.potBlocks) * allocationPreview.potCols}</span></div>
                                   <div>Analysis Method: <span className="font-bold text-slate-700">RCBD ANOVA</span></div>
@@ -4969,8 +5018,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <div className="grid grid-cols-1 gap-y-0.5 font-medium">
                       <div>Design: <span className="font-bold text-emerald-700">RCBD Pot Trial</span></div>
                       <div>Replications: <span className="font-bold text-emerald-700">{allocationPreview.potBlocks} Blocks</span></div>
-                      <div>Experimental Unit: <span className="font-bold text-emerald-700">Pot</span></div>
+                      <div>Experimental Unit: <span className="font-bold text-emerald-700">{allocationPreview.potObsMode === 'column-wise' ? 'Treatment Column' : 'Pot'}</span></div>
                       <div>Total Pots: <span className="font-bold text-emerald-700">{allocationPreview.potRows * allocationPreview.potCols}</span></div>
+                      {allocationPreview.potObsMode === 'column-wise' && (
+                        <div>Observation Units: <span className="font-bold text-emerald-700">{allocationPreview.potBlocks * allocationPreview.potCols}</span></div>
+                      )}
                       <div>Pots per Treatment: <span className="font-bold text-emerald-700">{allocationPreview.potRows}</span></div>
                       <div>Pots per Block: <span className="font-bold text-emerald-700">{Math.floor(allocationPreview.potRows / allocationPreview.potBlocks) * allocationPreview.potCols}</span></div>
                       <div>Analysis Method: <span className="font-bold text-slate-700">RCBD ANOVA</span></div>
