@@ -1205,7 +1205,9 @@ export default function Projects({ onMenuClick }) {
           const repChar = gridRep[r][c];
           trtChar = trtMap[repChar] || '?';
         } else if (potLayout === 'rcbd-pot') {
-          const blockIdx = Math.floor(r / 2);
+          const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
+          const rowsPerBlock = Math.floor(rows / blocksCount) || 1;
+          const blockIdx = Math.floor(r / rowsPerBlock);
           const blockPerm = rcbdPermutations[blockIdx % rcbdPermutations.length];
           trtChar = blockPerm[c % blockPerm.length];
         }
