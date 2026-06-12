@@ -108,7 +108,7 @@ export default function CompareTrials({ onMenuClick }) {
       const costNum = Number(form.EstimatedCost);
       const doseNum = parseFloat(t.Dosage);
       if (!isNaN(costNum) && !isNaN(doseNum)) {
-        costPerHa = `$${((costNum / 1000) * doseNum).toFixed(2)}`;
+        costPerHa = `₹${((costNum / 1000) * doseNum).toFixed(2)}`;
       }
     }
 
