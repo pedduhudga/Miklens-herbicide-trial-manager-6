@@ -602,6 +602,10 @@ export default function Projects({ onMenuClick }) {
           colsVal = cCount;
           potsVal = cCount * potRows;
         }
+      } else if (potLayout === 'rcbd-pot') {
+        const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
+        const rowsPerBlock = Math.floor(potRows / blocksCount);
+        potsVal = rowsPerBlock * blocksCount;
       } else {
         // balanced-pot
         let pCount = 0;
@@ -632,6 +636,9 @@ export default function Projects({ onMenuClick }) {
         const colCounts = allocations.map(a => a.cols);
         isBalanced = colCounts.every(c => c === colCounts[0]);
       }
+    } else if (potLayout === 'rcbd-pot') {
+      const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
+      isBalanced = (potRows % blocksCount === 0);
     } else {
       const potCounts = allocations.map(a => a.pots);
       isBalanced = potCounts.every(c => c === potCounts[0]);
@@ -645,6 +652,7 @@ export default function Projects({ onMenuClick }) {
       potObsMode,
       potRows,
       potCols,
+      potBlocks: parseInt(randomizeForm.potBlocks) || 3,
       trtCount: trtList.length
     };
   }, [randomizeForm, randomizeTreatments, activeFormulations]);
@@ -1226,8 +1234,31 @@ export default function Projects({ onMenuClick }) {
     const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const uniqueTreatments = [...new Set(projectTrials.map(t => t.FormulationName || 'Unnamed Treatment'))];
 
+    const projectBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
+    const blocksCount = projectBlocks.length || 3;
+    const rowsPerBlock = Math.floor(potRows / blocksCount) || 3;
+
     const gridRows = [];
     for (let r = 1; r <= potRows; r++) {
+      if (potLayout === 'rcbd-pot') {
+        const isBlockStart = (r - 1) % rowsPerBlock === 0;
+        if (isBlockStart) {
+          const blockNum = Math.floor((r - 1) / rowsPerBlock) + 1;
+          const startRow = (blockNum - 1) * rowsPerBlock + 1;
+          const endRow = Math.min(blockNum * rowsPerBlock, potRows);
+          gridRows.push(
+            <div key={`block-header-${blockNum}`} className="pt-4 pb-2 border-t-2 border-dashed border-slate-200 mt-4 first:mt-0 first:pt-0 first:border-t-0 flex items-center justify-between text-[11px] font-bold text-slate-700">
+              <span className="uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                BLOCK {blockNum} (Replication {blockNum})
+              </span>
+              <span className="text-slate-500 font-medium">
+                Rows {startRow}–{endRow}
+              </span>
+            </div>
+          );
+        }
+      }
+
       const rowCells = [];
       for (let c = 1; c <= potCols; c++) {
         let trial;
@@ -1932,17 +1963,6 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       }
 
     } else if (designType === 'PotTrial') {
-      const blockId = 'block_' + Date.now() + '_pot_' + Math.random().toString(36).substring(2, 7);
-      const block = {
-        ID: blockId,
-        ProjectID: activeProject.ID,
-        Name: 'Greenhouse Pot Layout',
-        ReplicationNum: '1',
-        CreatedAt: new Date().toISOString(),
-        Category: activeCategory
-      };
-      blocksToSave.push(block);
-
       const potRows = parseInt(randomizeForm.potRows) || 9;
       const potCols = parseInt(randomizeForm.potCols) || 4;
       const potLayout = randomizeForm.potLayout || 'stripe';
@@ -1950,99 +1970,104 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       const potObsMode = randomizeForm.potObsMode || 'row-wise';
       const potDataMethod = randomizeForm.potDataMethod || 'total';
 
-      if (potObsMode === 'row-wise') {
-        const isHorizontal = potStripeDirection === 'Horizontal Rows';
-        const numUnits = isHorizontal ? potRows : potCols;
-
-        let assignedTreatments = [];
-        if (potLayout === 'stripe') {
-          for (let i = 0; i < numUnits; i++) {
-            assignedTreatments.push(trtList[i % trtList.length]);
-          }
-        } else {
-          const baseList = [];
-          while (baseList.length < numUnits) {
-            trtList.forEach(t => {
-              if (baseList.length < numUnits) {
-                baseList.push(t);
-              }
-            });
-          }
-          for (let i = baseList.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
-          }
-          assignedTreatments = baseList;
-        }
-
-        assignedTreatments.forEach((t, index) => {
-          const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-          const targetField = config.targetField || 'WeedSpecies';
-          const unitIndex = index + 1;
-          const label = isHorizontal ? `Row ${unitIndex}` : `Column ${unitIndex}`;
-
-          const tToSave = {
-            ID: trialId,
-            ProjectID: activeProject.ID,
-            BlockID: block.ID,
-            FormulationID: t.fid,
-            FormulationName: t.name,
-            InvestigatorName: randomizeForm.investigatorName || '',
-            Dosage: t.dosage || randomizeForm.dosage || '',
-            Date: randomizeForm.date || new Date().toISOString().split('T')[0],
-            Replication: String(unitIndex),
-            RandomizationOrder: unitIndex,
-            IsControl: t.role === 'control',
-            IsStandardCheck: t.role === 'standard',
-            Status: 'Draft',
-            IsLive: true,
-            EfficacyDataJSON: '[]',
-            PhotoURLs: '[]',
-            WeedPhotosJSON: '[]',
-            PlotNumber: unitIndex,
-            AISummariesJSON: JSON.stringify({ plotNum: unitIndex, label }),
-            Category: activeCategory,
-            TrialDesign: 'PotTrial',
-            PotRow: isHorizontal ? unitIndex : null,
-            PotCol: isHorizontal ? null : unitIndex,
-            PotLabel: label,
-            [targetField]: randomizeForm.weedSpecies || ''
-          };
-          trialsToSave.push(tToSave);
-        });
-      } else {
-        const isHorizontal = potStripeDirection === 'Horizontal Rows';
-        let rowColAssignments = {};
-
-        if (potLayout === 'stripe') {
-          const numUnits = isHorizontal ? potRows : potCols;
-          for (let i = 1; i <= numUnits; i++) {
-            rowColAssignments[i] = trtList[(i - 1) % trtList.length];
-          }
-        } else if (potLayout === 'randomized-row') {
-          const numUnits = isHorizontal ? potRows : potCols;
-          const baseList = [];
-          while (baseList.length < numUnits) {
-            trtList.forEach(t => {
-              if (baseList.length < numUnits) {
-                baseList.push(t);
-              }
-            });
-          }
-          for (let i = baseList.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
-          }
-          for (let i = 1; i <= numUnits; i++) {
-            rowColAssignments[i] = baseList[i - 1];
-          }
-        }
+      if (potLayout === 'rcbd-pot') {
+        const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
+        const rowsPerBlock = Math.floor(potRows / blocksCount);
 
         let plotIndex = 1;
-        for (let r = 1; r <= potRows; r++) {
-          let rowTreatments = [];
-          if (potLayout === 'balanced-pot') {
-            const numUnits = potCols;
+        for (let b = 1; b <= blocksCount; b++) {
+          const blockId = 'block_' + Date.now() + '_pot_rcbd_' + b + '_' + Math.random().toString(36).substring(2, 7);
+          const block = {
+            ID: blockId,
+            ProjectID: activeProject.ID,
+            Name: `Block ${b}`,
+            ReplicationNum: String(b),
+            CreatedAt: new Date().toISOString(),
+            Category: activeCategory
+          };
+          blocksToSave.push(block);
+
+          // Generate randomized column treatments once for this block
+          const blockTrtList = [];
+          while (blockTrtList.length < potCols) {
+            trtList.forEach(t => {
+              if (blockTrtList.length < potCols) {
+                blockTrtList.push(t);
+              }
+            });
+          }
+          for (let i = blockTrtList.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [blockTrtList[i], blockTrtList[j]] = [blockTrtList[j], blockTrtList[i]];
+          }
+
+          const startRow = (b - 1) * rowsPerBlock + 1;
+          const endRow = b * rowsPerBlock;
+
+          for (let r = startRow; r <= endRow; r++) {
+            for (let c = 1; c <= potCols; c++) {
+              const t = blockTrtList[c - 1];
+              const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+              const targetField = config.targetField || 'WeedSpecies';
+              const label = randomizeForm.potIdentifierFormat === 'sequential' 
+                ? `P${String((r - 1) * potCols + c).padStart(3, '0')}` 
+                : `R${r}C${c}`;
+              const plotNum = r * 100 + c;
+
+              const tToSave = {
+                ID: trialId,
+                ProjectID: activeProject.ID,
+                BlockID: block.ID,
+                FormulationID: t.fid,
+                FormulationName: t.name,
+                InvestigatorName: randomizeForm.investigatorName || '',
+                Dosage: t.dosage || randomizeForm.dosage || '',
+                Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+                Replication: String(b),
+                RandomizationOrder: plotIndex,
+                IsControl: t.role === 'control',
+                IsStandardCheck: t.role === 'standard',
+                Status: 'Draft',
+                IsLive: true,
+                EfficacyDataJSON: '[]',
+                PhotoURLs: '[]',
+                WeedPhotosJSON: '[]',
+                PlotNumber: plotNum,
+                AISummariesJSON: JSON.stringify({ plotNum, label, row: r, col: c }),
+                Category: activeCategory,
+                TrialDesign: 'PotTrial',
+                PotRow: r,
+                PotCol: c,
+                PotLabel: label,
+                [targetField]: randomizeForm.weedSpecies || ''
+              };
+              trialsToSave.push(tToSave);
+              plotIndex++;
+            }
+          }
+        }
+      } else {
+        const blockId = 'block_' + Date.now() + '_pot_' + Math.random().toString(36).substring(2, 7);
+        const block = {
+          ID: blockId,
+          ProjectID: activeProject.ID,
+          Name: 'Greenhouse Pot Layout',
+          ReplicationNum: '1',
+          CreatedAt: new Date().toISOString(),
+          Category: activeCategory
+        };
+        blocksToSave.push(block);
+
+        if (potObsMode === 'row-wise') {
+          const isHorizontal = potStripeDirection === 'Horizontal Rows';
+          const numUnits = isHorizontal ? potRows : potCols;
+
+          let assignedTreatments = [];
+          if (potLayout === 'stripe') {
+            for (let i = 0; i < numUnits; i++) {
+              assignedTreatments.push(trtList[i % trtList.length]);
+            }
+          } else {
             const baseList = [];
             while (baseList.length < numUnits) {
               trtList.forEach(t => {
@@ -2055,24 +2080,14 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
               const j = Math.floor(Math.random() * (i + 1));
               [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
             }
-            rowTreatments = baseList;
+            assignedTreatments = baseList;
           }
 
-          for (let c = 1; c <= potCols; c++) {
-            let t;
-            if (potLayout === 'balanced-pot') {
-              t = rowTreatments[c - 1];
-            } else {
-              const unitKey = isHorizontal ? r : c;
-              t = rowColAssignments[unitKey];
-            }
-
+          assignedTreatments.forEach((t, index) => {
             const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
             const targetField = config.targetField || 'WeedSpecies';
-            const label = randomizeForm.potIdentifierFormat === 'sequential' 
-              ? `P${String((r - 1) * potCols + c).padStart(3, '0')}` 
-              : `R${r}C${c}`;
-            const plotNum = r * 100 + c;
+            const unitIndex = index + 1;
+            const label = isHorizontal ? `Row ${unitIndex}` : `Column ${unitIndex}`;
 
             const tToSave = {
               ID: trialId,
@@ -2083,8 +2098,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
               InvestigatorName: randomizeForm.investigatorName || '',
               Dosage: t.dosage || randomizeForm.dosage || '',
               Date: randomizeForm.date || new Date().toISOString().split('T')[0],
-              Replication: String(plotNum),
-              RandomizationOrder: plotIndex,
+              Replication: String(unitIndex),
+              RandomizationOrder: unitIndex,
               IsControl: t.role === 'control',
               IsStandardCheck: t.role === 'standard',
               Status: 'Draft',
@@ -2092,17 +2107,111 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
               EfficacyDataJSON: '[]',
               PhotoURLs: '[]',
               WeedPhotosJSON: '[]',
-              PlotNumber: plotNum,
-              AISummariesJSON: JSON.stringify({ plotNum, label, row: r, col: c }),
+              PlotNumber: unitIndex,
+              AISummariesJSON: JSON.stringify({ plotNum: unitIndex, label }),
               Category: activeCategory,
               TrialDesign: 'PotTrial',
-              PotRow: r,
-              PotCol: c,
+              PotRow: isHorizontal ? unitIndex : null,
+              PotCol: isHorizontal ? null : unitIndex,
               PotLabel: label,
               [targetField]: randomizeForm.weedSpecies || ''
             };
             trialsToSave.push(tToSave);
-            plotIndex++;
+          });
+        } else {
+          const isHorizontal = potStripeDirection === 'Horizontal Rows';
+          let rowColAssignments = {};
+
+          if (potLayout === 'stripe') {
+            const numUnits = isHorizontal ? potRows : potCols;
+            for (let i = 1; i <= numUnits; i++) {
+              rowColAssignments[i] = trtList[(i - 1) % trtList.length];
+            }
+          } else if (potLayout === 'randomized-row') {
+            const numUnits = isHorizontal ? potRows : potCols;
+            const baseList = [];
+            while (baseList.length < numUnits) {
+              trtList.forEach(t => {
+                if (baseList.length < numUnits) {
+                  baseList.push(t);
+                }
+              });
+            }
+            for (let i = baseList.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
+            }
+            for (let i = 1; i <= numUnits; i++) {
+              rowColAssignments[i] = baseList[i - 1];
+            }
+          }
+
+          let plotIndex = 1;
+          for (let r = 1; r <= potRows; r++) {
+            let rowTreatments = [];
+            if (potLayout === 'balanced-pot') {
+              const numUnits = potCols;
+              const baseList = [];
+              while (baseList.length < numUnits) {
+                trtList.forEach(t => {
+                  if (baseList.length < numUnits) {
+                    baseList.push(t);
+                  }
+                });
+              }
+              for (let i = baseList.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
+              }
+              rowTreatments = baseList;
+            }
+
+            for (let c = 1; c <= potCols; c++) {
+              let t;
+              if (potLayout === 'balanced-pot') {
+                t = rowTreatments[c - 1];
+              } else {
+                const unitKey = isHorizontal ? r : c;
+                t = rowColAssignments[unitKey];
+              }
+
+              const trialId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+              const targetField = config.targetField || 'WeedSpecies';
+              const label = randomizeForm.potIdentifierFormat === 'sequential' 
+                ? `P${String((r - 1) * potCols + c).padStart(3, '0')}` 
+                : `R${r}C${c}`;
+              const plotNum = r * 100 + c;
+
+              const tToSave = {
+                ID: trialId,
+                ProjectID: activeProject.ID,
+                BlockID: block.ID,
+                FormulationID: t.fid,
+                FormulationName: t.name,
+                InvestigatorName: randomizeForm.investigatorName || '',
+                Dosage: t.dosage || randomizeForm.dosage || '',
+                Date: randomizeForm.date || new Date().toISOString().split('T')[0],
+                Replication: String(plotNum),
+                RandomizationOrder: plotIndex,
+                IsControl: t.role === 'control',
+                IsStandardCheck: t.role === 'standard',
+                Status: 'Draft',
+                IsLive: true,
+                EfficacyDataJSON: '[]',
+                PhotoURLs: '[]',
+                WeedPhotosJSON: '[]',
+                PlotNumber: plotNum,
+                AISummariesJSON: JSON.stringify({ plotNum, label, row: r, col: c }),
+                Category: activeCategory,
+                TrialDesign: 'PotTrial',
+                PotRow: r,
+                PotCol: c,
+                PotLabel: label,
+                [targetField]: randomizeForm.weedSpecies || ''
+              };
+              trialsToSave.push(tToSave);
+              plotIndex++;
+            }
           }
         }
       }
@@ -3627,12 +3736,25 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Layout Option</label>
                           <select
                             value={randomizeForm.potLayout}
-                            onChange={e => setRandomizeForm(p => ({ ...p, potLayout: e.target.value }))}
+                            onChange={e => {
+                              const layout = e.target.value;
+                              setRandomizeForm(p => ({
+                                ...p,
+                                potLayout: layout,
+                                ...(layout === 'rcbd-pot' ? {
+                                  potObsMode: 'plant-wise',
+                                  replications: 'pot',
+                                  potStripeDirection: 'Vertical Columns',
+                                  potBlocks: p.potBlocks || '3'
+                                } : {})
+                              }));
+                            }}
                             className={INPUT}
                           >
                             <option value="stripe">Stripe Layout (Sequential)</option>
                             <option value="randomized-row">Randomized Row Layout</option>
                             <option value="balanced-pot">Balanced Pot Randomization</option>
+                            <option value="rcbd-pot">RCBD Pot Trial (Stripe Columns by Block)</option>
                           </select>
                         </div>
                         {randomizeForm.potLayout === 'stripe' && (
@@ -3649,10 +3771,29 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             {renderStripeDirectionPreview()}
                           </div>
                         )}
+                        {randomizeForm.potLayout === 'rcbd-pot' && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Number of Blocks (Replications)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max={randomizeForm.potRows}
+                              value={randomizeForm.potBlocks || '3'}
+                              onChange={e => setRandomizeForm(p => ({ ...p, potBlocks: e.target.value }))}
+                              className={INPUT}
+                            />
+                            {parseInt(randomizeForm.potRows) % (parseInt(randomizeForm.potBlocks) || 1) !== 0 && (
+                              <p className="text-[10px] text-red-600 mt-1 font-semibold">
+                                ⚠️ Rows ({randomizeForm.potRows}) must be a multiple of Blocks ({randomizeForm.potBlocks || 1})!
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <div>
                           <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
                           <select
-                            value={randomizeForm.potObsMode}
+                            value={randomizeForm.potLayout === 'rcbd-pot' ? 'plant-wise' : randomizeForm.potObsMode}
+                            disabled={randomizeForm.potLayout === 'rcbd-pot'}
                             onChange={e => {
                               const mode = e.target.value;
                               setRandomizeForm(p => ({ 
@@ -3837,7 +3978,20 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             </table>
                           </div>
                           <div className="space-y-2 flex flex-col justify-center">
-                            {allocationPreview.isBalanced ? (
+                            {allocationPreview.potLayout === 'rcbd-pot' ? (
+                              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs space-y-1 text-slate-700">
+                                <h5 className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">Expected Design Summary</h5>
+                                <div className="grid grid-cols-1 gap-y-0.5 font-medium">
+                                  <div>Design: <span className="font-bold text-emerald-700">RCBD Pot Trial</span></div>
+                                  <div>Replications: <span className="font-bold text-emerald-700">{allocationPreview.potBlocks} Blocks</span></div>
+                                  <div>Experimental Unit: <span className="font-bold text-emerald-700">Pot</span></div>
+                                  <div>Total Pots: <span className="font-bold text-emerald-700">{allocationPreview.potRows * allocationPreview.potCols}</span></div>
+                                  <div>Pots per Treatment: <span className="font-bold text-emerald-700">{allocationPreview.potRows}</span></div>
+                                  <div>Pots per Block: <span className="font-bold text-emerald-700">{Math.floor(allocationPreview.potRows / allocationPreview.potBlocks) * allocationPreview.potCols}</span></div>
+                                  <div>Analysis Method: <span className="font-bold text-slate-700">RCBD ANOVA</span></div>
+                                </div>
+                              </div>
+                            ) : allocationPreview.isBalanced ? (
                               <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
                                 ✓ <strong>Perfectly Balanced Layout</strong> {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Vertical Columns' ? `(each treatment receives exactly ${allocationPreview.allocations[0]?.pots || 0} pots)` : '(each treatment has equal replicates)'}
                               </div>
@@ -4391,12 +4545,25 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Layout Option</label>
               <select
                 value={randomizeForm.potLayout}
-                onChange={e => setRandomizeForm(p => ({ ...p, potLayout: e.target.value }))}
+                onChange={e => {
+                  const layout = e.target.value;
+                  setRandomizeForm(p => ({
+                    ...p,
+                    potLayout: layout,
+                    ...(layout === 'rcbd-pot' ? {
+                      potObsMode: 'plant-wise',
+                      replications: 'pot',
+                      potStripeDirection: 'Vertical Columns',
+                      potBlocks: p.potBlocks || '3'
+                    } : {})
+                  }));
+                }}
                 className={INPUT}
               >
                 <option value="stripe">Stripe Layout (Sequential)</option>
                 <option value="randomized-row">Randomized Row Layout</option>
                 <option value="balanced-pot">Balanced Pot Randomization</option>
+                <option value="rcbd-pot">RCBD Pot Trial (Stripe Columns by Block)</option>
               </select>
             </div>
             {randomizeForm.potLayout === 'stripe' && (
@@ -4413,10 +4580,29 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 {renderStripeDirectionPreview()}
               </div>
             )}
+            {randomizeForm.potLayout === 'rcbd-pot' && (
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Number of Blocks (Replications)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={randomizeForm.potRows}
+                  value={randomizeForm.potBlocks || '3'}
+                  onChange={e => setRandomizeForm(p => ({ ...p, potBlocks: e.target.value }))}
+                  className={INPUT}
+                />
+                {parseInt(randomizeForm.potRows) % (parseInt(randomizeForm.potBlocks) || 1) !== 0 && (
+                  <p className="text-[10px] text-red-600 mt-1 font-semibold">
+                    ⚠️ Rows ({randomizeForm.potRows}) must be a multiple of Blocks ({randomizeForm.potBlocks || 1})!
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
               <select
-                value={randomizeForm.potObsMode}
+                value={randomizeForm.potLayout === 'rcbd-pot' ? 'plant-wise' : randomizeForm.potObsMode}
+                disabled={randomizeForm.potLayout === 'rcbd-pot'}
                 onChange={e => {
                   const mode = e.target.value;
                   setRandomizeForm(p => ({ 
@@ -4601,7 +4787,20 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 </table>
               </div>
               <div className="space-y-2 flex flex-col justify-center">
-                {allocationPreview.isBalanced ? (
+                {allocationPreview.potLayout === 'rcbd-pot' ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs space-y-1 text-slate-700">
+                    <h5 className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">Expected Design Summary</h5>
+                    <div className="grid grid-cols-1 gap-y-0.5 font-medium">
+                      <div>Design: <span className="font-bold text-emerald-700">RCBD Pot Trial</span></div>
+                      <div>Replications: <span className="font-bold text-emerald-700">{allocationPreview.potBlocks} Blocks</span></div>
+                      <div>Experimental Unit: <span className="font-bold text-emerald-700">Pot</span></div>
+                      <div>Total Pots: <span className="font-bold text-emerald-700">{allocationPreview.potRows * allocationPreview.potCols}</span></div>
+                      <div>Pots per Treatment: <span className="font-bold text-emerald-700">{allocationPreview.potRows}</span></div>
+                      <div>Pots per Block: <span className="font-bold text-emerald-700">{Math.floor(allocationPreview.potRows / allocationPreview.potBlocks) * allocationPreview.potCols}</span></div>
+                      <div>Analysis Method: <span className="font-bold text-slate-700">RCBD ANOVA</span></div>
+                    </div>
+                  </div>
+                ) : allocationPreview.isBalanced ? (
                   <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg p-2.5 text-xs font-medium">
                     ✓ <strong>Perfectly Balanced Layout</strong> {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Vertical Columns' ? `(each treatment receives exactly ${allocationPreview.allocations[0]?.pots || 0} pots)` : '(each treatment has equal replicates)'}
                   </div>

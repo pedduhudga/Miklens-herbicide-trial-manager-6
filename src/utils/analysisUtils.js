@@ -744,7 +744,12 @@ export class AnalysisEngine {
 
                     let anovaResults;
                     if (isPotTrial) {
-                        anovaResults = calculateCRD_ANOVA(anovaData);
+                        const potLayout = this.project?.PotLayout || this.trials[0]?.PotLayout || 'stripe';
+                        if (potLayout === 'rcbd-pot') {
+                            anovaResults = this.calculateANOVA(anovaData);
+                        } else {
+                            anovaResults = calculateCRD_ANOVA(anovaData);
+                        }
                     } else if (isTwoWay) {
                         anovaResults = performTwoWayANOVA(this.trials, {
                             metric,
@@ -858,10 +863,9 @@ export class AnalysisEngine {
                     const bartlettResult = calculateBartlettsTest(anovaData);
                     const normalityResult = calculateResidualsDiagnostics(this.trials, dataMap, means, anovaResults);
                     const repsCount = this.trials.length / (treatments.length || 1);
-                    const blockingEff = isPotTrial ? 1.0 : calculateBlockingEfficiency(anovaResults, repsCount);
+                    const blockingEff = (isPotTrial && potLayout !== 'rcbd-pot') ? 1.0 : calculateBlockingEfficiency(anovaResults, repsCount);
 
                     const potObsMode = this.project?.PotObsMode || 'row-wise';
-                    const potLayout = this.project?.PotLayout || 'stripe';
                     const potStripeDir = this.project?.PotStripeDirection || 'Horizontal Rows';
                     const potRows = this.project?.PotRows || 9;
                     const potCols = this.project?.PotCols || 4;
@@ -870,7 +874,12 @@ export class AnalysisEngine {
                     let analysisNotes = '';
                     if (isPotTrial) {
                         const allocationStr = treatments.map(name => `  ${name} = ${counts[name]} ${potObsMode === 'row-wise' ? 'rows' : 'pots'}`).join('\n');
-                        analysisNotes = `Design: Pot Trial (${potLayout === 'stripe' ? 'Stripe Layout' : potLayout === 'randomized-row' ? 'Randomized Row Layout' : 'Balanced Pot Randomization'})\nExperimental Unit: ${potObsMode === 'row-wise' ? 'Row' : 'Pot'}\nStripe Direction: ${potStripeDir}\nRows: ${potRows}\nColumns: ${potCols}\nObservation Mode: ${potObsMode === 'row-wise' ? 'Row-Wise' : 'Plant-Wise'}\nPot Identifier Format: ${potIdFormat === 'sequential' ? 'Sequential (P001)' : 'Row-Column (R1C1)'}\nAnalysis Method: CRD-style comparison\nTreatment Allocation:\n${allocationStr}`;
+                        if (potLayout === 'rcbd-pot') {
+                            const potBlocks = this.project?.PotBlocks || this.blocks?.length || 3;
+                            analysisNotes = `Design: Pot Trial (RCBD Pot Trial)\nReplications: ${potBlocks} Blocks\nExperimental Unit: Pot\nRows: ${potRows}\nColumns: ${potCols}\nObservation Mode: Plant-Wise\nPot Identifier Format: ${potIdFormat === 'sequential' ? 'Sequential (P001)' : 'Row-Column (R1C1)'}\nAnalysis Method: RCBD ANOVA\nTreatment Allocation:\n${allocationStr}`;
+                        } else {
+                            analysisNotes = `Design: Pot Trial (${potLayout === 'stripe' ? 'Stripe Layout' : potLayout === 'randomized-row' ? 'Randomized Row Layout' : 'Balanced Pot Randomization'})\nExperimental Unit: ${potObsMode === 'row-wise' ? 'Row' : 'Pot'}\nStripe Direction: ${potStripeDir}\nRows: ${potRows}\nColumns: ${potCols}\nObservation Mode: ${potObsMode === 'row-wise' ? 'Row-Wise' : 'Plant-Wise'}\nPot Identifier Format: ${potIdFormat === 'sequential' ? 'Sequential (P001)' : 'Row-Column (R1C1)'}\nAnalysis Method: CRD-style comparison\nTreatment Allocation:\n${allocationStr}`;
+                        }
                     } else {
                         analysisNotes = `Design: ${this.project?.Design || 'RCBD'}\nExperimental Unit: Plot\nReplications: ${this.blocks.length}\nTreatments: ${treatments.length}\nAnalysis Method: ${isTwoWay ? 'Two-way RCBD ANOVA' : 'One-way RCBD ANOVA'}`;
                     }
