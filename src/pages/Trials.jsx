@@ -43,6 +43,7 @@ import { fetchWeather } from '../services/weather.js';
 import { EPPO_CODES, BBCH_STAGES, lookupEPPO } from '../utils/eppoBBCHData.js';
 import { exportToARM, importARMCSV } from '../services/armExporter.js';
 import SprayCalculatorModal from '../components/SprayCalculatorModal.jsx';
+import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
 
 const RESULT_COLORS = {
   'Excellent': 'bg-emerald-100 text-emerald-700',
@@ -101,6 +102,7 @@ export default function Trials({ onMenuClick }) {
 
   // --- Add/Edit modal ---
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDesignGuideOpen, setIsDesignGuideOpen] = useState(false);
   const [editingTrial, setEditingTrial] = useState(null);
   const [formData, setFormData] = useState(emptyForm(activeCategory));
 
@@ -3074,6 +3076,26 @@ If none are present, write "None".`;
 
         {/* ── GRID ── */}
         <div className="p-4">
+          {activeTab === 'rcbd' && (
+            <div className="mb-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm">Trial Layouts & Designs</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Understand Randomized Complete Block Design (RCBD), Completely Randomized Design (CRD), Split-Plot, and other layouts.
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsDesignGuideOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-sm whitespace-nowrap self-start sm:self-auto"
+              >
+                View Design Guide
+              </button>
+            </div>
+          )}
           {filteredTrials.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredTrials.map(t => (
@@ -3271,6 +3293,7 @@ If none are present, write "None".`;
       )}
 
       {/* ── ADD/EDIT MODAL ── */}
+      <TrialDesignGuideModal isOpen={isDesignGuideOpen} onClose={() => setIsDesignGuideOpen(false)} />
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingTrial ? 'Edit Trial' : 'New Trial'}>
         <form onSubmit={handleSave} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3287,7 +3310,17 @@ If none are present, write "None".`;
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Trial Design Type</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-500 uppercase">Trial Design Type</label>
+                <button
+                  type="button"
+                  onClick={() => setIsDesignGuideOpen(true)}
+                  className="text-slate-400 hover:text-emerald-600 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                  title="View Design Guide"
+                >
+                  <Info className="w-3.5 h-3.5" /> Guide
+                </button>
+              </div>
               <select value={formData.TrialDesign || 'RCBD'} onChange={e => setFormData({...formData, TrialDesign: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
                 <option value="RCBD">RCBD (Randomized Complete Block)</option>
                 <option value="CRD">CRD (Completely Randomized Design)</option>

@@ -17,6 +17,8 @@ import { AnalysisEngine } from '../utils/analysisUtils.js';
 import PlotMap from '../components/PlotMap.jsx';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../utils/dateUtils.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
+import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
+import { Info } from 'lucide-react';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 export function getThemeClasses(accentColor = 'emerald') {
@@ -498,6 +500,7 @@ export default function Projects({ onMenuClick }) {
   const radarChartRef = useRef(null);
   const yieldChartRef = useRef(null);
 
+  const [isDesignGuideOpen, setIsDesignGuideOpen] = useState(false);
   const [randomizeForm, setRandomizeForm] = useState({
     investigatorName: '',
     dosage: '',
@@ -2759,6 +2762,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 })()}
 
                 {/* ── Randomize Layout Modal ── */}
+                <TrialDesignGuideModal isOpen={isDesignGuideOpen} onClose={() => setIsDesignGuideOpen(false)} />
                 <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
                   <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
                     <div className={`${theme.bgLight} border ${theme.borderLight} rounded-lg p-3`}>
@@ -2770,7 +2774,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     {/* Default Plot Info Grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Trial Design Type</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase">Trial Design Type</label>
+                          <button
+                            type="button"
+                            onClick={() => setIsDesignGuideOpen(true)}
+                            className="text-slate-400 hover:text-emerald-600 transition-colors flex items-center gap-0.5 text-[8px] font-bold"
+                            title="View Design Guide"
+                          >
+                            <Info className="w-2.5 h-2.5" /> Guide
+                          </button>
+                        </div>
                         <select 
                           value={randomizeForm.trialDesign} 
                           onChange={e => setRandomizeForm(p => ({ ...p, trialDesign: e.target.value }))} 
@@ -3272,6 +3286,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
       </Modal>
 
       {/* ── Randomize Layout Modal ── */}
+      <TrialDesignGuideModal isOpen={isDesignGuideOpen} onClose={() => setIsDesignGuideOpen(false)} />
       <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
         <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
           <div className={`${theme.bgLight} border ${theme.borderLight} rounded-lg p-3`}>
@@ -3283,7 +3298,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
         {/* Default Plot Info Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border">
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Trial Design Type</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] font-bold text-slate-500 uppercase">Trial Design Type</label>
+              <button
+                type="button"
+                onClick={() => setIsDesignGuideOpen(true)}
+                className="text-slate-400 hover:text-emerald-600 transition-colors flex items-center gap-0.5 text-[8px] font-bold"
+                title="View Design Guide"
+              >
+                <Info className="w-2.5 h-2.5" /> Guide
+              </button>
+            </div>
             <select 
               value={randomizeForm.trialDesign} 
               onChange={e => setRandomizeForm(p => ({ ...p, trialDesign: e.target.value }))} 
