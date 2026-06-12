@@ -11,6 +11,15 @@ const RESULT_COLORS = {
   'Control': 'bg-purple-100 text-purple-700',
 };
 
+const BLOCK_COLORS = [
+  { emoji: '🟢', bg: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-700', ring: 'ring-emerald-200' },
+  { emoji: '🔵', bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700', ring: 'ring-blue-200' },
+  { emoji: '🟣', bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-700', ring: 'ring-purple-200' },
+  { emoji: '🟠', bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-700', ring: 'ring-orange-200' },
+  { emoji: '🔴', bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-700', ring: 'ring-red-200' },
+  { emoji: '🟡', bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-700', ring: 'ring-yellow-200' },
+];
+
 const RESULT_BORDER_COLORS = {
   'Excellent': 'border-l-4 border-emerald-500',
   'Good': 'border-l-4 border-blue-500',
@@ -61,6 +70,27 @@ const TrialCard = memo(function TrialCard({
   const efficacyData = useMemo(() => safeJsonParse(trial.EfficacyDataJSON, []), [trial.EfficacyDataJSON]);
   const isLive = String(trial.IsLive) !== 'false';
   const isCompleted = trial.IsCompleted === true || trial.IsCompleted === 'true';
+
+  // Block badge info for RCBD Pot Trials
+  const blockInfo = useMemo(() => {
+    if (trial.TrialDesign !== 'PotTrial' || !trial.Replication) return null;
+    const blockNum = parseInt(trial.Replication, 10);
+    if (isNaN(blockNum) || blockNum < 1) return null;
+    const colorIdx = (blockNum - 1) % BLOCK_COLORS.length;
+    const colors = BLOCK_COLORS[colorIdx];
+    // Calculate represented pots from project data
+    let potsPerColumn = null;
+    if (project && project.PotObsMode === 'column-wise' && project.PotRows && project.PotBlocks) {
+      const rows = parseInt(project.PotRows, 10) || 9;
+      const blocks = parseInt(project.PotBlocks, 10) || 3;
+      potsPerColumn = Math.floor(rows / blocks);
+    } else if (trial.PotLabel && trial.PotLabel.includes('Pots')) {
+      // Fallback: parse from PotLabel like "Col 1 (3 Pots)"
+      const m = trial.PotLabel.match(/(\d+)\s*Pots?/i);
+      if (m) potsPerColumn = parseInt(m[1], 10);
+    }
+    return { blockNum, colors, potsPerColumn, isColumnWise: project?.PotObsMode === 'column-wise' || (trial.PotRow === null && trial.PotCol != null) };
+  }, [trial.TrialDesign, trial.Replication, trial.PotLabel, trial.PotRow, trial.PotCol, project]);
 
   // Control days calculation
   const controlDays = useMemo(() => {
@@ -199,13 +229,33 @@ const TrialCard = memo(function TrialCard({
         )}
       </div>
 
-      <div className="p-4 pt-10 flex-1 flex flex-col">
+      {/* Block Badge for RCBD Pot Trial */}
+      {blockInfo && blockInfo.isColumnWise && (
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-xl ${blockInfo.colors.bg} border-b ${blockInfo.colors.border}`}>
+          <span className="text-sm leading-none">{blockInfo.colors.emoji}</span>
+          <span className={`text-[11px] font-extrabold uppercase tracking-wide ${blockInfo.colors.text}`}>
+            Block {blockInfo.blockNum}
+          </span>
+          {blockInfo.potsPerColumn && (
+            <span className={`ml-auto text-[10px] font-semibold ${blockInfo.colors.text} opacity-70`}>
+              Represents {blockInfo.potsPerColumn} Pots
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className={`p-4 ${blockInfo && blockInfo.isColumnWise ? 'pt-3' : 'pt-10'} flex-1 flex flex-col`}>
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="min-w-0">
-            <h3 className="font-bold text-slate-800 truncate" title={trial.FormulationName}>
+            <h3 className="font-bold text-slate-800 truncate" title={blockInfo && blockInfo.isColumnWise ? `Block ${blockInfo.blockNum} - ${trial.FormulationName}` : trial.FormulationName}>
               {subTrialLabel && (
                 <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-md mr-1.5 align-middle shadow-sm">
                   {subTrialLabel}
+                </span>
+              )}
+              {blockInfo && blockInfo.isColumnWise && (
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md mr-1.5 align-middle shadow-sm ${blockInfo.colors.bg} ${blockInfo.colors.text} border ${blockInfo.colors.border}`}>
+                  B{blockInfo.blockNum}
                 </span>
               )}
               <span className="align-middle">{trial.FormulationName || 'Untitled'}</span>
