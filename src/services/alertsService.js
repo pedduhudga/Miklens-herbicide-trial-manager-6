@@ -372,26 +372,124 @@ export function generateTrialAlerts(trial, projectTrials = []) {
 }
 
 /**
- * Generate all alerts for all projects/trials
+ * Helper to compute average efficacy parameters for a set of replicate trials of a treatment
+ */
+function getTreatmentAverageEfficacy(trtTrials) {
+  const obsByDAA = {};
+  
+  trtTrials.forEach(t => {
+    const efficacyData = safeJsonParse(t.EfficacyDataJSON, []);
+    efficacyData.forEach(obs => {
+      const daa = obs.daa || obs.daysAfterApplication || 0;
+      if (!obsByDAA[daa]) {
+        obsByDAA[daa] = [];
+      }
+      obsByDAA[daa].push(obs);
+    });
+  });
+  
+  const avgEfficacy = Object.entries(obsByDAA).map(([daaStr, observations]) => {
+    const daa = parseInt(daaStr);
+    const count = observations.length;
+    
+    const sum = {};
+    const keys = [
+      'controlPct', 'weedCover', 'diseaseSeverity', 'diseaseIncidence', 
+      'greenLeafArea', 'plantHealthScore', 'pestCount', 'damageRating', 
+      'percentMortality', 'feedingDamagePct', 'yield', 'yieldKgPlot'
+    ];
+    
+    keys.forEach(k => { sum[k] = 0; });
+    
+    observations.forEach(obs => {
+      keys.forEach(k => {
+        const val = obs[k] ?? (k === 'controlPct' ? obs.wce : null);
+        if (val !== null && !isNaN(val)) {
+          sum[k] += parseFloat(val);
+        }
+      });
+    });
+    
+    const avgObs = { daa };
+    keys.forEach(k => {
+      avgObs[k] = count > 0 ? sum[k] / count : 0;
+    });
+    
+    return avgObs;
+  });
+  
+  return avgEfficacy.sort((a, b) => a.daa - b.daa);
+}
+
+/**
+ * Generate all alerts for all projects/trials, aggregated at treatment level and filtered by active category
  */
 export function generateAllAlerts(state) {
   const alerts = [];
-  const { trials, projects } = state;
+  const { trials = [], projects = [] } = state;
   
   if (!trials || trials.length === 0) return [];
   
-  // Group trials by project
+  const activeCategory = state.activeCategory || 'herbicide';
+  
+  // 1. Filter trials by the active category
+  const categoryTrials = trials.filter(t => t.Category === activeCategory || (!t.Category && activeCategory === 'herbicide'));
+  
+  // 2. Group trials by ProjectID
   const trialsByProject = {};
-  trials.forEach(t => {
+  categoryTrials.forEach(t => {
     const pid = t.ProjectID || 'no-project';
     if (!trialsByProject[pid]) trialsByProject[pid] = [];
     trialsByProject[pid].push(t);
   });
   
-  // Generate alerts for each trial
-  Object.entries(trialsByProject).forEach(([projectId, projectTrials]) => {
-    projectTrials.forEach(trial => {
-      const trialAlerts = generateTrialAlerts(trial, projectTrials);
+  // 3. For each project, aggregate trials by formulation (Treatment level)
+  Object.entries(trialsByProject).forEach(([projectId, projTrials]) => {
+    const trialsByTrt = {};
+    projTrials.forEach(t => {
+      const trt = t.FormulationName || 'Untreated Control';
+      if (!trialsByTrt[trt]) trialsByTrt[trt] = [];
+      trialsByTrt[trt].push(t);
+    });
+    
+    const virtualTrials = [];
+    Object.entries(trialsByTrt).forEach(([trtName, trtTrials]) => {
+      if (trtTrials.length === 0) return;
+      
+      const avgEfficacy = getTreatmentAverageEfficacy(trtTrials);
+      const isControl = trtTrials.some(t => 
+        t.IsControl === true || 
+        t.IsControl === 'true' || 
+        t.FormulationName?.toLowerCase().includes('control') || 
+        t.FormulationName?.toLowerCase().includes('untreated')
+      );
+      
+      const repTrial = trtTrials[0];
+      
+      virtualTrials.push({
+        ID: repTrial.ID,
+        FormulationName: trtName,
+        ProjectID: projectId,
+        Category: activeCategory,
+        Date: repTrial.Date,
+        Temperature: repTrial.Temperature,
+        Windspeed: repTrial.Windspeed,
+        EfficacyDataJSON: JSON.stringify(avgEfficacy),
+        IsControl: isControl,
+        replicateCount: trtTrials.length
+      });
+    });
+    
+    // Generate alerts for each virtual aggregated trial
+    virtualTrials.forEach(vTrial => {
+      const trialAlerts = generateTrialAlerts(vTrial, virtualTrials);
+      
+      trialAlerts.forEach(alert => {
+        if (alert.message && vTrial.replicateCount > 1) {
+          alert.message = `${alert.message} (Avg of ${vTrial.replicateCount} replicates)`;
+        }
+      });
+      
       alerts.push(...trialAlerts);
     });
   });
