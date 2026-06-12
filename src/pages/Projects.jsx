@@ -538,7 +538,8 @@ export default function Projects({ onMenuClick }) {
     potObsMode: 'row-wise',
     potDataMethod: 'total',
     potFields: ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
-    potIdentifierFormat: 'row-col'
+    potIdentifierFormat: 'row-col',
+    potBlocks: '3'
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
   const [randomizeTreatments, setRandomizeTreatments] = useState([]);
@@ -1148,8 +1149,11 @@ export default function Projects({ onMenuClick }) {
     } catch { toast('Failed to save block', 'error'); }
   };
 
-  const renderStripeDirectionPreview = () => {
-    const isHorizontal = randomizeForm.potStripeDirection === 'Horizontal Rows';
+  const renderLayoutPreview = () => {
+    const potLayout = randomizeForm.potLayout || 'stripe';
+    const potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
+    const isHorizontal = potStripeDirection === 'Horizontal Rows';
+    
     const trtList = randomizeTreatments.map(t => {
       const f = activeFormulations.find(form => String(form.ID) === String(t.formulationId));
       const name = t.name.trim() || f?.Name || 'Unnamed';
@@ -1162,14 +1166,53 @@ export default function Projects({ onMenuClick }) {
     const rows = 4;
     const cols = 4;
 
+    const rcbdPermutations = [
+      [...trtList],
+      [...trtList].reverse(),
+      [...trtList].slice().sort(),
+      [...trtList].slice().sort().reverse()
+    ];
+    rcbdPermutations.forEach(arr => {
+      while (arr.length < cols) {
+        trtList.forEach(c => { if (arr.length < cols) arr.push(c); });
+      }
+    });
+
     for (let r = 0; r < rows; r++) {
       const rowCells = [];
       for (let c = 0; c < cols; c++) {
-        const trtChar = isHorizontal 
-          ? trtList[r % trtList.length] 
-          : trtList[c % trtList.length];
+        let trtChar = '?';
+        if (potLayout === 'stripe') {
+          trtChar = isHorizontal 
+            ? trtList[r % trtList.length] 
+            : trtList[c % trtList.length];
+        } else if (potLayout === 'randomized-row') {
+          const rowPerm = [trtList[0], trtList[2 % trtList.length], trtList[1 % trtList.length], trtList[3 % trtList.length]];
+          trtChar = rowPerm[r % rowPerm.length];
+        } else if (potLayout === 'balanced-pot') {
+          const gridRep = [
+            ['S', 'C', 'P', 'L'],
+            ['P', 'L', 'S', 'C'],
+            ['C', 'S', 'L', 'P'],
+            ['L', 'P', 'C', 'S']
+          ];
+          const trtMap = {
+            'C': trtList[0] || 'C',
+            'L': trtList[1 % trtList.length] || 'L',
+            'P': trtList[2 % trtList.length] || 'P',
+            'S': trtList[3 % trtList.length] || 'S'
+          };
+          const repChar = gridRep[r][c];
+          trtChar = trtMap[repChar] || '?';
+        } else if (potLayout === 'rcbd-pot') {
+          const blockIdx = Math.floor(r / 2);
+          const blockPerm = rcbdPermutations[blockIdx % rcbdPermutations.length];
+          trtChar = blockPerm[c % blockPerm.length];
+        }
+
+        const colorClasses = getTreatmentColor(trtChar);
         rowCells.push(
-          <span key={c} className="w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-white border border-slate-200 rounded text-slate-700">
+          <span key={c} className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold border rounded shadow-sm ${colorClasses}`}>
             {trtChar || '?'}
           </span>
         );
@@ -1181,12 +1224,26 @@ export default function Projects({ onMenuClick }) {
       );
     }
 
+    const layoutNameMap = {
+      'stripe': 'Stripe Layout Preview',
+      'randomized-row': 'Randomized Row Preview',
+      'balanced-pot': 'Balanced Pot Preview',
+      'rcbd-pot': 'RCBD Pot Trial Preview (Columns Shuffled per Block)'
+    };
+
     return (
-      <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">Stripe Layout Preview</p>
+      <div className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 max-w-[200px] mx-auto">
+        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">
+          {layoutNameMap[potLayout] || 'Layout Preview'}
+        </p>
         <div className="flex flex-col gap-1 items-center justify-center">
           {previewGrid}
         </div>
+        {potLayout === 'rcbd-pot' && (
+          <p className="text-[8px] text-center text-slate-400 mt-1 italic leading-tight">
+            (Columns remain identical within a block, but shuffle independently between blocks)
+          </p>
+        )}
       </div>
     );
   };
@@ -1194,16 +1251,16 @@ export default function Projects({ onMenuClick }) {
   const getTreatmentColor = (name) => {
     if (!name) return 'bg-slate-100 border-slate-300 text-slate-400';
     const lower = name.toLowerCase();
-    if (lower.includes('control') || lower.includes('utc')) {
+    if (lower === 'c' || lower.includes('control') || lower.includes('utc')) {
       return 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-600';
     }
-    if (lower.includes('liquid') || lower.includes('liq')) {
+    if (lower === 'l' || lower.includes('liquid') || lower.includes('liq')) {
       return 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-700';
     }
-    if (lower.includes('powder') || lower.includes('pwd')) {
+    if (lower === 'p' || lower.includes('powder') || lower.includes('pwd')) {
       return 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-700';
     }
-    if (lower.includes('synthetic') || lower.includes('syn')) {
+    if (lower === 's' || lower.includes('synthetic') || lower.includes('syn')) {
       return 'bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700';
     }
     const colors = [
@@ -1269,10 +1326,10 @@ export default function Projects({ onMenuClick }) {
             trial = projectTrials.find(t => String(t.PotCol) === String(c) || String(t.Replication) === String(c));
           }
         } else {
-          trial = projectTrials.find(t => (String(t.PotRow) === String(r) && String(t.PotCol) === String(c)) || String(t.PlotNumber) === String(r * 100 + c));
+          trial = projectTrials.find(t => (String(t.PotRow) === String(r) && String(t.PotCol) === String(c)) || String(t.PlotNumber) === String(r * 100 + c) || t.PotLabel === `R${r}C${c}`);
         }
 
-        const trtName = trial?.FormulationName || 'No Treatment';
+        const trtName = trial?.FormulationName || (trial?.FormulationID ? ((state.formulations || []).find(f => String(f.ID) === String(trial.FormulationID))?.Name) : null) || (trial ? 'Unnamed' : 'No Treatment');
         const colorClasses = getTreatmentColor(trtName);
         const dataStatus = trial?.Status || 'No Data';
 
@@ -1560,7 +1617,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
       potObsMode: activeProject.PotObsMode || 'row-wise',
       potDataMethod: activeProject.PotDataMethod || 'total',
       potFields: activeProject.PotFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
-      potIdentifierFormat: activeProject.PotIdentifierFormat || 'row-col'
+      potIdentifierFormat: activeProject.PotIdentifierFormat || 'row-col',
+      potBlocks: String(activeProject.PotBlocks || 3)
     });
     
     setIsRandomizeModalOpen(true);
@@ -2323,7 +2381,8 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
             PotObsMode: potObsMode,
             PotDataMethod: potDataMethod,
             PotFields: randomizeForm.potFields || ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
-            PotIdentifierFormat: randomizeForm.potIdentifierFormat || 'row-col'
+            PotIdentifierFormat: randomizeForm.potIdentifierFormat || 'row-col',
+            PotBlocks: parseInt(randomizeForm.potBlocks) || 3
           };
         } else {
           return {
@@ -3779,7 +3838,6 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                               <option value="Horizontal Rows">Horizontal Rows (Default)</option>
                               <option value="Vertical Columns">Vertical Columns</option>
                             </select>
-                            {renderStripeDirectionPreview()}
                           </div>
                         )}
                         {randomizeForm.potLayout === 'rcbd-pot' && (
@@ -3800,13 +3858,18 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             )}
                           </div>
                         )}
+                        <div className="md:col-span-3">
+                          {renderLayoutPreview()}
+                        </div>
                         <div>
                           <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
                           <select
                             value={randomizeForm.potLayout === 'rcbd-pot' ? 'plant-wise' : randomizeForm.potObsMode}
-                            disabled={randomizeForm.potLayout === 'rcbd-pot'}
                             onChange={e => {
                               const mode = e.target.value;
+                              if (randomizeForm.potLayout === 'rcbd-pot' && mode === 'row-wise') {
+                                return;
+                              }
                               setRandomizeForm(p => ({ 
                                 ...p, 
                                 potObsMode: mode,
@@ -3818,6 +3881,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             <option value="row-wise">Row-Wise Data Entry</option>
                             <option value="plant-wise">Plant-Wise Data Entry</option>
                           </select>
+                          {randomizeForm.potLayout === 'rcbd-pot' && (
+                            <p className="text-[9px] text-emerald-600 mt-1 font-semibold">ℹ️ RCBD Pot Trial requires Plant-Wise observation mode.</p>
+                          )}
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Experimental Unit (Locked)</label>
@@ -3974,7 +4040,12 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                               <tbody className="divide-y divide-emerald-100">
                                 {allocationPreview.allocations.map(item => (
                                   <tr key={item.name} className="text-slate-700">
-                                    <td className="py-1.5 pr-4 font-medium">{item.name}</td>
+                                    <td className="py-1.5 pr-4 font-medium">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span className={`w-2.5 h-2.5 rounded-full border shrink-0 ${getTreatmentColor(item.name)}`} />
+                                        {item.name}
+                                      </span>
+                                    </td>
                                     {allocationPreview.potLayout === 'stripe' && allocationPreview.potStripeDirection === 'Horizontal Rows' ? (
                                       <>
                                         <td className="py-1.5 text-right pr-4 font-semibold">{item.rows}</td>
@@ -4065,14 +4136,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                             {randomizeTreatments.map((t) => (
                               <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="p-2">
-                                  <input
-                                    required
-                                    type="text"
-                                    placeholder="Treatment Name (e.g. UTC, T1, T2)"
-                                    value={t.name}
-                                    onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
-                                    className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
-                                  />
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`w-3 h-3 rounded-full border shrink-0 ${getTreatmentColor(t.name || 'Unnamed')}`} />
+                                    <input
+                                      required
+                                      type="text"
+                                      placeholder="Treatment Name (e.g. UTC, T1, T2)"
+                                      value={t.name}
+                                      onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
+                                      className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
+                                    />
+                                  </div>
                                 </td>
                                 <td className="p-2">
                                   <select
@@ -4588,7 +4662,6 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   <option value="Horizontal Rows">Horizontal Rows (Default)</option>
                   <option value="Vertical Columns">Vertical Columns</option>
                 </select>
-                {renderStripeDirectionPreview()}
               </div>
             )}
             {randomizeForm.potLayout === 'rcbd-pot' && (
@@ -4609,13 +4682,18 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 )}
               </div>
             )}
+            <div className="md:col-span-3">
+              {renderLayoutPreview()}
+            </div>
             <div>
               <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Observation Mode</label>
               <select
                 value={randomizeForm.potLayout === 'rcbd-pot' ? 'plant-wise' : randomizeForm.potObsMode}
-                disabled={randomizeForm.potLayout === 'rcbd-pot'}
                 onChange={e => {
                   const mode = e.target.value;
+                  if (randomizeForm.potLayout === 'rcbd-pot' && mode === 'row-wise') {
+                    return;
+                  }
                   setRandomizeForm(p => ({ 
                     ...p, 
                     potObsMode: mode,
@@ -4627,6 +4705,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <option value="row-wise">Row-Wise Data Entry</option>
                 <option value="plant-wise">Plant-Wise Data Entry</option>
               </select>
+              {randomizeForm.potLayout === 'rcbd-pot' && (
+                <p className="text-[9px] text-emerald-600 mt-1 font-semibold">ℹ️ RCBD Pot Trial requires Plant-Wise observation mode.</p>
+              )}
             </div>
             <div>
               <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Experimental Unit (Locked)</label>
