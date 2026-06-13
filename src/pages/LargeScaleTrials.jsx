@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import QRCodeLib from 'qrcode';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
@@ -230,6 +230,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   const [viewMode, setViewMode] = useState('gis'); // 'gis' | 'spots'
   const [search, setSearch] = useState('');
+  // ⚡ Bolt: Defer search value to prevent blocking the main thread during typing on large datasets
+  const deferredSearch = useDeferredValue(search);
   const [filterResult, setFilterResult] = useState('');
   const [filterRole, setFilterRole] = useState(''); // 'all' | 'control' | 'standard'
   const [sortBy, setSortBy] = useState('date-desc');
@@ -261,8 +263,8 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   const filteredSubTrials = useMemo(() => {
     let result = [...subTrials];
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       result = result.filter(st =>
         (st.FormulationName || '').toLowerCase().includes(q) ||
         (st.InvestigatorName || '').toLowerCase().includes(q) ||
@@ -292,7 +294,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
     });
 
     return result;
-  }, [subTrials, search, filterResult, filterRole, sortBy]);
+  }, [subTrials, deferredSearch, filterResult, filterRole, sortBy]);
 
   // Active sub-trial details
   const activeSubTrial = useMemo(() => {

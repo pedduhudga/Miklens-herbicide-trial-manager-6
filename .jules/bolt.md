@@ -4,3 +4,6 @@
 ## 2024-06-12 - Optimizing Trials List Search Performance
 **Learning:** Similar to the global search page, applying `useDeferredValue` to text inputs that filter large datasets prevents main thread blockage and ensures smooth user typing experience.
 **Action:** Used `useDeferredValue` on the `search` input in `Trials.jsx`.
+## 2024-06-13 - Optimizing Large Scale Trials Search Performance
+**Learning:** In list views processing a large number of items on the client-side (such as `LargeScaleTrials.jsx`), synchronous filtering attached to text inputs can degrade user experience by blocking the main thread during typing.
+**Action:** Used `useDeferredValue` for the search input in `LargeScaleTrials.jsx` to defer the heavy filtering computation, allowing the input to remain highly responsive.
