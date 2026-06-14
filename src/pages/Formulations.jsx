@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
@@ -7,11 +7,24 @@ import { safeJsonParse } from '../utils/helpers.js';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { Plus, X } from 'lucide-react';
 
+// Helper to get a comparable timestamp from various date formats
+const getTimestamp = (dateValue) => {
+  if (!dateValue) return 0;
+  // Firestore Timestamp object { seconds, nanoseconds }
+  if (typeof dateValue === 'object' && dateValue.seconds) {
+    return dateValue.seconds * 1000;
+  }
+  // ISO string or numeric string (Date.now().toString())
+  const parsed = new Date(dateValue).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 export default function Formulations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   // Form State
   const [name, setName] = useState('');
@@ -176,29 +189,19 @@ export default function Formulations({ onMenuClick }) {
     }
   };
 
-  // Helper to get a comparable timestamp from various date formats
-  const getTimestamp = (dateValue) => {
-    if (!dateValue) return 0;
-    // Firestore Timestamp object { seconds, nanoseconds }
-    if (typeof dateValue === 'object' && dateValue.seconds) {
-      return dateValue.seconds * 1000;
-    }
-    // ISO string or numeric string (Date.now().toString())
-    const parsed = new Date(dateValue).getTime();
-    return isNaN(parsed) ? 0 : parsed;
-  };
-
   const activeCategory = state.activeCategory || 'herbicide';
 
-  const sortedFormulations = [...(state.formulations || [])]
-    .filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'))
-    .filter(f => !searchTerm || f.Name.toLowerCase().includes(searchTerm.toLowerCase()))
-    // ✅ Newest first — highest timestamp at index 0
-    .sort((a, b) => {
-      const aTs = getTimestamp(a.CreatedAt || a._createdAt);
-      const bTs = getTimestamp(b.CreatedAt || b._createdAt);
-      return bTs - aTs; // descending: newest on top
-    });
+  const sortedFormulations = useMemo(() => {
+    return [...(state.formulations || [])]
+      .filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'))
+      .filter(f => !deferredSearchTerm || f.Name.toLowerCase().includes(deferredSearchTerm.toLowerCase()))
+      // ✅ Newest first — highest timestamp at index 0
+      .sort((a, b) => {
+        const aTs = getTimestamp(a.CreatedAt || a._createdAt);
+        const bTs = getTimestamp(b.CreatedAt || b._createdAt);
+        return bTs - aTs; // descending: newest on top
+      });
+  }, [state.formulations, activeCategory, deferredSearchTerm]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
