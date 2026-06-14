@@ -219,7 +219,8 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
 
           <button
             onClick={onClose}
-            className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white hover:bg-black/60 transition"
+            aria-label="Close camera"
+            className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white hover:bg-black/60 transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
           >
             <X className="w-5 h-5" />
           </button>
@@ -253,7 +254,8 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
              {flashSupported && (
                <button
                   onClick={toggleFlash}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${flashOn ? 'bg-yellow-400 text-yellow-900' : 'bg-black/40 text-white backdrop-blur-md'}`}
+                  aria-label="Toggle flash"
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${flashOn ? 'bg-yellow-400 text-yellow-900' : 'bg-black/40 text-white backdrop-blur-md'}`}
                >
                  <Zap className="w-6 h-6" />
                </button>
@@ -262,7 +264,8 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
 
           <button
             onClick={handleCapture}
-            className="w-[72px] h-[72px] rounded-full bg-white border-4 border-white/30 flex items-center justify-center active:scale-90 transition-transform shadow-xl hover:bg-slate-100"
+            aria-label="Capture photo"
+            className="w-[72px] h-[72px] rounded-full bg-white border-4 border-white/30 flex items-center justify-center active:scale-90 transition-transform shadow-xl hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
           >
             <div className="w-[58px] h-[58px] rounded-full border-2 border-black bg-white active:bg-slate-200 transition-colors"></div>
           </button>
