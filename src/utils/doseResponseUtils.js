@@ -139,11 +139,14 @@ export function fitDoseResponse(data) {
   const isIncreasing = responses[responses.length - 1] > responses[0];
   const initialSlope = isIncreasing ? -2.0 : 2.0;
 
+  // Robustly expand initial search coordinates (starts grid) to prevent local minima traps
   const starts = [
     [initialSlope, dMin, dMax, midDose],
     [initialSlope, 0, 100, midDose],
     [initialSlope * 1.5, dMin, dMax, midDose * 0.5],
     [initialSlope * 0.5, dMin, dMax, midDose * 2],
+    [initialSlope * 2.0, dMin * 0.5, dMax * 1.1, midDose * 1.5],
+    [initialSlope * -0.5, 0, 100, midDose * 0.2]
   ];
 
   let best = null;
