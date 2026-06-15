@@ -4653,7 +4653,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <option value="rcbd-pot">RCBD Pot Trial (Stripe Columns by Block)</option>
               </select>
             </div>
-            {randomizeForm.potLayout === 'stripe' && (
+            {(randomizeForm.potLayout === 'stripe' || randomizeForm.potLayout === 'randomized-row' || randomizeForm.potLayout === 'rcbd-pot') && (
               <div>
                 <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Stripe Direction</label>
                 <select
@@ -4661,7 +4661,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                   onChange={e => setRandomizeForm(p => ({ ...p, potStripeDirection: e.target.value }))}
                   className={INPUT}
                 >
-                  <option value="Horizontal Rows">Horizontal Rows (Default)</option>
+                  <option value="Horizontal Rows">Horizontal Rows</option>
                   <option value="Vertical Columns">Vertical Columns</option>
                 </select>
               </div>
