@@ -19,6 +19,7 @@ import { formatDate, formatDateTime, toDatetimeLocal } from '../utils/dateUtils.
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
 import { Info } from 'lucide-react';
+import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 export function getThemeClasses(accentColor = 'emerald') {
@@ -2581,6 +2582,23 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     toast('Scientific report view loaded');
   };
 
+  const handleExportAdvancedExcel = async () => {
+    if (!activeProject || !projectTrials || !projectTrials.length) {
+      toast('No sub-trials/plots found in this project to export.', 'error');
+      return;
+    }
+    const projectCategory = activeProject?.Category || activeCategory;
+    toast('Generating Project-wide Advanced Excel Report...', 'info');
+    try {
+      const generator = new AdvancedReportGenerator(projectTrials, projectCategory);
+      await generator.generateCompleteReport();
+      toast('Project report generated successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      toast(`Failed to generate project report: ${err.message}`, 'error');
+    }
+  };
+
   // ── Regulatory DOCX Export ────────────────────────────────────────────────
   const handleRegulatoryDOCX = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
@@ -3771,6 +3789,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </button>
                     <button onClick={handleRegulatoryPDF} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
                       <Printer className="w-4 h-4" /> Regulatory Report (PDF)
+                    </button>
+                    <button onClick={handleExportAdvancedExcel} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition">
+                      <FileText className="w-4 h-4" /> Export Advanced Excel (11-Sheet)
                     </button>
                     <button onClick={handleRegulatoryDOCX} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50 transition">
                       <FileText className="w-4 h-4" /> Export DOCX
