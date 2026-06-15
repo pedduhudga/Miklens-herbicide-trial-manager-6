@@ -2814,14 +2814,19 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   };
 
   const handleExportAdvancedExcel = async () => {
-    if (!activeProject || !projectTrials || !projectTrials.length) {
+    if (!activeProject) {
+      toast('No active project selected.', 'error');
+      return;
+    }
+    const pTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
+    if (!pTrials.length) {
       toast('No sub-trials/plots found in this project to export.', 'error');
       return;
     }
     const projectCategory = activeProject?.Category || activeCategory;
     toast('Generating Project-wide Advanced Excel Report...', 'info');
     try {
-      const generator = new AdvancedReportGenerator(projectTrials, projectCategory);
+      const generator = new AdvancedReportGenerator(pTrials, projectCategory);
       await generator.generateCompleteReport();
       toast('Project report generated successfully!', 'success');
     } catch (err) {
