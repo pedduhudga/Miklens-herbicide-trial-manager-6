@@ -643,7 +643,13 @@ export async function generateComprehensivePdf(trial, options = {}) {
       startY: y,
       head: [timelineData.headers],
       body: timelineData.rows,
-      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
+      headStyles: { fillColor: primaryColor },
+      theme: 'striped',
+      styles: {
+        fontSize: Math.max(5.5, Math.min(8, 9 - timelineData.headers.length * 0.4)),
+        overflow: 'linebreak',
+        cellPadding: 1.5
+      }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 12;
   }
@@ -819,7 +825,13 @@ export async function generateScientificReport(trial, options = {}) {
       startY: y,
       head: [timelineData.headers],
       body: timelineData.rows,
-      headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
+      headStyles: { fillColor: primaryColor },
+      theme: 'striped',
+      styles: {
+        fontSize: Math.max(5.5, Math.min(8, 9 - timelineData.headers.length * 0.4)),
+        overflow: 'linebreak',
+        cellPadding: 1.5
+      }
     });
     y = (doc.lastAutoTable?.finalY ?? y) + 12;
   }
@@ -1771,7 +1783,13 @@ export async function generateMasterComprehensivePdf(project, subTrials, options
         startY: y,
         head: [timelineData.headers],
         body: timelineData.rows,
-        headStyles: { fillColor: primaryColor }, theme: 'striped', styles: { fontSize: 8 }
+        headStyles: { fillColor: primaryColor },
+        theme: 'striped',
+        styles: {
+          fontSize: Math.max(5.5, Math.min(8, 9 - timelineData.headers.length * 0.4)),
+          overflow: 'linebreak',
+          cellPadding: 1.5
+        }
       });
       y = (doc.lastAutoTable?.finalY ?? y) + 8;
     }
@@ -1885,7 +1903,13 @@ export async function generateMasterScientificReport(project, subTrials, options
         startY: y,
         head: [timelineData.headers],
         body: timelineData.rows,
-        headStyles: { fillColor: DARK }, theme: 'striped', styles: { fontSize: 8 }
+        headStyles: { fillColor: DARK },
+        theme: 'striped',
+        styles: {
+          fontSize: Math.max(5.5, Math.min(8, 9 - timelineData.headers.length * 0.4)),
+          overflow: 'linebreak',
+          cellPadding: 1.5
+        }
       });
       y = (doc.lastAutoTable?.finalY ?? y) + 8;
     }

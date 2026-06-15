@@ -5164,27 +5164,27 @@ If none are present, write "None".`;
                   {/* ── PDF REPORTS ── */}
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1">PDF Reports</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => handleExportPdf(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportPdf(detailTrial))} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-red-600 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">PDF (Ingredients)</p><p className="text-[10px] text-slate-500">With formulation ingredients</p></div>
                     </button>
-                    <button onClick={() => handleExportPdfNoIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportPdfNoIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-red-500 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">PDF (No Ing.)</p><p className="text-[10px] text-slate-500">Without ingredients list</p></div>
                     </button>
-                    <button onClick={() => handleExportPdfWeedsIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportPdfWeedsIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-rose-600 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">{activeCategory === 'herbicide' ? 'PDF (Weeds + Ing.)' : `PDF (${catConfig.targetLabel}s + Ing.)`}</p><p className="text-[10px] text-slate-500">{activeCategory === 'herbicide' ? 'Weed ID + ingredients' : `${catConfig.targetLabel} ID + ingredients`}</p></div>
                     </button>
-                    <button onClick={() => handleExportPdfWeeds(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportPdfWeeds(detailTrial))} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-rose-500 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">{activeCategory === 'herbicide' ? 'PDF (Weeds)' : `PDF (${catConfig.targetLabel}s)`}</p><p className="text-[10px] text-slate-500">{activeCategory === 'herbicide' ? 'Weed ID section only' : `${catConfig.targetLabel} ID section only`}</p></div>
                     </button>
-                    <button onClick={() => handleExportFullNoIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportFullNoIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-red-700 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">Full Report (No Ing.)</p><p className="text-[10px] text-slate-500">Full + timeline, no ingredients</p></div>
                     </button>
-                    <button onClick={() => handleExportFullIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportFullIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 text-left transition">
                       <FileDown className="w-4 h-4 text-red-800 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">Full Report (w/ Ing.)</p><p className="text-[10px] text-slate-500">Full + timeline + ingredients</p></div>
                     </button>
@@ -5193,11 +5193,11 @@ If none are present, write "None".`;
                   {/* ── SCIENTIFIC PDF ── */}
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1">Scientific PDF</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => handleExportSciPdf(detailTrial)} className="flex items-center gap-2 p-2.5 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportSciPdf(detailTrial))} className="flex items-center gap-2 p-2.5 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 text-left transition">
                       <ScanLine className="w-4 h-4 text-indigo-600 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">Scientific Report (No Ing.)</p><p className="text-[10px] text-slate-500">AI narrative, ANOVA, WCE</p></div>
                     </button>
-                    <button onClick={() => handleExportSciPdfIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportSciPdfIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 text-left transition">
                       <ScanLine className="w-4 h-4 text-indigo-700 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">Scientific Report (w/ Ing.)</p><p className="text-[10px] text-slate-500">AI + ANOVA + ingredients</p></div>
                     </button>
@@ -5206,11 +5206,11 @@ If none are present, write "None".`;
                   {/* ── WORD DOC ── */}
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1">Word Document (.docx)</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => handleExportDocNoIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-sky-50 hover:bg-sky-100 rounded-xl border border-sky-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportDocNoIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-sky-50 hover:bg-sky-100 rounded-xl border border-sky-200 text-left transition">
                       <FileText className="w-4 h-4 text-sky-600 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">DOC (No Ing.)</p><p className="text-[10px] text-slate-500">Word doc, no ingredients</p></div>
                     </button>
-                    <button onClick={() => handleExportDocIng(detailTrial)} className="flex items-center gap-2 p-2.5 bg-sky-50 hover:bg-sky-100 rounded-xl border border-sky-200 text-left transition">
+                    <button onClick={() => triggerExportWithCustomisation(() => handleExportDocIng(detailTrial))} className="flex items-center gap-2 p-2.5 bg-sky-50 hover:bg-sky-100 rounded-xl border border-sky-200 text-left transition">
                       <FileText className="w-4 h-4 text-sky-700 shrink-0" />
                       <div><p className="text-xs font-semibold text-slate-800">DOC (w/ Ing.)</p><p className="text-[10px] text-slate-500">Word doc with ingredients</p></div>
                     </button>
@@ -5220,7 +5220,7 @@ If none are present, write "None".`;
                   {activeCategory !== 'herbicide' && (
                     <div className="mb-3">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1 mb-2">Advanced Reports</p>
-                      <button onClick={() => handleExportAdvancedExcel(detailTrial)} className="w-full flex items-center gap-2 p-2.5 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 text-left transition">
+                      <button onClick={() => triggerExportWithCustomisation(() => handleExportAdvancedExcel(detailTrial))} className="w-full flex items-center gap-2 p-2.5 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 text-left transition">
                         <FileSpreadsheet className="w-4 h-4 text-amber-600 shrink-0" />
                         <div><p className="text-xs font-semibold text-slate-800 font-bold">Export Advanced Excel (11-Sheet)</p><p className="text-[10px] text-slate-500">TOK2322C standard workbook with formulas, ANOVA, charts, weather, photos</p></div>
                       </button>
@@ -5229,7 +5229,7 @@ If none are present, write "None".`;
 
                   {/* ── PRESENTATION ── */}
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-1">Presentation</p>
-                  <button onClick={() => handleExportPpt(detailTrial)} className="w-full flex items-center gap-2 p-2.5 bg-orange-50 hover:bg-orange-100 rounded-xl border border-orange-200 text-left transition">
+                  <button onClick={() => triggerExportWithCustomisation(() => handleExportPpt(detailTrial))} className="w-full flex items-center gap-2 p-2.5 bg-orange-50 hover:bg-orange-100 rounded-xl border border-orange-200 text-left transition">
                     <MonitorPlay className="w-4 h-4 text-orange-600 shrink-0" />
                     <div><p className="text-xs font-semibold text-slate-800">Export PPT (.pptx)</p><p className="text-[10px] text-slate-500">Slide deck: title, details, WCE table, timeline, photos, conclusion</p></div>
                   </button>

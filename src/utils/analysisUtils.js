@@ -656,6 +656,11 @@ export class AnalysisEngine {
                             const eff = safeJsonParse(r.EfficacyDataJSON, []);
                             if (eff.length === 0) return 0;
 
+                            const obs = daa !== null
+                                ? (eff.find(e => Number(e.daa) === Number(daa)) || eff[eff.length - 1])
+                                : eff.slice().sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
+                            if (!obs) return 0;
+
                             // Advanced scientific metrics
                             if (metric === 'audpc') {
                                 // Calculate AUDPC for disease severity over time
@@ -672,8 +677,6 @@ export class AnalysisEngine {
                             }
 
                             if (metric === 'rootToShootRatio') {
-                                let obs = daa !== null ? (eff.find(e => e.daa === daa) || eff[eff.length - 1]) : eff.sort((a, b) => b.daa - a.daa)[0];
-                                if (!obs) return 0;
                                 const root = parseFloat(obs.rootBiomass ?? 0);
                                 const shoot = parseFloat(obs.shootBiomass ?? 0);
                                 return shoot > 0 ? root / shoot : 0;

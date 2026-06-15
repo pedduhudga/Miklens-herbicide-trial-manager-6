@@ -2,6 +2,7 @@ import React, { memo, useMemo, useCallback, useState } from 'react';
 import { Calendar, MapPin, FlaskConical, Activity, Image as ImageIcon, ChevronLeft, ChevronRight, Edit, MoreVertical, Eye, Copy, FolderOpen, FileDown, ScanLine, MonitorPlay, Archive, FileCode, FileSpreadsheet, Share2, BrainCircuit, Trash2, Camera, CheckCircle, Clock, Pencil } from 'lucide-react';
 import { safeJsonParse } from '../utils/helpers.js';
 import { formatDateTime } from '../utils/dateUtils.js';
+import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
 
 const RESULT_COLORS = {
   'Excellent': 'bg-emerald-100 text-emerald-700',
@@ -101,6 +102,45 @@ const TrialCard = memo(function TrialCard({
     const end = isCompleted && trial.FinalizationDate ? new Date(trial.FinalizationDate) : new Date();
     return Math.max(0, Math.round((end - start) / 86400000));
   }, [trial.Date, trial.FinalControlDuration, trial.FinalizationDate, isCompleted]);
+
+  const categoryId = project?.Category || trial?.Category || 'herbicide';
+
+  const latestObs = useMemo(() => {
+    if (!efficacyData || efficacyData.length === 0) return null;
+    return efficacyData.slice().sort((a, b) => (parseFloat(b.daa) || 0) - (parseFloat(a.daa) || 0))[0];
+  }, [efficacyData]);
+
+  const latestObsDetails = useMemo(() => {
+    if (!latestObs) return null;
+    const config = getCategoryConfig(categoryId);
+    const primaryField = getPrimaryObservationField(categoryId);
+    const primaryVal = latestObs[primaryField] ?? latestObs.weedCover;
+
+    const parts = [];
+    if (primaryVal !== undefined && primaryVal !== null) {
+      parts.push({
+        label: config.primaryMetric?.label || 'Efficacy',
+        value: `${primaryVal}${config.primaryMetric?.unit || ''}`
+      });
+    }
+
+    let count = 0;
+    (config.observationFields || []).forEach(f => {
+      if (f.key !== primaryField && f.key !== 'weedDetails' && count < 2) {
+        const val = latestObs[f.key];
+        if (val !== undefined && val !== null && val !== '') {
+          parts.push({ label: f.label, value: val });
+          count++;
+        }
+      }
+    });
+
+    return {
+      daa: latestObs.daa,
+      date: latestObs.date,
+      parts
+    };
+  }, [latestObs, categoryId]);
 
   const handleCardClick = useCallback(() => {
     onToggleBulk(trial.ID);
@@ -425,6 +465,25 @@ const TrialCard = memo(function TrialCard({
             </div>
           )}
         </div>
+
+        {latestObsDetails && (
+          <div className="mt-2.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-100 dark:border-slate-800" onClick={stopPropagation}>
+            <div className="flex items-center justify-between mb-1 border-b border-slate-200/50 pb-0.5">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Latest Obs</span>
+              <span className="text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-1 py-0.2 rounded border border-emerald-100 dark:border-emerald-900">
+                DAA {latestObsDetails.daa}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+              {latestObsDetails.parts.map((p, idx) => (
+                <div key={idx} className="flex flex-col">
+                  <span className="text-slate-400 text-[8px] uppercase truncate" title={p.label}>{p.label}</span>
+                  <span className="text-slate-700 dark:text-slate-200 font-bold truncate" title={String(p.value)}>{String(p.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Quick Rating */}
         <div className="mt-2 flex items-center gap-1" onClick={stopPropagation}>

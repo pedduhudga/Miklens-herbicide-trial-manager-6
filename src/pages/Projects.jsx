@@ -4283,7 +4283,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <button onClick={() => triggerExportWithCustomisation(handleExportBundle)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition">
                       <Package className="w-4 h-4" /> Export Analysis Bundle
                     </button>
-                    <button onClick={handleScientificReport} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleScientificReport)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 transition">
                       <FileText className="w-4 h-4" /> Scientific Report
                     </button>
                     <button onClick={() => setViewMode('split-viewer')} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-amber-700 hover:bg-amber-50 transition">
