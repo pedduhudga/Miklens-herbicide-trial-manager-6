@@ -3293,6 +3293,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
 
             </div>
           </div>
+          {renderModals()}
         </div>
       );
     }
@@ -3585,6 +3586,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               </div>
             </div>
           </div>
+          {renderModals()}
         </div>
       );
     }
@@ -4336,296 +4338,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             </div>
           </div>
         </div>
-
-        {/* ── Randomize Layout Modal ── */}
-        <TrialDesignGuideModal isOpen={isDesignGuideOpen} onClose={() => setIsDesignGuideOpen(false)} />
-        <Modal isOpen={isRandomizeModalOpen} onClose={() => setIsRandomizeModalOpen(false)} title="Randomize & Generate Layout" maxWidth="max-w-4xl">
-          <form onSubmit={applyRandomization} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-            <div className={`${theme.bgLight} border ${theme.borderLight} rounded-lg p-3`}>
-              <p className={`text-xs font-bold ${theme.text} uppercase`}>Target Project</p>
-              <p className={`text-base font-bold text-${projectConfig.color.primary.split('-')[0]}-900`}>{activeProject?.Name}</p>
-            </div>
-            <p className="text-xs text-slate-500">Configure treatment rows to distribute across all blocks. You can map multiple rows to the same active formulation (e.g. testing different rates) and leave the formulation blank for untreated control treatments.</p>
-            
-            {/* Tabular Treatments Setup */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <label className="block text-sm font-semibold text-slate-700">Treatments Setup</label>
-                <button
-                  type="button"
-                  onClick={addTreatmentRow}
-                  className={`flex items-center gap-1.5 text-xs ${theme.bg} text-white px-3 py-1.5 rounded-lg font-bold transition`}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add Treatment Row
-                </button>
-              </div>
-              
-              <div className="overflow-x-auto border rounded-xl bg-slate-50">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
-                    <tr>
-                      <th className="p-3">Treatment Name *</th>
-                      <th className="p-3">Active Formulation</th>
-                      <th className="p-3">Dosage / Rate</th>
-                      <th className="p-3">Role</th>
-                      <th className="p-3 text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
-                    {randomizeTreatments.map((t) => (
-                      <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-2">
-                          <input
-                            required
-                            type="text"
-                            placeholder="Treatment Name (e.g. UTC, T1, T2)"
-                            value={t.name}
-                            onChange={e => updateTreatmentRow(t.id, 'name', e.target.value)}
-                            className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <select
-                            value={t.formulationId}
-                            onChange={e => updateTreatmentRow(t.id, 'formulationId', e.target.value)}
-                            className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
-                          >
-                            <option value="">None (Untreated Control)</option>
-                            {activeFormulations.map(f => (
-                              <option key={f.ID} value={f.ID}>{f.Name}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="text"
-                            placeholder="e.g. 100 mL/ha"
-                            value={t.dosage}
-                            onChange={e => updateTreatmentRow(t.id, 'dosage', e.target.value)}
-                            className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <select
-                            value={t.role}
-                            onChange={e => updateTreatmentRow(t.id, 'role', e.target.value)}
-                            className={`w-full px-2 py-1.5 border rounded-lg focus:outline-none focus:ring-1 ${theme.ringFocus} bg-white`}
-                          >
-                            <option value="experimental">Experimental</option>
-                            <option value="standard">Standard Check</option>
-                            <option value="control">Untreated Control</option>
-                          </select>
-                        </td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => deleteTreatmentRow(t.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                            title="Delete row"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {randomizeTreatments.length === 0 && (
-                      <tr>
-                        <td colSpan="5" className="text-center py-6 text-slate-400 italic bg-white animate-pulse">
-                          No treatments added yet. Click "+ Add Treatment Row" to begin.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-800">
-              <strong>Warning:</strong> Generating a new randomized layout will replace any existing plots/trials for this project.
-            </div>
-            <div className="pt-4 flex justify-end gap-3 border-t">
-              <button type="button" onClick={() => setIsRandomizeModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
-              <button type="submit" className={`${theme.bg} text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2`}>
-                <Shuffle className="w-4 h-4" /> Generate & Randomize
-              </button>
-            </div>
-          </form>
-        </Modal>
-
-        {/* ── Protocol Settings Modal ── */}
-        <Modal isOpen={isProtocolModalOpen} onClose={() => setIsProtocolModalOpen(false)} title="Protocol Settings">
-          <form onSubmit={(e) => { e.preventDefault(); saveProtocolSettings(); }} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Project Name *</label>
-                <input required value={protocolForm.Name} onChange={e => setProtocolForm(v => ({ ...v, Name: e.target.value }))} className={INPUT} placeholder="e.g., Study Name" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Investigator</label>
-                <input value={protocolForm.Investigator} onChange={e => setProtocolForm(v => ({ ...v, Investigator: e.target.value }))} className={INPUT} placeholder="Lead researcher" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-semibold text-slate-700">Location</label>
-                  <button
-                    type="button"
-                    onClick={handleAutofetchLocationAndWeatherForProtocol}
-                    disabled={isFetchingGeoProtocol}
-                    className={`text-xs ${theme.text} hover:${theme.textDark} font-medium flex items-center gap-1 disabled:opacity-50`}
-                  >
-                    {isFetchingGeoProtocol ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
-                      </>
-                    ) : (
-                      <>
-                        <MapPin className="w-3 h-3" /> Auto-fetch
-                      </>
-                    )}
-                  </button>
-                </div>
-                <input value={protocolForm.Location} onChange={e => setProtocolForm(v => ({ ...v, Location: e.target.value }))} className={INPUT} placeholder="e.g., North Field" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Target {projectConfig.targetLabel}</label>
-                <input value={protocolForm.TargetWeed} onChange={e => setProtocolForm(v => ({ ...v, TargetWeed: e.target.value }))} className={INPUT} placeholder={`e.g. Target ${projectConfig.targetLabel}`} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Crop</label>
-                <input value={protocolForm.Crop} onChange={e => setProtocolForm(v => ({ ...v, Crop: e.target.value }))} className={INPUT} placeholder="e.g., Rice (Oryza sativa)" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Primary Metric</label>
-              <select value={protocolForm.Metric} onChange={e => setProtocolForm(v => ({ ...v, Metric: e.target.value }))} className={INPUT}>
-                {projectCategory === 'herbicide' && (
-                  <>
-                    <option value="Weed Control Efficiency">Weed Control Efficiency (%)</option>
-                    <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
-                    <option value="Yield">Yield (kg/ha)</option>
-                    <option value="Biomass Reduction">Biomass Reduction (%)</option>
-                  </>
-                )}
-                {projectCategory === 'fungicide' && (
-                  <>
-                    <option value="Disease Control Efficiency">Disease Control Efficiency (%)</option>
-                    <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
-                    <option value="Yield">Yield (kg/ha)</option>
-                    <option value="Green Leaf Area">Green Leaf Area (%)</option>
-                  </>
-                )}
-                {projectCategory === 'pesticide' && (
-                  <>
-                    <option value="Pest Reduction Efficiency">Pest Reduction Efficiency (%)</option>
-                    <option value="Crop Injury">Crop Injury / Phytotoxicity (%)</option>
-                    <option value="Yield">Yield (kg/ha)</option>
-                    <option value="Damage Rating">Damage Rating (0-9)</option>
-                  </>
-                )}
-                {projectCategory === 'nutrition' && (
-                  <>
-                    <option value="Yield Improvement">Yield Improvement (%)</option>
-                    <option value="Chlorophyll Index">Chlorophyll Index (SPAD)</option>
-                    <option value="Biomass Weight">Biomass Weight (g/m²)</option>
-                    <option value="Plant Height">Plant Height (cm)</option>
-                  </>
-                )}
-                {projectCategory === 'biostimulant' && (
-                  <>
-                    <option value="Growth Enhancement Index">Growth Enhancement Index</option>
-                    <option value="Root Biomass">Root Biomass (g)</option>
-                    <option value="Shoot Biomass">Shoot Biomass (g)</option>
-                    <option value="Chlorophyll Index">Chlorophyll Index (SPAD)</option>
-                  </>
-                )}
-              </select>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Application Timing</label>
-                <select value={protocolForm.ApplicationTiming} onChange={e => setProtocolForm(v => ({ ...v, ApplicationTiming: e.target.value }))} className={INPUT}>
-                  <option value="">Select timing...</option>
-                  {projectConfig.applicationTimings?.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Spray Volume (L/ha)</label>
-                <input type="number" min="0" step="10" value={protocolForm.SprayVolume} onChange={e => setProtocolForm(v => ({ ...v, SprayVolume: e.target.value }))} className={INPUT} placeholder="e.g., 200" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Protocol Notes</label>
-              <textarea rows={4} value={protocolForm.Notes} onChange={e => setProtocolForm(v => ({ ...v, Notes: e.target.value }))} className={`${INPUT} resize-y`} placeholder="Additional protocol details, application methods, timing constraints..." />
-            </div>
-            <div className="pt-4 flex justify-end gap-3 border-t">
-              <button type="button" onClick={() => setIsProtocolModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancel</button>
-              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-                <Save className="w-4 h-4" /> Save Protocol Settings
-              </button>
-            </div>
-          </form>
-        </Modal>
-
-        {/* Plot Map Modal */}
-        {showMap && activeProject && (
-          <PlotMap 
-            projectId={activeProject.ID}
-            onClose={() => setShowMap(false)}
-          />
-        )}
-
-        {/* ── Customise Report Columns Modal ── */}
-        <Modal isOpen={customiseReportModalOpen} onClose={() => setCustomiseReportModalOpen(false)} title="Customise Report Columns">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-500">
-              Select the observation variables/columns you want to include in the generated report:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-1">
-              {(getCategoryConfig(activeProject?.Category || activeCategory).observationFields || []).map(f => (
-                <label key={f.key} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={reportFieldSelection[f.key] !== false}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setReportFieldSelection(prev => ({ ...prev, [f.key]: checked }));
-                    }}
-                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                  />
-                  <span className="text-sm font-medium text-slate-700">{f.label}</span>
-                </label>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-              <button
-                onClick={() => setCustomiseReportModalOpen(false)}
-                className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (pendingReportExport) {
-                    const projectCategory = activeProject?.Category || activeCategory;
-                    if (!window.activeReportFields) window.activeReportFields = {};
-                    window.activeReportFields[projectCategory] = reportFieldSelection;
-                    pendingReportExport();
-                  }
-                  setCustomiseReportModalOpen(false);
-                }}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition"
-              >
-                Generate Report
-              </button>
-            </div>
-          </div>
-        </Modal>
+        {renderModals()}
       </div>
     );
   }
@@ -4687,9 +4400,17 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             </div>
           )}
         </div>
+        {renderModals()}
       </div>
+    </div>
+  );
 
-      {/* ── Create Project Modal ── */}
+    function renderModals() {
+      const config = activeProject ? projectConfig : getCategoryConfig(activeCategory);
+      const theme = getThemeClasses(config.color?.accent || 'emerald');
+      return (
+        <>
+        {/* ── Create Project Modal ── */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New RCBD Project">
         <form onSubmit={handleSave} className="space-y-4">
           <div>
@@ -5495,6 +5216,7 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           </div>
         </div>
       </Modal>
-    </div>
-  );
+      </>
+    );
+  }
 }
