@@ -4257,49 +4257,49 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                   <h3 className="font-bold text-slate-800 mb-3 text-sm">Actions</h3>
                   <div className="space-y-1">
-                    <button onClick={() => runAnalysis(postHocMethod)}
+                    <button onClick={() => { console.log('Run Analysis clicked, postHocMethod:', postHocMethod); runAnalysis(postHocMethod); }}
                       className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${theme.textDark} hover:${theme.bgLight}`}>
                       <BarChart2 className="w-4 h-4 shrink-0" /> {isLocked ? 'Refresh Report' : 'Run Analysis'}
                     </button>
-                    <button onClick={handleRecalcDAA}
+                    <button onClick={(e) => { console.log('Recalc DAA clicked'); handleRecalcDAA(e); }}
                       className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-amber-700 hover:bg-amber-50">
                       <RefreshCw className="w-4 h-4 shrink-0" /> Recalculate DAA
                     </button>
-                    <button onClick={handleRandomizeLayout} disabled={isLocked}
+                    <button onClick={(e) => { console.log('Randomize Layout clicked, isLocked:', isLocked); handleRandomizeLayout(e); }} disabled={isLocked}
                       className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${theme.textDark} hover:${theme.bgLight} ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
                       <Shuffle className="w-4 h-4 shrink-0" /> Randomize Layout
                     </button>
-                    <button onClick={openProtocolSettings} disabled={isLocked}
+                    <button onClick={(e) => { console.log('Protocol Settings clicked, isLocked:', isLocked); openProtocolSettings(e); }} disabled={isLocked}
                       className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition text-blue-700 hover:bg-blue-50 ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
                       <ClipboardList className="w-4 h-4 shrink-0" /> Protocol Settings
                     </button>
                     <hr className="my-2 border-slate-100" />
-                    <button onClick={() => triggerExportWithCustomisation(handleExportR)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition">
+                    <button onClick={() => { console.log('Export to R clicked'); triggerExportWithCustomisation(handleExportR); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition">
                       <Download className="w-4 h-4" /> Export to R (CSV)
                     </button>
-                    <button onClick={() => triggerExportWithCustomisation(handleExportSAS)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-green-700 hover:bg-green-50 transition">
+                    <button onClick={() => { console.log('Export to SAS clicked'); triggerExportWithCustomisation(handleExportSAS); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-green-700 hover:bg-green-50 transition">
                       <Download className="w-4 h-4" /> Export to SAS
                     </button>
-                    <button onClick={() => triggerExportWithCustomisation(handleExportBundle)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition">
+                    <button onClick={() => { console.log('Export Analysis Bundle clicked'); triggerExportWithCustomisation(handleExportBundle); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition">
                       <Package className="w-4 h-4" /> Export Analysis Bundle
                     </button>
-                    <button onClick={() => triggerExportWithCustomisation(handleScientificReport)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 transition">
+                    <button onClick={() => { console.log('Scientific Report clicked'); triggerExportWithCustomisation(handleScientificReport); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 transition">
                       <FileText className="w-4 h-4" /> Scientific Report
                     </button>
-                    <button onClick={() => setViewMode('split-viewer')} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-amber-700 hover:bg-amber-50 transition">
+                    <button onClick={() => { console.log('Split-viewer clicked'); setViewMode('split-viewer'); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-amber-700 hover:bg-amber-50 transition">
                       <LayoutGrid className="w-4 h-4" /> Side-by-Side Plot Viewer
                     </button>
-                    <button onClick={() => triggerExportWithCustomisation(handleRegulatoryPDF)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
+                    <button onClick={() => { console.log('Regulatory Report PDF clicked'); triggerExportWithCustomisation(handleRegulatoryPDF); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
                       <Printer className="w-4 h-4" /> Regulatory Report (PDF)
                     </button>
-                    <button onClick={() => triggerExportWithCustomisation(handleExportAdvancedExcel)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition">
+                    <button onClick={() => { console.log('Export Advanced Excel clicked'); triggerExportWithCustomisation(handleExportAdvancedExcel); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition">
                       <FileText className="w-4 h-4" /> Export Advanced Excel (11-Sheet)
                     </button>
-                    <button onClick={() => triggerExportWithCustomisation(handleRegulatoryDOCX)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50 transition">
+                    <button onClick={() => { console.log('Export DOCX clicked'); triggerExportWithCustomisation(handleRegulatoryDOCX); }} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50 transition">
                       <FileText className="w-4 h-4" /> Export DOCX
                     </button>
                     <hr className="my-2 border-slate-100" />
-                    <button onClick={handleLockToggle}
+                    <button onClick={() => { console.log('Lock toggle clicked'); handleLockToggle(); }}
                       className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${isLocked ? 'text-amber-700 hover:bg-amber-50' : 'text-red-700 hover:bg-red-50'}`}>
                       {isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                       {isLocked ? 'Unlock Project' : 'Lock Project'}
