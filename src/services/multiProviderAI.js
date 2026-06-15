@@ -684,4 +684,86 @@ JSON ONLY. Do not write any conversational text or explanation. Only output the 
   throw lastError || new Error('All Gemini models failed to analyze bounding boxes');
 }
 
+export async function generateTextWithAI(prompt, systemInstruction = '', onProgress = null) {
+  let usage = loadUsage();
+  const delay = ms => new Promise(res => setTimeout(res, ms));
+
+  for (const provider of PROVIDERS) {
+    const keys = getAPIKeys(provider.id);
+    if (!keys.length) continue;
+
+    for (let ki = 0; ki < keys.length; ki++) {
+      if (!hasQuota(provider, ki, usage)) continue;
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          if (onProgress) onProgress(`Trying ${provider.name}${attempt > 1 ? ' (retry)' : ''}...`);
+          let responseText = '';
+          const apiKey = keys[ki];
+
+          if (provider.id.startsWith('gemini')) {
+            const body = {
+              contents: [{ parts: [{ text: prompt }] }]
+            };
+            if (systemInstruction) {
+              body.systemInstruction = { parts: [{ text: systemInstruction }] };
+            }
+            const resp = await fetch(`${provider.endpoint}?key=${apiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            });
+            if (!resp.ok) {
+              const err = await resp.text();
+              const e = new Error(`Gemini ${resp.status}: ${err.slice(0, 200)}`);
+              e.status = resp.status;
+              throw e;
+            }
+            const data = await resp.json();
+            responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          } else if (provider.id === 'groq' || provider.id === 'groq-maverick' || provider.id === 'pixtral') {
+            const messages = [];
+            if (systemInstruction) {
+              messages.push({ role: 'system', content: systemInstruction });
+            }
+            messages.push({ role: 'user', content: prompt });
+            const resp = await fetch(provider.endpoint, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: provider.model,
+                messages: messages,
+                temperature: 0.2
+              })
+            });
+            if (!resp.ok) {
+              const err = await resp.text();
+              const e = new Error(`${provider.name} ${resp.status}: ${err.slice(0, 200)}`);
+              e.status = resp.status;
+              throw e;
+            }
+            const data = await resp.json();
+            responseText = data.choices?.[0]?.message?.content || '';
+          }
+
+          if (responseText) {
+            usage = incrementUsage(provider, ki, usage);
+            return responseText;
+          }
+        } catch (err) {
+          console.warn(`[AI Text] ${provider.name} key ${ki + 1} attempt ${attempt} failed:`, err.message);
+          if (isNonRetryable(err)) break;
+          if (isQuotaError(err)) break;
+          if (attempt < 2) await delay(2000);
+        }
+      }
+    }
+  }
+
+  throw new Error('All AI text generation providers exhausted. Please verify your API keys in Settings.');
+}
+
 export { PROVIDERS, getAPIKeys };

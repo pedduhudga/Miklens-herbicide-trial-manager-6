@@ -23,7 +23,7 @@ import CameraCapture from '../components/CameraCapture.jsx';
 import CropperModal from '../components/CropperModal.jsx';
 import GridWeedCoverTool from '../components/GridWeedCoverTool.jsx';
 import PhotoAnalyzerView from '../components/PhotoAnalyzerView.jsx';
-import { analyzePhoto, analyzePhotosBatch, identifyWeedFromPhoto as identifyWeedFromPhotoService } from '../services/multiProviderAI.js';
+import { analyzePhoto, analyzePhotosBatch, identifyWeedFromPhoto as identifyWeedFromPhotoService, getAPIKeys, generateTextWithAI } from '../services/multiProviderAI.js';
 import TrialCard from '../components/TrialCard.jsx';
 import {
   generateComprehensivePdf,
@@ -752,30 +752,46 @@ export default function Trials({ onMenuClick }) {
 
       if (driveFileId) {
         // Drive URL — canvas pixel analysis is CORS-blocked, use Gemini fileUri only
-        if (!apiKey) {
+        const geminiKeys = getAPIKeys('gemini');
+        if (!geminiKeys.length) {
           window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings to analyse Drive photos', type: 'warning' } }));
           setDetectingCover(false);
           return null;
         }
         const fileUri = `https://drive.google.com/uc?export=download&id=${driveFileId}`;
-        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [
-            { text: promptText },
-            { fileData: { mimeType: 'image/jpeg', fileUri } }
-          ]}] })
-        });
-        const d = await resp.json();
-        const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const m2 = txt.match(/[\d.]+/);
-        if (m2) {
-          const cover = parseFloat(m2[0]);
-          const result = { cover, confidence: 85, source: 'AI (Gemini)', greenPct: null, brownPct: null };
-          setCoverDetectResult(result);
-          return result;
+        const models = ['gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash-latest'];
+        let successResult = null;
+        for (const model of models) {
+          for (const key of geminiKeys) {
+            try {
+              const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [
+                  { text: promptText },
+                  { fileData: { mimeType: 'image/jpeg', fileUri } }
+                ]}] })
+              });
+              if (!resp.ok) continue;
+              const d = await resp.json();
+              const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              const m2 = txt.match(/[\d.]+/);
+              if (m2) {
+                const cover = parseFloat(m2[0]);
+                successResult = { cover, confidence: 85, source: `AI (${model})`, greenPct: null, brownPct: null };
+                break;
+              }
+            } catch (err) {
+              console.warn(`Drive cover detection failed with ${model}:`, err.message);
+            }
+          }
+          if (successResult) break;
         }
-        throw new Error('Gemini did not return a valid numeric value');
+        if (successResult) {
+          setCoverDetectResult(successResult);
+          return successResult;
+        }
+        throw new Error('All Gemini models failed to return a valid numeric value from Drive file');
       }
 
       // Local data URL or regular remote URL — run pixel analysis first
@@ -787,28 +803,44 @@ export default function Trials({ onMenuClick }) {
       }
 
       const pixelResult = await analyzeWeedCoverFromPixels(dataUrl);
+      const geminiKeys = getAPIKeys('gemini');
 
-      if (apiKey) {
+      if (geminiKeys.length) {
         try {
           const mimeType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
           const base64 = dataUrl.split(',')[1];
           if (base64) {
-            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [
-                { text: promptText },
-                { inlineData: { mimeType, data: base64 } }
-              ]}] })
-            });
-            const d = await resp.json();
-            const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const m2 = txt.match(/[\d.]+/);
-            if (m2) {
-              const cover = parseFloat(m2[0]);
-              const result = { cover, confidence: 90, source: 'AI (Gemini)', greenPct: pixelResult.greenPct, brownPct: pixelResult.brownPct };
-              setCoverDetectResult(result);
-              return result;
+            const models = ['gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash-latest'];
+            let successResult = null;
+            for (const model of models) {
+              for (const key of geminiKeys) {
+                try {
+                  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [
+                      { text: promptText },
+                      { inlineData: { mimeType, data: base64 } }
+                    ]}] })
+                  });
+                  if (!resp.ok) continue;
+                  const d = await resp.json();
+                  const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                  const m2 = txt.match(/[\d.]+/);
+                  if (m2) {
+                    const cover = parseFloat(m2[0]);
+                    successResult = { cover, confidence: 90, source: `AI (${model})`, greenPct: pixelResult.greenPct, brownPct: pixelResult.brownPct };
+                    break;
+                  }
+                } catch (err) {
+                  console.warn(`Cover detection failed with ${model}:`, err.message);
+                }
+              }
+              if (successResult) break;
+            }
+            if (successResult) {
+              setCoverDetectResult(successResult);
+              return successResult;
             }
           }
         } catch(aiErr) {
@@ -2754,8 +2786,8 @@ export default function Trials({ onMenuClick }) {
   // ── AI SUMMARY GENERATOR ──────────────────────────────────────────
   const generateAiSummary = useCallback(async () => {
     if (!detailTrial) return;
-    const apiKey = state.settings?.apiKeys?.[0];
-    if (!apiKey) {
+    const geminiKeys = getAPIKeys('gemini');
+    if (!geminiKeys.length) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No Gemini API key configured in Settings', type: 'error' } }));
       return;
     }
@@ -2922,28 +2954,7 @@ Following this delimiter, perform:
 2. Factual recommendations, suggestions for future trials, and comments regarding further monitoring or evaluations.
 If none are present, write "None".`;
 
-      const model = 'gemini-2.5-flash';
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      let text = '';
-      if (!res.ok) {
-        // Fallback to gemini-2.5-flash-lite if primary fails
-        const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        });
-        const fallbackData = await fallbackRes.json();
-        text = fallbackData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (!text) throw new Error('Empty AI response from fallback model');
-      } else {
-        const data = await res.json();
-        text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (!text) throw new Error('Empty AI response');
-      }
+      const text = await generateTextWithAI(prompt, 'You are an agronomist generating professional trial report summaries.');
       
       let cleanNarrative = text;
       let anomalies = '';
@@ -3078,8 +3089,8 @@ If none are present, write "None".`;
   }, [activeCategory]);
 
   const handleAiSingleGenerate = useCallback(async (trial) => {
-    const apiKey = state.settings?.apiKeys?.[0];
-    if (!apiKey) { window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings first', type: 'error' } })); return; }
+    const geminiKeys = getAPIKeys('gemini');
+    if (!geminiKeys.length) { window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings first', type: 'error' } })); return; }
     const efficacy = validateEfficacyData(safeJsonParse(trial.EfficacyDataJSON, []));
     if (efficacy.length === 0) { window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No observations to analyze. Log observations first.', type: 'error' } })); return; }
     setAiGenRunning(true);
@@ -3098,9 +3109,7 @@ If none are present, write "None".`;
         return `DAA ${o.daa}: value=${val} [${details}]`;
       }).join('; ');
       const prompt = `You are an expert agricultural scientist. Write a concise scientific narrative (3-5 paragraphs) for this ${cConf.name} efficacy trial:\n\nFormulation: ${trial.FormulationName}\nDosage: ${trial.Dosage}\nTarget ${targetLabel}: ${targetValue}\nLocation: ${trial.Location}\nDate Applied: ${trial.Date}\nResult Rating: ${trial.Result}\nObservations: ${obsText}\nWeather: Temp ${trial.Temperature}°C, Humidity ${trial.Humidity}%, Wind ${trial.Windspeed} km/h\n\nAddress: initial ${cConf.observationFields?.[0]?.label || 'level'}, response trajectory, final efficacy (${primaryMetricLabel}), and recommendation.`;
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }] }) });
-      const d = await r.json();
-      const text = d.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+      const text = await generateTextWithAI(prompt, 'You are an agricultural researcher writing official trial narrative reports.');
       const summaries = { cover: text, generatedAt: new Date().toISOString() };
       const updated = { ...trial, AISummariesJSON: JSON.stringify(summaries) };
       updateState({ trials: trials.map(t => t.ID === updated.ID ? updated : t) });

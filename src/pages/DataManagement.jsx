@@ -6,7 +6,7 @@ import CloudBackup from '../components/CloudBackup.jsx';
 import { exportCSV, exportZIP, importCSV } from '../utils/exportUtils.js';
 import { updateTrial, updateProject, updateFormulation } from '../services/dataLayer.js'; // Adjust as needed
 import { calculateDAA } from '../utils/dateUtils.js';
-import { analyzePhoto } from '../services/multiProviderAI.js';
+import { analyzePhoto, generateTextWithAI, getAPIKeys } from '../services/multiProviderAI.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 
 
@@ -1078,10 +1078,8 @@ export default function DataManagement({ onMenuClick }) {
   };
 
   const processNextBatch = async (trials, startIndex) => {
-    const apiKeys = state.settings?.apiKeys || state.settings?.geminiApiKeys || [];
-    const keyIndex = state.settings?.currentApiKeyIndex || 0;
-    const geminiKey = state.settings?.geminiApiKey || (apiKeys[keyIndex]?.key || apiKeys[keyIndex] || apiKeys[0]?.key || apiKeys[0]);
-    if (!geminiKey) {
+    const keys = getAPIKeys('gemini');
+    if (!keys || !keys.length) {
       toast('No Gemini API key configured. Please add one in Settings.', 'error');
       cancelBulkAnalysis();
       return;
@@ -1156,26 +1154,7 @@ Observations: ${efficacyData.length} time points
 Provide a 2-sentence summary of expected efficacy based on typical performance patterns for this type of treatment.`;
 
           try {
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiKey}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: summaryPrompt }] }],
-                }),
-              }
-            );
-
-            if (!response.ok) {
-              if (response.status === 429) {
-                throw new Error('QUOTA_EXCEEDED');
-              }
-              throw new Error(`API error: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const summaryText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const summaryText = await generateTextWithAI(summaryPrompt, 'You are an agronomist generating professional trial report summaries.');
 
             // Update trial with AI data
             const updatedTrial = {

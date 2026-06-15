@@ -20,7 +20,7 @@ import {
   Eye, CheckCircle, ChevronRight, BarChart2, Edit, ArrowLeft, FileText, Download,
   TrendingUp, Leaf, SlidersHorizontal, BookOpen, Layers3, Activity, FolderPlus, Hash, Clock, Navigation, Lock, Unlock, Copy, Share2, MoreVertical, Image as ImageIcon
 } from 'lucide-react';
-import { getAPIKeys, analyzePhoto, identifyWeedFromPhoto as identifyWeedFromPhotoService } from '../services/multiProviderAI.js';
+import { getAPIKeys, analyzePhoto, identifyWeedFromPhoto as identifyWeedFromPhotoService, generateTextWithAI } from '../services/multiProviderAI.js';
 import { calculateDAA, toDatetimeLocal, formatDate, formatDateTime, formatPhotoDate } from '../utils/dateUtils.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { validateEfficacyData } from '../utils/analysisUtils.js';
@@ -778,28 +778,44 @@ export default function LargeScaleTrials({ onMenuClick }) {
         dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
       }
       const pixelResult = await analyzeWeedCoverFromPixels(dataUrl);
+      const geminiKeys = getAPIKeys('gemini');
 
-      if (apiKey) {
+      if (geminiKeys.length) {
         try {
           const mimeType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
           const base64 = dataUrl.split(',')[1];
           if (base64) {
-            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [
-                { text: config.aiPhotoPrompt },
-                { inlineData: { mimeType, data: base64 } }
-              ]}] })
-            });
-            const d = await resp.json();
-            const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const m2 = txt.match(/\d+/);
-            if (m2) {
-              const cover = Math.min(100, Math.max(0, parseInt(m2[0])));
-              const result = { cover, confidence: 90, source: 'AI (Gemini)', greenPct: pixelResult.greenPct, brownPct: pixelResult.brownPct };
-              setCoverDetectResult(result);
-              return result;
+            const models = ['gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash-latest'];
+            let successResult = null;
+            for (const model of models) {
+              for (const key of geminiKeys) {
+                try {
+                  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [
+                      { text: config.aiPhotoPrompt },
+                      { inlineData: { mimeType, data: base64 } }
+                    ]}] })
+                  });
+                  if (!resp.ok) continue;
+                  const d = await resp.json();
+                  const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                  const m2 = txt.match(/\d+/);
+                  if (m2) {
+                    const cover = Math.min(100, Math.max(0, parseInt(m2[0])));
+                    successResult = { cover, confidence: 90, source: `AI (${model})`, greenPct: pixelResult.greenPct, brownPct: pixelResult.brownPct };
+                    break;
+                  }
+                } catch (err) {
+                  console.warn(`Cover detection failed with ${model}:`, err.message);
+                }
+              }
+              if (successResult) break;
+            }
+            if (successResult) {
+              setCoverDetectResult(successResult);
+              return successResult;
             }
           }
         } catch(aiErr) {
@@ -1468,23 +1484,42 @@ export default function LargeScaleTrials({ onMenuClick }) {
       const targetLabel = config.targetLabel;
       const promptText = `${config.aiPhotoPrompt}\n\nOutput a JSON array only containing observations for each target detected. Each object in the array should have: 1) species (the name of the target/species detected), 2) cover (numeric value for severity/cover/count 0-100), 3) status (response description, e.g. Controlled, Symptomatic, Deficient, Healthy). Output format: [{"species":"Target Name","cover":20,"status":"Symptomatic"}]`;
       
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${keys[0]}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: promptText },
-              { inlineData: { mimeType, data: base64 } }
-            ]
-          }]
-        })
-      });
+      const models = ['gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash-latest'];
+      let successResultText = null;
+      let matchedModel = '';
+      for (const model of models) {
+        for (const key of keys) {
+          try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    { text: promptText },
+                    { inlineData: { mimeType, data: base64 } }
+                  ]
+                }]
+              })
+            });
+            if (!resp.ok) continue;
+            const d = await resp.json();
+            const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (txt.match(/\[.*\]/s)) {
+              successResultText = txt;
+              matchedModel = model;
+              break;
+            }
+          } catch (err) {
+            console.warn(`Vision model ${model} failed for weed list:`, err.message);
+          }
+        }
+        if (successResultText) break;
+      }
 
-      if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-      const d = await resp.json();
-      const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const match = txt.match(/\[.*\]/s);
+      if (!successResultText) throw new Error('All Gemini models failed to analyze image details');
+
+      const match = successResultText.match(/\[.*\]/s);
       if (match) {
         const weeds = JSON.parse(match[0]);
         const totalCover = weeds.reduce((acc, w) => acc + (w.cover || 0), 0);
@@ -1494,7 +1529,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
           [primaryObsField]: Math.min(100, totalCover),
           weedDetails: weeds
         }));
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI ${config.targetLabel} Analysis Successful!`, type: 'success' } }));
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI ${config.targetLabel} Analysis Successful (${matchedModel})!`, type: 'success' } }));
       } else {
         throw new Error('Failed to parse JSON response');
       }
@@ -1693,15 +1728,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
       const prompt = `You are an expert agricultural scientist evaluating a large-scale field study for the ${config.name} category. Please write a highly professional, comprehensive executive master summary (4-6 paragraphs) synthesizing study outcomes across all monitoring spots/sub-trials:\n\nProject Name: ${activeProject.Name}\nCrop: ${activeProject.Crop || 'N/A'}\nTarget ${config.targetLabel.toLowerCase()}s: ${activeProject.TargetWeed || 'N/A'}\nLocation: ${activeProject.Location || 'N/A'}\n\nSub-Trial Data:\n${subTrialText}\n\nDiscuss: \n1. Overall efficacy trajectory (measured as ${config.primaryMetric.label}).\n2. ${config.targetLabel}-specific outcomes (which targets were successfully controlled/suppressed).\n3. Spatial variability (differences across replicates/spots).\n4. Definitive scientific conclusion and recommendation for future applications.`;
 
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${keys[0]}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-
-      if (!resp.ok) throw new Error(`API returned ${resp.status}`);
-      const d = await resp.json();
-      const summaryText = d.candidates?.[0]?.content?.parts?.[0]?.text || 'Failed to synthesize narrative summary.';
+      const summaryText = await generateTextWithAI(prompt, `You are an expert agricultural scientist evaluating a large-scale field study for the ${config.name} category.`);
 
       // Save AI narrative summary to project document
       const updatedProject = {

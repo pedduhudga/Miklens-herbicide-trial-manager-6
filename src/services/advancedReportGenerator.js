@@ -7,7 +7,7 @@ import { saveAs } from 'file-saver';
 import Chart from 'chart.js/auto';
 import { jStat } from 'jstat';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
-import { getAPIKeys } from './multiProviderAI.js';
+import { getAPIKeys, generateTextWithAI } from './multiProviderAI.js';
 
 // Local helper for safe JSON parsing
 function safeJsonParse(val, fallback = []) {
@@ -30,13 +30,8 @@ function getColumnLetter(col) {
 // Helper to generate dynamic scientific narrative using Gemini AI
 async function generateNarrativeWithAI(trial, category, observations, anovaResults) {
   try {
-    const keys = getAPIKeys('gemini');
-    if (!keys || !keys.length) return null;
-    const apiKey = keys[0];
-
-    const obsSummary = observations.map(o => `DAA ${o.daa}: Trt ${o.treatmentNumber || o.treatment || 1} -> ` + 
-      Object.keys(o).filter(k => !['date', 'daa', 'treatment', 'treatmentNumber', 'rep', 'replication', 'plot', 'plotNumber', 'harvest', 'harvestNumber'].includes(k))
-      .map(k => `${k}=${o[k]}`).join(', ')
+    const obsSummary = (observations || []).map(
+      o => `DAA ${o.daa || 0}: ${o.weedCover || 0}% cover`
     ).slice(0, 15).join('; ');
 
     const prompt = `You are a professional agronomist. Write a concise, executive-level scientific narrative (2 paragraphs) summarizing the results of this trial.
@@ -46,14 +41,8 @@ ANOVA Results / Efficacy: ${JSON.stringify(anovaResults || {})}
 Observations summary: ${obsSummary}
 Do NOT use markdown headers or lists. Keep it strictly scientific, professional, and factual.`;
 
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-    if (!resp.ok) return null;
-    const d = await resp.json();
-    return d.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    const text = await generateTextWithAI(prompt, 'You are a professional agronomist.');
+    return text || null;
   } catch (e) {
     console.warn('Failed to generate AI narrative during export:', e);
     return null;
@@ -63,24 +52,14 @@ Do NOT use markdown headers or lists. Keep it strictly scientific, professional,
 // Helper to generate dynamic conclusions using Gemini AI
 async function generateConclusionsWithAI(trial, category, anovaResults) {
   try {
-    const keys = getAPIKeys('gemini');
-    if (!keys || !keys.length) return null;
-    const apiKey = keys[0];
-
     const prompt = `You are a senior agricultural scientist. Write a bulleted list of 3 scientific conclusions and practical grower recommendations based on this trial's statistical results.
 Trial: ${trial.FormulationName || 'Test treatment'}
 Category: ${category}
 ANOVA Results: ${JSON.stringify(anovaResults || {})}
 Keep it precise and factual. Do NOT include markdown styling or headers, just plain text with bullets.`;
 
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-    if (!resp.ok) return null;
-    const d = await resp.json();
-    return d.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    const text = await generateTextWithAI(prompt, 'You are a senior agricultural scientist.');
+    return text || null;
   } catch (e) {
     console.warn('Failed to generate AI conclusions during export:', e);
     return null;

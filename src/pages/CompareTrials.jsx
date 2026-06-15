@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Sparkles, Loader2, Activity, ArrowLeft, CheckCircle, X, Download, FileText, Table, LineChart, Cpu, DollarSign, Cloud, Compass } from 'lucide-react';
 import { exportComparisonCsv, exportComparisonHtml, exportComparisonPdf } from '../services/compareReports.js';
 import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
+import { generateTextWithAI } from '../services/multiProviderAI.js';
 
 const RESULT_BADGE = {
   Excellent: 'bg-emerald-100 text-emerald-700',
@@ -376,17 +377,7 @@ Use highly professional, academic, and scientific terminology. Here is the trial
 ${contextData}`;
 
     try {
-      const apiKeys = getAppState()?.settings?.apiKeys || [];
-      const key = apiKeys[0]?.key || apiKeys[0];
-      if (!key) { setAiSummary('No Gemini API key configured. Add one in Settings → AI Keys.'); return; }
-      const modelName = getAppState()?.settings?.selectedModel || 'gemini-3.5-flash';
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = await generateTextWithAI(prompt, 'You are an agricultural researcher writing official trial narrative reports.');
       setAiSummary(text || 'No response from AI.');
     } catch (e) {
       setAiSummary('Error contacting AI: ' + e.message);

@@ -20,6 +20,7 @@ import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from
 import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
 import { Info } from 'lucide-react';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
+import { generateTextWithAI } from '../services/multiProviderAI.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 export function getThemeClasses(accentColor = 'emerald') {
@@ -1764,9 +1765,6 @@ export default function Projects({ onMenuClick }) {
     if (!analysisResults) { toast('Run analysis first', 'error'); return; }
     setIsGeneratingNarrative(true);
     try {
-      const rawKey = state.settings?.geminiApiKeys?.[0] || state.settings?.geminiApiKey || (state.settings?.apiKeys || [])[0] || '';
-      const geminiKey = typeof rawKey === 'object' ? rawKey?.key : rawKey;
-      if (!geminiKey) throw new Error('No Gemini API key configured in Settings');
       const groupingText = (analysisResults.grouping || [])
         .map(g => `- ${g.name}: mean=${isFinite(g.mean) ? g.mean.toFixed(2) : 'N/A'} (Group ${g.grouping})`)
         .join('\n');
@@ -1778,14 +1776,7 @@ Post-hoc: ${postHocMethod === 'tukey' ? 'Tukey HSD' : "Fisher's LSD"} (alpha=0.0
 ANOVA P-Value: ${isFinite(analysisResults.anova?.pVal) ? analysisResults.anova.pVal.toFixed(5) : 'N/A'}
 Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      if (!text) throw new Error('No response from AI');
+      const text = await generateTextWithAI(prompt, 'Act as an Agronomist.');
       setNarrative(text);
     } catch (e) {
       toast('AI error: ' + e.message, 'error');
