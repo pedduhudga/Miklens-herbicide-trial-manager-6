@@ -101,6 +101,14 @@ export default function Trials({ onMenuClick }) {
   const [sortBy, setSortBy] = useState('date-desc');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedForBulk, setSelectedForBulk] = useState(new Set());
+  const [collapsedSections, setCollapsedSections] = useState({});
+
+  const toggleSection = useCallback((sectionId) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }));
+  }, []);
 
   // --- Add/Edit modal ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -381,7 +389,7 @@ export default function Trials({ onMenuClick }) {
     let list = [...trials];
     if (activeTab === 'standard') list = list.filter(t => !t.ProjectID);
     else if (activeTab === 'rcbd') list = list.filter(t => !!t.ProjectID);
-    else if (activeTab === 'control') list = list.filter(t => t.IsControl === true || t.IsControl === 'true');
+    else if (activeTab === 'control') list = list.filter(t => (t.IsControl === true || t.IsControl === 'true') && !t.ProjectID);
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
     if (deferredSearch) {
@@ -427,6 +435,22 @@ export default function Trials({ onMenuClick }) {
     });
     return list;
   }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd]);
+
+  const groupedRcbdTrials = useMemo(() => {
+    if (activeTab !== 'rcbd') return { groups: {}, orphaned: [] };
+    const groups = {};
+    const orphaned = [];
+    filteredTrials.forEach(t => {
+      const pid = t.ProjectID;
+      if (pid && projectMap[pid]) {
+        if (!groups[pid]) groups[pid] = [];
+        groups[pid].push(t);
+      } else {
+        orphaned.push(t);
+      }
+    });
+    return { groups, orphaned };
+  }, [filteredTrials, activeTab, projectMap]);
 
   // ── CRUD ───────────────────────────────────────────────────────────
   const handleOpenModal = useCallback((trial = null, isDuplicate = false) => {
@@ -2524,7 +2548,7 @@ export default function Trials({ onMenuClick }) {
     all: trials.length,
     standard: trials.filter(t => !t.ProjectID).length,
     rcbd: trials.filter(t => !!t.ProjectID).length,
-    control: trials.filter(t => t.IsControl === true || t.IsControl === 'true').length,
+    control: trials.filter(t => (t.IsControl === true || t.IsControl === 'true') && !t.ProjectID).length,
     finalized: trials.filter(t => t.IsCompleted === true || t.IsCompleted === 'true').length,
   }), [trials]);
 
@@ -3161,39 +3185,238 @@ If none are present, write "None".`;
             </div>
           )}
           {filteredTrials.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredTrials.map(t => (
-                <TrialCard
-                  key={t.ID}
-                  trial={t}
-                  project={projectMap[t.ProjectID]}
-                  isSelected={selectedForBulk.has(t.ID)}
-                  isMenuOpen={openCardMenu === t.ID}
-                  onToggleBulk={toggleBulk}
-                  onToggleMenu={handleToggleMenu}
-                  onViewDetails={handleViewDetails}
-                  onEdit={handleOpenModal}
-                  onDuplicate={handleDuplicate}
-                  onMoveToProject={handleMoveToProject}
-                  onExportPdf={handleExportPdf}
-                  onExportSciPdf={handleExportSciPdf}
-                  onExportPpt={handleExportPpt}
-                  onExportHtml={exportHtmlSlide}
-                  onExportTxt={exportTxtReport}
-                  onExportCsv={exportCsv}
-                  onExportJson={exportJson}
-                  onShare={shareTrial}
-                  onAiGenerate={handleAiSingleGenerate}
-                  onDelete={handleDelete}
-                  onActivateToggle={handleActivateToggle}
-                  onQuickRate={handleQuickRate}
-                  onQuickPhoto={handleQuickPhoto}
-                  onQuickGalleryUpload={handleQuickGalleryUpload}
-                  onMarkComplete={handleMarkComplete}
-                  onEditControlDays={handleEditControlDays}
-                />
-              ))}
-            </div>
+            activeTab === 'rcbd' ? (
+              <div className="space-y-6">
+                {/* Global Expand/Collapse controls */}
+                <div className="flex justify-end gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setCollapsedSections({})}
+                    className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold px-2 py-1 rounded hover:bg-emerald-50 transition-colors"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allIds = {};
+                      Object.keys(groupedRcbdTrials.groups).forEach(id => { allIds[id] = true; });
+                      if (groupedRcbdTrials.orphaned.length > 0) allIds['orphaned-rcbd'] = true;
+                      setCollapsedSections(allIds);
+                    }}
+                    className="text-xs text-slate-600 hover:text-slate-700 font-semibold px-2 py-1 rounded hover:bg-slate-100 transition-colors"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+
+                {/* Grouped Projects */}
+                {Object.entries(groupedRcbdTrials.groups).map(([pid, trialsList]) => {
+                  const proj = projectMap[pid];
+                  const isCollapsed = !!collapsedSections[pid];
+                  return (
+                    <div key={pid} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden transition-all duration-200">
+                      <div
+                        onClick={() => toggleSection(pid)}
+                        className="p-4 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors select-none"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${isCollapsed ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
+                            <FolderOpen className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                              {proj?.Name || 'Unknown Project'}
+                              <span className="text-xs font-normal text-slate-400">({proj?.Design || 'RCBD'})</span>
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5 text-xs text-slate-500">
+                              {proj?.Investigator && (
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3.5 h-3.5" /> {proj.Investigator}
+                                </span>
+                              )}
+                              {proj?.Location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5" /> {proj.Location}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/projects?focus=${pid}`)}
+                            className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
+                          >
+                            View Project <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                            {trialsList.length} {trialsList.length === 1 ? 'plot' : 'plots'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleSection(pid)}
+                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                          >
+                            {isCollapsed ? (
+                              <Plus className="w-4 h-4 text-slate-500" />
+                            ) : (
+                              <X className="w-4 h-4 text-slate-500" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {!isCollapsed && (
+                        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/20">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {trialsList.map(t => (
+                              <TrialCard
+                                key={t.ID}
+                                trial={t}
+                                project={proj}
+                                isSelected={selectedForBulk.has(t.ID)}
+                                isMenuOpen={openCardMenu === t.ID}
+                                onToggleBulk={toggleBulk}
+                                onToggleMenu={handleToggleMenu}
+                                onViewDetails={handleViewDetails}
+                                onEdit={handleOpenModal}
+                                onDuplicate={handleDuplicate}
+                                onMoveToProject={handleMoveToProject}
+                                onExportPdf={handleExportPdf}
+                                onExportSciPdf={handleExportSciPdf}
+                                onExportPpt={handleExportPpt}
+                                onExportHtml={exportHtmlSlide}
+                                onExportTxt={exportTxtReport}
+                                onExportCsv={exportCsv}
+                                onExportJson={exportJson}
+                                onShare={shareTrial}
+                                onAiGenerate={handleAiSingleGenerate}
+                                onDelete={handleDelete}
+                                onActivateToggle={handleActivateToggle}
+                                onQuickRate={handleQuickRate}
+                                onQuickPhoto={handleQuickPhoto}
+                                onQuickGalleryUpload={handleQuickGalleryUpload}
+                                onMarkComplete={handleMarkComplete}
+                                onEditControlDays={handleEditControlDays}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Orphaned RCBD Trials */}
+                {groupedRcbdTrials.orphaned.length > 0 && (() => {
+                  const isCollapsed = !!collapsedSections['orphaned-rcbd'];
+                  return (
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden transition-all duration-200">
+                      <div
+                        onClick={() => toggleSection('orphaned-rcbd')}
+                        className="p-4 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors select-none"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${isCollapsed ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>
+                            <FolderOpen className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-800 dark:text-white">Independent / Orphaned Plots</h3>
+                            <p className="text-xs text-slate-500">Plots with invalid or missing project IDs</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+                          <span className="bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                            {groupedRcbdTrials.orphaned.length} {groupedRcbdTrials.orphaned.length === 1 ? 'plot' : 'plots'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleSection('orphaned-rcbd')}
+                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                          >
+                            {isCollapsed ? <Plus className="w-4 h-4 text-slate-500" /> : <X className="w-4 h-4 text-slate-500" />}
+                          </button>
+                        </div>
+                      </div>
+                      {!isCollapsed && (
+                        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/20">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {groupedRcbdTrials.orphaned.map(t => (
+                              <TrialCard
+                                key={t.ID}
+                                trial={t}
+                                project={null}
+                                isSelected={selectedForBulk.has(t.ID)}
+                                isMenuOpen={openCardMenu === t.ID}
+                                onToggleBulk={toggleBulk}
+                                onToggleMenu={handleToggleMenu}
+                                onViewDetails={handleViewDetails}
+                                onEdit={handleOpenModal}
+                                onDuplicate={handleDuplicate}
+                                onMoveToProject={handleMoveToProject}
+                                onExportPdf={handleExportPdf}
+                                onExportSciPdf={handleExportSciPdf}
+                                onExportPpt={handleExportPpt}
+                                onExportHtml={exportHtmlSlide}
+                                onExportTxt={exportTxtReport}
+                                onExportCsv={exportCsv}
+                                onExportJson={exportJson}
+                                onShare={shareTrial}
+                                onAiGenerate={handleAiSingleGenerate}
+                                onDelete={handleDelete}
+                                onActivateToggle={handleActivateToggle}
+                                onQuickRate={handleQuickRate}
+                                onQuickPhoto={handleQuickPhoto}
+                                onQuickGalleryUpload={handleQuickGalleryUpload}
+                                onMarkComplete={handleMarkComplete}
+                                onEditControlDays={handleEditControlDays}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredTrials.map(t => (
+                  <TrialCard
+                    key={t.ID}
+                    trial={t}
+                    project={projectMap[t.ProjectID]}
+                    isSelected={selectedForBulk.has(t.ID)}
+                    isMenuOpen={openCardMenu === t.ID}
+                    onToggleBulk={toggleBulk}
+                    onToggleMenu={handleToggleMenu}
+                    onViewDetails={handleViewDetails}
+                    onEdit={handleOpenModal}
+                    onDuplicate={handleDuplicate}
+                    onMoveToProject={handleMoveToProject}
+                    onExportPdf={handleExportPdf}
+                    onExportSciPdf={handleExportSciPdf}
+                    onExportPpt={handleExportPpt}
+                    onExportHtml={exportHtmlSlide}
+                    onExportTxt={exportTxtReport}
+                    onExportCsv={exportCsv}
+                    onExportJson={exportJson}
+                    onShare={shareTrial}
+                    onAiGenerate={handleAiSingleGenerate}
+                    onDelete={handleDelete}
+                    onActivateToggle={handleActivateToggle}
+                    onQuickRate={handleQuickRate}
+                    onQuickPhoto={handleQuickPhoto}
+                    onQuickGalleryUpload={handleQuickGalleryUpload}
+                    onMarkComplete={handleMarkComplete}
+                    onEditControlDays={handleEditControlDays}
+                  />
+                ))}
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-slate-400">
               <Activity className="w-12 h-12 mb-4 opacity-30" />
