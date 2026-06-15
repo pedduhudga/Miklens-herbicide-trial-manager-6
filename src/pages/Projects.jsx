@@ -4614,6 +4614,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     function renderModals() {
       const config = activeProject ? projectConfig : getCategoryConfig(activeCategory);
       const theme = getThemeClasses(config.color?.accent || 'emerald');
+      const potRows = parseInt(randomizeForm.potRows) || 9;
+      const potCols = parseInt(randomizeForm.potCols) || 4;
+      const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
+      const rowsPerBlock = Math.floor(potRows / blocksCount) || 1;
       return (
         <>
         {/* ── Create Project Modal ── */}
