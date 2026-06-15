@@ -225,7 +225,17 @@ function timelineRows(efficacy, categoryId = 'herbicide', trial = null) {
       const isPositive = (categoryId === 'nutrition' || categoryId === 'biostimulant');
       const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
       const status = isPositive ? ratingPositive : rating;
-      return [String(o.daa ?? '—'), targetValue, `${val}${config.primaryMetric?.unit || ''}`, status, o.notes || '—'];
+      
+      // Let's dynamically include other non-empty fields that have values in this observation
+      const extraDetails = [];
+      config.observationFields.forEach(f => {
+        if (f.key !== primaryField && f.key !== 'weedDetails' && o[f.key] !== undefined && o[f.key] !== null && o[f.key] !== '') {
+          extraDetails.push(`${f.label}: ${o[f.key]}`);
+        }
+      });
+      const detailsStr = extraDetails.length > 0 ? ` [${extraDetails.join(', ')}]` : '';
+
+      return [String(o.daa ?? '—'), targetValue, `${val}${config.primaryMetric?.unit || ''}`, status, `${o.notes || '—'}${detailsStr}`];
     }
   });
 }
@@ -1009,10 +1019,19 @@ export function exportHtmlReport(trial, projectName = '') {
       const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
       const status = isPositive ? ratingPositive : rating;
       const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
+      
+      const extraDetails = [];
+      repConfig.config.observationFields.forEach(f => {
+        if (f.key !== repConfig.primaryField && f.key !== 'weedDetails' && o[f.key] !== undefined && o[f.key] !== null && o[f.key] !== '') {
+          extraDetails.push(`${f.label}: ${o[f.key]}`);
+        }
+      });
+      const detailsStr = extraDetails.length > 0 ? ` [${extraDetails.join(', ')}]` : '';
+
       return `<tr>
         <td>${o.daa ?? '—'}</td><td>${o.date || '—'}</td><td>${val}${repConfig.primaryMetricUnit}</td>
         <td style="color:${sc};font-weight:600;">${status}</td>
-        <td>${o.notes || '—'}</td>
+        <td>${o.notes || '—'}${detailsStr}</td>
       </tr>`;
     }
   }).join('');
@@ -1241,12 +1260,21 @@ export async function exportTrialDocx(trial, options = {}) {
       const ratingPositive = val >= 80 ? 'Excellent' : val >= 60 ? 'Good' : val >= 40 ? 'Fair' : 'Poor';
       const status = isPositive ? ratingPositive : rating;
       const sc = { Excellent: '#10b981', Good: '#3b82f6', Fair: '#f59e0b', Poor: '#ef4444' }[status] || '#6b7280';
+      
+      const extraDetails = [];
+      repConfig.config.observationFields.forEach(f => {
+        if (f.key !== repConfig.primaryField && f.key !== 'weedDetails' && o[f.key] !== undefined && o[f.key] !== null && o[f.key] !== '') {
+          extraDetails.push(`${f.label}: ${o[f.key]}`);
+        }
+      });
+      const detailsStr = extraDetails.length > 0 ? ` [${extraDetails.join(', ')}]` : '';
+
       return `<tr>
         <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.daa ?? '—'}</td>
         <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.date || '—'}</td>
         <td style="border:1px solid #e2e8f0;padding:5px 8px;">${val}${repConfig.primaryMetricUnit}</td>
         <td style="border:1px solid #e2e8f0;padding:5px 8px;color:${sc};font-weight:bold;">${status}</td>
-        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.notes || '—'}</td>
+        <td style="border:1px solid #e2e8f0;padding:5px 8px;">${o.notes || '—'}${detailsStr}</td>
       </tr>`;
     }
   }).join('');

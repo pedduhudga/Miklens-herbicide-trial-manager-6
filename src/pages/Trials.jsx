@@ -3310,6 +3310,23 @@ If none are present, write "None".`;
                         <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
                           <button
                             type="button"
+                            onClick={async () => {
+                              window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating Project-wide Advanced Excel Report...', type: 'info' } }));
+                              try {
+                                const generator = new AdvancedReportGenerator(trialsList, activeCategory);
+                                await generator.generateCompleteReport();
+                                window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Project report generated successfully!', type: 'success' } }));
+                              } catch (err) {
+                                console.error(err);
+                                window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to generate project report: ${err.message}`, type: 'error' } }));
+                              }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors shadow-sm"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" /> Export Advanced Excel (11-Sheet)
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => navigate(`/projects?focus=${pid}`)}
                             className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
                           >

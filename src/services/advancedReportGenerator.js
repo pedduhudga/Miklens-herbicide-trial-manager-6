@@ -408,19 +408,72 @@ function calculateExGFromBase64(base64Str) {
 }
 
 export class AdvancedReportGenerator {
-  constructor(trial, category = 'nutrition') {
-    this.trial = trial;
+  constructor(trialOrTrials, category = 'nutrition') {
     this.category = category;
     this.config = getCategoryConfig(category);
     this.workbook = new ExcelJS.Workbook();
-    
-    // Parse trial data
-    this.observations = safeJsonParse(trial.EfficacyDataJSON, []);
-    this.photos = safeJsonParse(trial.PhotoURLs, []);
-    this.soil = safeJsonParse(trial.SoilDataJSON, null);
-    
-    // Pre-determine active headers based on category config and customizable columns
     this.activeFields = this.config.observationFields || [];
+
+    if (Array.isArray(trialOrTrials)) {
+      // It's a list of trials (project-wide consolidated export)
+      this.isProjectWide = true;
+      this.trials = trialOrTrials;
+      
+      // Let's create a combined/representative trial object for single-trial compatibility fields
+      const firstTrial = trialOrTrials[0] || {};
+      this.trial = {
+        ID: `PROJ-${firstTrial.ProjectID || 'ALL'}`,
+        FormulationName: firstTrial.FormulationName || 'Consolidated Project Plots',
+        Crop: firstTrial.Crop || firstTrial.CropCrop || 'N/A',
+        CropCrop: firstTrial.CropCrop || firstTrial.Crop || 'N/A',
+        InvestigatorName: firstTrial.InvestigatorName || 'Project Team',
+        Location: firstTrial.Location || 'Various',
+        Dosage: firstTrial.Dosage || 'Various',
+        Replication: 'Multiple',
+        Date: firstTrial.Date || 'Various',
+        Temperature: firstTrial.Temperature,
+        Humidity: firstTrial.Humidity,
+        Windspeed: firstTrial.Windspeed,
+        Rain: firstTrial.Rain,
+        SoilDataJSON: firstTrial.SoilDataJSON,
+        AISummariesJSON: '{}'
+      };
+
+      // Aggregate all observations from all sub-trials
+      this.observations = [];
+      this.photos = [];
+      
+      trialOrTrials.forEach(t => {
+        const obsList = safeJsonParse(t.EfficacyDataJSON, []);
+        const photoList = safeJsonParse(t.PhotoURLs, []);
+        
+        // Tag observations with treatment name to distinguish them in Consolidated report
+        obsList.forEach(obs => {
+          this.observations.push({
+            ...obs,
+            treatment: obs.treatment || t.FormulationName || 'Unknown Treatment',
+            plot: obs.plot || t.PlotNumber || 'N/A',
+            rep: obs.rep || t.Replication || 1
+          });
+        });
+
+        photoList.forEach(photo => {
+          this.photos.push({
+            ...photo,
+            label: photo.label ? `[${t.FormulationName}] ${photo.label}` : `Plot ${t.PlotNumber || ''} - ${t.FormulationName}`
+          });
+        });
+      });
+
+      this.soil = safeJsonParse(firstTrial.SoilDataJSON, null);
+    } else {
+      // Single trial mode
+      this.isProjectWide = false;
+      this.trial = trialOrTrials;
+      this.observations = safeJsonParse(trialOrTrials.EfficacyDataJSON, []);
+      this.photos = safeJsonParse(trialOrTrials.PhotoURLs, []);
+      this.soil = safeJsonParse(trialOrTrials.SoilDataJSON, null);
+    }
   }
 
   async processObservationsWithAI() {
