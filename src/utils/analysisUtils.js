@@ -1013,63 +1013,127 @@ export class AnalysisEngine {
                         };
                     }
 
-                    // Unbalanced fallback (robust RCBD without interaction)
-                    // Flatten and compute grand mean
-                    const flatVals = [];
-                    groups.forEach(g => g.forEach(v => { if (v !== undefined && !isNaN(v)) flatVals.push(v); }));
-                    const N = flatVals.length;
-                    if (N === 0) {
+                    // Unbalanced Design - Type III Sum of Squares (GLM Solver)
+                    const dataPoints = [];
+                    for (let i = 0; i < t; i++) {
+                        for (let j = 0; j < groups[i].length; j++) {
+                            const val = groups[i][j];
+                            if (val !== undefined && val !== null && !isNaN(val)) {
+                                dataPoints.push({ trtIdx: i, blockIdx: j, val: val });
+                            }
+                        }
+                    }
+
+                    const N = dataPoints.length;
+                    const b = Math.max(...lens) || 1;
+                    const flatVals = dataPoints.map(d => d.val);
+                    const grandMean = flatVals.reduce((a, b) => a + b, 0) / (N || 1);
+
+                    if (N < 4 || t < 2 || b < 2) {
                         return {
                             ssTreat: 0, ssBlock: 0, ssError: 0, ssTotal: 0,
                             dfTreat: 0, dfBlock: 0, dfError: 0, dfTotal: 0,
                             msTreat: 0, msBlock: 0, msError: 0,
-                            fVal: 0, pVal: 1, grandMean: 0, cv: 0
+                            fVal: 0, pVal: 1, grandMean: grandMean || 0, cv: 0
                         };
                     }
-                    const grandMean = flatVals.reduce((a, b) => a + b, 0) / (N || 1);
 
-                    // Treatment means and counts
-                    const trMeans = groups.map(g => {
-                        const vals = g.filter(v => v !== undefined && !isNaN(v));
-                        return vals.length ? jStat.mean(vals) : 0;
-                    });
-                    const trCounts = groups.map(g => g.filter(v => v !== undefined && !isNaN(v)).length);
-
-                    // Block means across available treatments
-                    const rUnique = Math.max(...lens) || 0;
-                    const blMeans = [];
-                    const blCounts = [];
-                    for (let j = 0; j < rUnique; j++) {
-                        const vals = [];
-                        for (let i = 0; i < t; i++) {
-                            const v = groups[i][j];
-                            if (v !== undefined && !isNaN(v)) vals.push(v);
+                    const solveSystem = (A, B) => {
+                        const n = A.length;
+                        const M = Array.from({ length: n }, (_, i) => {
+                            const r = new Array(n + 1);
+                            for (let j = 0; j < n; j++) r[j] = A[i][j];
+                            r[n] = B[i];
+                            return r;
+                        });
+                        for (let i = 0; i < n; i++) {
+                            let maxEl = Math.abs(M[i][i]);
+                            let maxRow = i;
+                            for (let k = i + 1; k < n; k++) {
+                                if (Math.abs(M[k][i]) > maxEl) {
+                                    maxEl = Math.abs(M[k][i]);
+                                    maxRow = k;
+                                }
+                            }
+                            const tmp = M[maxRow]; M[maxRow] = M[i]; M[i] = tmp;
+                            for (let k = i + 1; k < n; k++) {
+                                if (Math.abs(M[i][i]) < 1e-12) return null;
+                                const c = -M[k][i] / M[i][i];
+                                for (let j = i; j <= n; j++) {
+                                    M[k][j] = i === j ? 0 : M[k][j] + c * M[i][j];
+                                }
+                            }
                         }
-                        blMeans[j] = vals.length ? jStat.mean(vals) : 0;
-                        blCounts[j] = vals.length;
-                    }
+                        const x = new Array(n).fill(0);
+                        for (let i = n - 1; i >= 0; i--) {
+                            if (Math.abs(M[i][i]) < 1e-12) return null;
+                            x[i] = M[i][n] / M[i][i];
+                            for (let k = i - 1; k >= 0; k--) M[k][n] -= M[k][i] * x[i];
+                        }
+                        return x;
+                    };
 
-                    // SS Total
+                    const fit = (X_mat) => {
+                        const p = X_mat[0].length;
+                        const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
+                        const XtY = new Array(p).fill(0);
+                        for (let i = 0; i < p; i++) {
+                            for (let j = 0; j < p; j++) {
+                                let sum = 0;
+                                for (let k = 0; k < N; k++) sum += X_mat[k][i] * X_mat[k][j];
+                                XtX[i][j] = sum;
+                            }
+                            let sumY = 0;
+                            for (let k = 0; k < N; k++) sumY += X_mat[k][i] * flatVals[k];
+                            XtY[i] = sumY;
+                        }
+                        const beta = solveSystem(XtX, XtY);
+                        if (!beta) return null;
+                        let ssErr = 0;
+                        for (let k = 0; k < N; k++) {
+                            let pred = 0;
+                            for (let j = 0; j < p; j++) pred += X_mat[k][j] * beta[j];
+                            ssErr += Math.pow(flatVals[k] - pred, 2);
+                        }
+                        return ssErr;
+                    };
+
+                    const getRow = (tIdx, bIdx, excludeTerm = '') => {
+                        const row = [1];
+                        if (excludeTerm !== 'trt') {
+                            if (tIdx < t - 1) {
+                                for (let i = 0; i < t - 1; i++) row.push(i === tIdx ? 1 : 0);
+                            } else {
+                                for (let i = 0; i < t - 1; i++) row.push(-1);
+                            }
+                        }
+                        if (excludeTerm !== 'blk') {
+                            if (bIdx < b - 1) {
+                                for (let i = 0; i < b - 1; i++) row.push(i === bIdx ? 1 : 0);
+                            } else {
+                                for (let i = 0; i < b - 1; i++) row.push(-1);
+                            }
+                        }
+                        return row;
+                    };
+
+                    const X_full = dataPoints.map(d => getRow(d.trtIdx, d.blockIdx));
+                    const X_no_trt = dataPoints.map(d => getRow(d.trtIdx, d.blockIdx, 'trt'));
+                    const X_no_blk = dataPoints.map(d => getRow(d.trtIdx, d.blockIdx, 'blk'));
+
+                    const ssError = fit(X_full) ?? 0;
+                    const ssError_no_trt = fit(X_no_trt) ?? ssError;
+                    const ssError_no_blk = fit(X_no_blk) ?? ssError;
+
+                    const ssTreat = Math.max(0, ssError_no_trt - ssError);
+                    const ssBlock = Math.max(0, ssError_no_blk - ssError);
+
                     let ssTotal = 0;
                     flatVals.forEach(v => { ssTotal += Math.pow(v - grandMean, 2); });
 
-                    // SS Treatments
-                    let ssTreat = 0;
-                    for (let i = 0; i < t; i++) {
-                        ssTreat += trCounts[i] * Math.pow(trMeans[i] - grandMean, 2);
-                    }
-
-                    // SS Blocks
-                    let ssBlock = 0;
-                    for (let j = 0; j < rUnique; j++) {
-                        ssBlock += blCounts[j] * Math.pow(blMeans[j] - grandMean, 2);
-                    }
-
-                    const ssError = Math.max(0, ssTotal - ssTreat - ssBlock);
-
                     const dfTreat = Math.max(0, t - 1);
-                    const dfBlock = Math.max(0, rUnique - 1);
-                    const dfError = Math.max(1, N - t - rUnique + 1);
+                    const dfBlock = Math.max(0, b - 1);
+                    const dfError = Math.max(1, N - t - b + 1);
                     const dfTotal = Math.max(0, N - 1);
 
                     const msTreat = dfTreat > 0 ? ssTreat / dfTreat : 0;
@@ -1084,7 +1148,8 @@ export class AnalysisEngine {
                         dfTreat, dfBlock, dfError, dfTotal,
                         msTreat, msBlock, msError,
                         fVal, pVal, grandMean,
-                        cv: grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0
+                        cv: grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0,
+                        isTypeIII: true
                     };
                 }
 
@@ -1326,7 +1391,8 @@ export function calculateResidualsDiagnostics(trials, dataMap, trMeans, anovaRes
     skewness: parseFloat(skewness.toFixed(4)),
     kurtosis: parseFloat(kurtosis.toFixed(4)),
     normal: Math.abs(skewness) <= 1.0,
-    status: Math.abs(skewness) <= 0.5 ? 'Excellent (Symmetric)' : Math.abs(skewness) <= 1.0 ? 'Acceptable' : 'Highly Skewed'
+    status: Math.abs(skewness) <= 0.5 ? 'Excellent (Symmetric)' : Math.abs(skewness) <= 1.0 ? 'Acceptable' : 'Highly Skewed',
+    residuals
   };
 }
 

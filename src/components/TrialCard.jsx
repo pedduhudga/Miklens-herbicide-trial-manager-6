@@ -1,5 +1,5 @@
-import React, { memo, useMemo, useCallback } from 'react';
-import { Calendar, MapPin, FlaskConical, Activity, Image as ImageIcon, ChevronRight, Edit, MoreVertical, Eye, Copy, FolderOpen, FileDown, ScanLine, MonitorPlay, Archive, FileCode, FileSpreadsheet, Share2, BrainCircuit, Trash2, Camera, CheckCircle, Clock, Pencil } from 'lucide-react';
+import React, { memo, useMemo, useCallback, useState } from 'react';
+import { Calendar, MapPin, FlaskConical, Activity, Image as ImageIcon, ChevronLeft, ChevronRight, Edit, MoreVertical, Eye, Copy, FolderOpen, FileDown, ScanLine, MonitorPlay, Archive, FileCode, FileSpreadsheet, Share2, BrainCircuit, Trash2, Camera, CheckCircle, Clock, Pencil } from 'lucide-react';
 import { safeJsonParse } from '../utils/helpers.js';
 import { formatDateTime } from '../utils/dateUtils.js';
 
@@ -66,6 +66,7 @@ const TrialCard = memo(function TrialCard({
   onMarkComplete,
   onEditControlDays,
 }) {
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const photos = useMemo(() => safeJsonParse(trial.PhotoURLs, []), [trial.PhotoURLs]);
   const efficacyData = useMemo(() => safeJsonParse(trial.EfficacyDataJSON, []), [trial.EfficacyDataJSON]);
   const isLive = String(trial.IsLive) !== 'false';
@@ -244,7 +245,56 @@ const TrialCard = memo(function TrialCard({
         </div>
       )}
 
-      <div className={`p-4 ${blockInfo && blockInfo.isColumnWise ? 'pt-3' : 'pt-10'} flex-1 flex flex-col`}>
+      {/* Inline Photo Carousel */}
+      {photos.length > 0 && (
+        <div className={`relative h-32 w-full overflow-hidden group/carousel border-b border-slate-100 bg-slate-50 ${(!blockInfo || !blockInfo.isColumnWise) ? 'rounded-t-xl' : ''}`} onClick={stopPropagation}>
+          <img
+            src={typeof photos[activePhotoIdx] === 'string' ? photos[activePhotoIdx] : (photos[activePhotoIdx].fileData || photos[activePhotoIdx].url)}
+            alt="Observation"
+            className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+            onClick={() => onViewDetails(trial)}
+          />
+          
+          {photos.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePhotoIdx(prev => (prev - 1 + photos.length) % photos.length);
+                }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity z-10"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePhotoIdx(prev => (prev + 1) % photos.length);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity z-10"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+
+          <div className="absolute bottom-1.5 right-1.5 bg-black/60 text-white px-1.5 py-0.5 rounded text-[9px] font-bold z-10">
+            {photos[activePhotoIdx].tag || photos[activePhotoIdx].label || 'Observation'}
+          </div>
+          <div className="absolute bottom-1.5 left-1.5 bg-black/60 text-white px-1 py-0.5 rounded text-[8px] font-mono z-10">
+            {activePhotoIdx + 1}/{photos.length}
+          </div>
+          {photos[activePhotoIdx].date && (
+            <div className="absolute top-1.5 right-1.5 bg-black/60 text-white px-1 py-0.5 rounded text-[8px] font-mono z-10">
+              {photos[activePhotoIdx].date}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={`p-4 ${(blockInfo && blockInfo.isColumnWise) || photos.length > 0 ? 'pt-3' : 'pt-10'} flex-1 flex flex-col`}>
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="min-w-0">
             <h3 className="font-bold text-slate-800 truncate" title={blockInfo && blockInfo.isColumnWise ? `Block ${blockInfo.blockNum} - ${trial.FormulationName}` : trial.FormulationName}>

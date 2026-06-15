@@ -78,6 +78,24 @@ const emptyForm = (category = 'herbicide') => {
 
 import { useLocation, useNavigate } from 'react-router-dom';
 
+const fuzzyMatch = (text, query) => {
+  if (!text) return false;
+  text = text.toLowerCase();
+  query = query.toLowerCase().trim();
+  const tokens = query.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  return tokens.every(token => {
+    if (text.includes(token)) return true;
+    let searchIdx = 0;
+    for (let i = 0; i < token.length; i++) {
+      searchIdx = text.indexOf(token[i], searchIdx);
+      if (searchIdx === -1) return false;
+      searchIdx++;
+    }
+    return true;
+  });
+};
+
 export default function Trials({ onMenuClick }) {
   const { state, updateState, getAppState, dispatch } = useAppState();
   const location = useLocation();
@@ -152,7 +170,7 @@ export default function Trials({ onMenuClick }) {
 
   // --- Bulk Edit modal ---
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
-  const [bulkEditForm, setBulkEditForm] = useState({ InvestigatorName: '', Location: '', Result: '', Notes: '', Date: '', Dosage: '' });
+  const [bulkEditForm, setBulkEditForm] = useState({ InvestigatorName: '', Location: '', Result: '', Notes: '', Date: '', Dosage: '', Replication: '', TrialDesign: '', MainFactor: '', SubFactor: '' });
 
   // --- Date range filter ---
   const [filterDateStart, setFilterDateStart] = useState('');
@@ -400,14 +418,22 @@ export default function Trials({ onMenuClick }) {
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
     if (deferredSearch) {
-      const q = deferredSearch.toLowerCase();
-      list = list.filter(t =>
-        (t.FormulationName || '').toLowerCase().includes(q) ||
-        (t.InvestigatorName || '').toLowerCase().includes(q) ||
-        (t.Location || '').toLowerCase().includes(q) ||
-        (t.WeedSpecies || '').toLowerCase().includes(q) ||
-        (t.ID || '').toLowerCase().includes(q)
-      );
+      list = list.filter(t => {
+        const searchParts = [
+          t.FormulationName,
+          t.FormulationID,
+          t.InvestigatorName,
+          t.Location,
+          t.WeedSpecies,
+          t.ID,
+          t.Notes,
+          t.Conclusion,
+          t.Replication,
+          t.PlotNumber,
+          t.Date
+        ].filter(Boolean).join(' ');
+        return fuzzyMatch(searchParts, deferredSearch);
+      });
     }
     if (filterFormulation) list = list.filter(t => t.FormulationID === filterFormulation || t.FormulationName === filterFormulation);
     if (filterResult) list = list.filter(t => (t.Result || '') === filterResult);
@@ -2177,6 +2203,21 @@ export default function Trials({ onMenuClick }) {
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `${ids.length} trial(s) deleted`, type: 'success' } }));
   };
 
+  const handleBulkFinalize = async () => {
+    if (!window.confirm(`Finalize ${selectedForBulk.size} trial(s)?`)) return;
+    const ids = Array.from(selectedForBulk);
+    const today = new Date().toISOString();
+    const updated = trials.map(t => ids.includes(t.ID) ? { ...t, IsCompleted: true, FinalizationDate: today } : t);
+    updateState({ trials: updated });
+    clearBulk();
+    for (const id of ids) {
+      try {
+        await updateTrial({ ID: id, IsCompleted: true, FinalizationDate: today }, getAppState);
+      } catch (e) {}
+    }
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `${ids.length} trial(s) finalized`, type: 'success' } }));
+  };
+
   // ── BULK QR CARD PRINT ────────────────────────────────────────────
   const generateBulkQrCards = () => {
     const selectedTrials = trials.filter(t => selectedForBulk.has(t.ID));
@@ -3513,6 +3554,7 @@ If none are present, write "None".`;
           <span className="font-bold text-sm"><span className="bg-emerald-500 px-2 py-0.5 rounded-full mr-2">{selectedForBulk.size}</span>Selected</span>
           <div className="h-4 w-px bg-slate-600" />
           <button onClick={navigateToCompare} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><BarChart3 className="w-4 h-4" />Compare</button>
+          <button onClick={handleBulkFinalize} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><CheckCircle className="w-4 h-4" />Finalize</button>
           <button onClick={() => setIsBulkEditOpen(true)} className="flex items-center gap-1.5 text-sm hover:text-amber-400 transition"><Edit className="w-4 h-4" />Bulk Edit</button>
           <button onClick={() => setIsBulkQrModalOpen(true)} className="flex items-center gap-1.5 text-sm hover:text-blue-400 transition"><Printer className="w-4 h-4" />Print Cards</button>
           <button onClick={() => { const sel = trials.filter(t => selectedForBulk.has(t.ID)); exportMultipleTrialsToCSV(sel); }} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><FileSpreadsheet className="w-4 h-4" />Export CSV</button>
@@ -3560,6 +3602,29 @@ If none are present, write "None".`;
                 </select>
               </div>
               <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Replication / Block</label>
+                <input type="text" value={bulkEditForm.Replication} onChange={e => setBulkEditForm(p => ({...p, Replication: e.target.value}))}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Leave blank to keep existing" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Trial Design</label>
+                <select value={bulkEditForm.TrialDesign} onChange={e => setBulkEditForm(p => ({...p, TrialDesign: e.target.value}))}
+                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
+                  <option value="">-- No Change --</option>
+                  {['RCBD', 'Split-Plot', 'Factorial', 'Lattice', 'PotTrial', 'Strip-Plot'].map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Main Factor / Factor A</label>
+                <input type="text" value={bulkEditForm.MainFactor} onChange={e => setBulkEditForm(p => ({...p, MainFactor: e.target.value}))}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Leave blank to keep existing" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Sub Factor / Factor B</label>
+                <input type="text" value={bulkEditForm.SubFactor} onChange={e => setBulkEditForm(p => ({...p, SubFactor: e.target.value}))}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Leave blank to keep existing" />
+              </div>
+              <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Append to Notes</label>
                 <textarea rows={2} value={bulkEditForm.Notes} onChange={e => setBulkEditForm(p => ({...p, Notes: e.target.value}))}
                   className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Text will be appended to existing notes" />
@@ -3574,6 +3639,10 @@ If none are present, write "None".`;
                 if (bulkEditForm.Result) updates.Result = bulkEditForm.Result;
                 if (bulkEditForm.Date) updates.Date = bulkEditForm.Date;
                 if (bulkEditForm.Dosage.trim()) updates.Dosage = bulkEditForm.Dosage.trim();
+                if (bulkEditForm.Replication.trim()) updates.Replication = bulkEditForm.Replication.trim();
+                if (bulkEditForm.TrialDesign) updates.TrialDesign = bulkEditForm.TrialDesign;
+                if (bulkEditForm.MainFactor.trim()) updates.MainFactor = bulkEditForm.MainFactor.trim();
+                if (bulkEditForm.SubFactor.trim()) updates.SubFactor = bulkEditForm.SubFactor.trim();
                 const ids = Array.from(selectedForBulk);
                 const updated = trials.map(t => {
                   if (!ids.includes(t.ID)) return t;
@@ -3585,7 +3654,7 @@ If none are present, write "None".`;
                 for (const t of updated.filter(t => ids.includes(t.ID))) {
                   try { await updateTrial(t, getAppState); } catch(e) {}
                 }
-                setBulkEditForm({ InvestigatorName: '', Location: '', Result: '', Notes: '', Date: '', Dosage: '' });
+                setBulkEditForm({ InvestigatorName: '', Location: '', Result: '', Notes: '', Date: '', Dosage: '', Replication: '', TrialDesign: '', MainFactor: '', SubFactor: '' });
                 setIsBulkEditOpen(false);
                 clearBulk();
                 window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `${ids.length} trials updated`, type: 'success' } }));

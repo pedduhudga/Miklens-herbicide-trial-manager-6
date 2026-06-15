@@ -1107,6 +1107,223 @@ export function performMetaAnalysis(projects, allTrials, options = {}) {
 /**
  * Export window bindings
  */
+// Solves A * x = B using Gaussian elimination with pivoting
+function solveLinearSystem(A, B) {
+  const n = A.length;
+  const M = new Array(n);
+  for (let i = 0; i < n; i++) {
+    M[i] = new Array(n + 1);
+    for (let j = 0; j < n; j++) M[i][j] = A[i][j];
+    M[i][n] = B[i];
+  }
+  for (let i = 0; i < n; i++) {
+    let maxEl = Math.abs(M[i][i]);
+    let maxRow = i;
+    for (let k = i + 1; k < n; k++) {
+      if (Math.abs(M[k][i]) > maxEl) {
+        maxEl = Math.abs(M[k][i]);
+        maxRow = k;
+      }
+    }
+    const tmp = M[maxRow];
+    M[maxRow] = M[i];
+    M[i] = tmp;
+    for (let k = i + 1; k < n; k++) {
+      if (Math.abs(M[i][i]) < 1e-12) return null;
+      const c = -M[k][i] / M[i][i];
+      for (let j = i; j <= n; j++) {
+        M[k][j] = i === j ? 0 : M[k][j] + c * M[i][j];
+      }
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    if (Math.abs(M[i][i]) < 1e-12) return null;
+    x[i] = M[i][n] / M[i][i];
+    for (let k = i - 1; k >= 0; k--) {
+      M[k][n] -= M[k][i] * x[i];
+    }
+  }
+  return x;
+}
+
+// Fits a linear regression model Y = X * Beta and returns the residual sum of squares
+function fitRegression(X, Y) {
+  const n = X.length;
+  const p = X[0].length;
+  const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
+  const XtY = new Array(p).fill(0);
+  for (let i = 0; i < p; i++) {
+    for (let j = 0; j < p; j++) {
+      let sum = 0;
+      for (let k = 0; k < n; k++) sum += X[k][i] * X[k][j];
+      XtX[i][j] = sum;
+    }
+    let sumY = 0;
+    for (let k = 0; k < n; k++) sumY += X[k][i] * Y[k];
+    XtY[i] = sumY;
+  }
+  const beta = solveLinearSystem(XtX, XtY);
+  if (!beta) return { beta: null, ssError: null };
+  let ssError = 0;
+  for (let k = 0; k < n; k++) {
+    let pred = 0;
+    for (let j = 0; j < p; j++) pred += X[k][j] * beta[j];
+    ssError += Math.pow(Y[k] - pred, 2);
+  }
+  return { beta, ssError };
+}
+
+// Approximate p-value from F-distribution using regularized incomplete beta function (declared in this file)
+// We declare performTypeIIIANOVA:
+export function performTypeIIIANOVA(trials, options = {}) {
+  const { metric = 'controlPct', daa = null } = options;
+  const data = [];
+  const trtSet = new Set();
+  const blockSet = new Set();
+  
+  trials.forEach(trial => {
+    const trt = trial.FormulationName || 'Unknown';
+    const blockId = trial.BlockID || trial.Replication || '1';
+    const efficacy = safeJsonParse(trial.EfficacyDataJSON, []);
+    const observations = daa 
+      ? efficacy.filter(e => e.daa === daa || e.daysAfterApplication === daa)
+      : efficacy;
+    
+    if (observations.length > 0) {
+      const latest = observations[observations.length - 1];
+      const value = latest[metric] ?? 
+                    latest[metric === 'yield' ? 'yieldKgPlot' : metric] ?? 
+                    latest.controlPct ?? 
+                    latest.wce ?? 
+                    latest.weedCover ?? 
+                    latest.diseaseSeverity ?? 
+                    latest.pestCount ?? 
+                    latest.yieldKgPlot ?? 
+                    latest.overallVigor;
+      if (value !== null && !isNaN(value)) {
+        data.push({ trt, blockId, value: parseFloat(value) });
+        trtSet.add(trt);
+        blockSet.add(blockId);
+      }
+    }
+  });
+
+  const N = data.length;
+  const trts = [...trtSet];
+  const blocks = [...blockSet];
+  const t = trts.length;
+  const b = blocks.length;
+
+  if (N < 4 || t < 2 || b < 2) {
+    return { error: 'Insufficient data points for Type III ANOVA' };
+  }
+
+  const getFullRow = (trt, blockId) => {
+    const row = [1];
+    const tIdx = trts.indexOf(trt);
+    if (tIdx < t - 1) {
+      for (let i = 0; i < t - 1; i++) row.push(i === tIdx ? 1 : 0);
+    } else {
+      for (let i = 0; i < t - 1; i++) row.push(-1);
+    }
+    const bIdx = blocks.indexOf(blockId);
+    if (bIdx < b - 1) {
+      for (let i = 0; i < b - 1; i++) row.push(i === bIdx ? 1 : 0);
+    } else {
+      for (let i = 0; i < b - 1; i++) row.push(-1);
+    }
+    return row;
+  };
+
+  const getNoTrtRow = (trt, blockId) => {
+    const row = [1];
+    const bIdx = blocks.indexOf(blockId);
+    if (bIdx < b - 1) {
+      for (let i = 0; i < b - 1; i++) row.push(i === bIdx ? 1 : 0);
+    } else {
+      for (let i = 0; i < b - 1; i++) row.push(-1);
+    }
+    return row;
+  };
+
+  const getNoBlkRow = (trt, blockId) => {
+    const row = [1];
+    const tIdx = trts.indexOf(trt);
+    if (tIdx < t - 1) {
+      for (let i = 0; i < t - 1; i++) row.push(i === tIdx ? 1 : 0);
+    } else {
+      for (let i = 0; i < t - 1; i++) row.push(-1);
+    }
+    return row;
+  };
+
+  const Y = data.map(d => d.value);
+  const X_full = data.map(d => getFullRow(d.trt, d.blockId));
+  const X_no_trt = data.map(d => getNoTrtRow(d.trt, d.blockId));
+  const X_no_blk = data.map(d => getNoBlkRow(d.trt, d.blockId));
+
+  const fit_full = fitRegression(X_full, Y);
+  const fit_no_trt = fitRegression(X_no_trt, Y);
+  const fit_no_blk = fitRegression(X_no_blk, Y);
+
+  if (fit_full.ssError === null || fit_no_trt.ssError === null || fit_no_blk.ssError === null) {
+    return { error: 'Collinearity in design matrix. Regression failed.' };
+  }
+
+  const ssError = fit_full.ssError;
+  const ssTreatments = fit_no_trt.ssError - fit_full.ssError;
+  const ssBlocks = fit_no_blk.ssError - fit_full.ssError;
+
+  const grandMean = Y.reduce((a, b) => a + b, 0) / N;
+  let ssTotal = 0;
+  Y.forEach(y => { ssTotal += Math.pow(y - grandMean, 2); });
+
+  const dfTreatments = t - 1;
+  const dfBlocks = b - 1;
+  const dfError = N - t - b + 1;
+  const dfTotal = N - 1;
+
+  if (dfError <= 0) {
+    return { error: 'No degrees of freedom left for Error' };
+  }
+
+  const msTreatments = ssTreatments / dfTreatments;
+  const msBlocks = ssBlocks / dfBlocks;
+  const msError = ssError / dfError;
+
+  const fStatistic = msTreatments / msError;
+  const fBlock = msBlocks / msError;
+
+  const pValue = approximatePValue(fStatistic, dfTreatments, dfError);
+  const pBlock = approximatePValue(fBlock, dfBlocks, dfError);
+
+  const treatmentMeans = {};
+  trts.forEach(trt => {
+    const vals = data.filter(d => d.trt === trt).map(d => d.value);
+    treatmentMeans[trt] = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+  });
+
+  return {
+    anovaTable: {
+      source: ['Treatments', 'Blocks', 'Error', 'Total'],
+      ss: [Math.max(0, ssTreatments), Math.max(0, ssBlocks), Math.max(0, ssError), ssTotal],
+      df: [dfTreatments, dfBlocks, dfError, dfTotal],
+      ms: [msTreatments, msBlocks, msError, null],
+      f: [fStatistic, fBlock, null, null],
+      p: [pValue, pBlock, null, null]
+    },
+    fStatistic,
+    pValue,
+    significant: pValue < 0.05,
+    treatmentMeans,
+    grandMean,
+    treatments: trts,
+    blocks: blocks,
+    isTypeIII: true
+  };
+}
+
 if (typeof window !== 'undefined') {
   window.performANOVA = performANOVA;
   window.performTukeyHSD = performTukeyHSD;
@@ -1117,6 +1334,7 @@ if (typeof window !== 'undefined') {
   window.detectOutliers = detectOutliers;
   window.performANCOVA = performANCOVA;
   window.performMetaAnalysis = performMetaAnalysis;
+  window.performTypeIIIANOVA = performTypeIIIANOVA;
 }
 
 export default {
@@ -1128,6 +1346,7 @@ export default {
   performTwoWayANOVA,
   detectOutliers,
   performANCOVA,
-  performMetaAnalysis
+  performMetaAnalysis,
+  performTypeIIIANOVA
 };
 

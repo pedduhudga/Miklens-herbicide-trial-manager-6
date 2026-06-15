@@ -9,13 +9,13 @@ import {
   Lock, Unlock, Download, FileText, RefreshCw, BarChart2, Shuffle,
   ClipboardList, Package, Sparkles, Save, Loader2, CheckCircle2,
   AlertTriangle, AlertCircle, ShieldAlert, LayoutGrid, TrendingUp,
-  Sigma, Printer, MapPin, Thermometer, Droplets, CloudRain
+  Sigma, Printer, MapPin, Thermometer, Droplets, CloudRain, Image
 } from 'lucide-react';
 import Chart from 'chart.js/auto';
 import { safeJsonParse } from '../utils/helpers.js';
 import { AnalysisEngine } from '../utils/analysisUtils.js';
 import PlotMap from '../components/PlotMap.jsx';
-import { formatDate, formatDateTime, toDatetimeLocal } from '../utils/dateUtils.js';
+import { formatDate, formatDateTime, toDatetimeLocal, calculateDAA } from '../utils/dateUtils.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
 import { Info } from 'lucide-react';
@@ -132,6 +132,133 @@ function InlineBarChart({ data, color = '#10b981', height = 120 }) {
           <span className="text-[8px] text-slate-400 truncate w-full text-center leading-tight">{d.label}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function NormalityPlot({ residuals }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !residuals || residuals.length === 0) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Clear
+    ctx.clearRect(0, 0, w, h);
+
+    // Calculate mean, std dev
+    const n = residuals.length;
+    const mean = residuals.reduce((a, b) => a + b, 0) / n;
+    const variance = residuals.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (n - 1 || 1);
+    const std = Math.sqrt(variance) || 1;
+
+    // Generate normal distribution curve points
+    const points = [];
+    const minX = mean - 3.5 * std;
+    const maxX = mean + 3.5 * std;
+    const rangeX = maxX - minX;
+
+    // Fit PDF helper
+    const pdf = (x) => {
+      return (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
+    };
+
+    // Draw grid lines
+    ctx.strokeStyle = '#f1f5f9';
+    ctx.lineWidth = 1;
+    for (let xOffset = 0.1; xOffset < 1; xOffset += 0.2) {
+      ctx.beginPath();
+      ctx.moveTo(xOffset * w, 0);
+      ctx.lineTo(xOffset * w, h);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, xOffset * h);
+      ctx.lineTo(w, xOffset * h);
+      ctx.stroke();
+    }
+
+    // Plot theoretical normal bell curve (Green line)
+    ctx.beginPath();
+    ctx.strokeStyle = '#10b981'; // emerald-500
+    ctx.lineWidth = 2.5;
+    const maxPdfVal = pdf(mean);
+
+    for (let i = 0; i <= 100; i++) {
+      const xVal = minX + (i / 100) * rangeX;
+      const yVal = pdf(xVal);
+
+      const canvasX = 15 + (i / 100) * (w - 30);
+      const canvasY = h - 15 - (yVal / maxPdfVal) * (h - 30);
+
+      if (i === 0) ctx.moveTo(canvasX, canvasY);
+      else ctx.lineTo(canvasX, canvasY);
+    }
+    ctx.stroke();
+
+    // Plot actual residuals points/kernel density or a simple line representing actual sorted residuals!
+    const sorted = [...residuals].sort((a, b) => a - b);
+    
+    // Draw raw residual points as vertical ticks on the bottom axis (rug plot)
+    ctx.strokeStyle = '#ef4444'; // red-500
+    ctx.lineWidth = 1.5;
+    sorted.forEach(val => {
+      const pct = (val - minX) / rangeX;
+      if (pct >= 0 && pct <= 1) {
+        const tickX = 15 + pct * (w - 30);
+        ctx.beginPath();
+        ctx.moveTo(tickX, h - 15);
+        ctx.lineTo(tickX, h - 25);
+        ctx.stroke();
+      }
+    });
+
+    // Draw kernel density estimate of residuals (Red curve)
+    const bandwidth = 1.06 * std * Math.pow(n, -0.2) || 1;
+    const kde = (x) => {
+      let sum = 0;
+      sorted.forEach(val => {
+        sum += (1 / (bandwidth * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - val) / bandwidth, 2));
+      });
+      return sum / n;
+    };
+
+    const kdeVals = [];
+    for (let i = 0; i <= 100; i++) {
+      kdeVals.push(kde(minX + (i / 100) * rangeX));
+    }
+    const maxKdeVal = Math.max(...kdeVals) || 1;
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#ef4444'; // red-500
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 2]); // Dashed line for empirical curve
+    for (let i = 0; i <= 100; i++) {
+      const xVal = minX + (i / 100) * rangeX;
+      const yVal = kde(xVal);
+      const canvasX = 15 + (i / 100) * (w - 30);
+      const canvasY = h - 15 - (yVal / maxKdeVal) * (h - 30);
+      if (i === 0) ctx.moveTo(canvasX, canvasY);
+      else ctx.lineTo(canvasX, canvasY);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset line dash
+
+    // Add labels
+    ctx.fillStyle = '#64748b'; // slate-500
+    ctx.font = '8px monospace';
+    ctx.fillText('Normal Curve (ideal)', 20, 15);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText('Residuals KDE (actual)', 20, 26);
+
+  }, [residuals]);
+
+  return (
+    <div className="relative bg-white border rounded-lg p-2.5 shadow-inner mt-2">
+      <canvas ref={canvasRef} width={220} height={110} className="w-full h-auto block" />
     </div>
   );
 }
@@ -505,8 +632,12 @@ export default function Projects({ onMenuClick }) {
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [blockForm, setBlockForm] = useState({ Name: '', ReplicationNum: '' });
   const [showMap, setShowMap] = useState(false);
-  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'report'
+  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'report' | 'split-viewer'
   const [blocksViewMode, setBlocksViewMode] = useState('list'); // 'list' | 'grid'
+  const [selectedControlTrialId, setSelectedControlTrialId] = useState('');
+  const [selectedTreatedTrialId, setSelectedTreatedTrialId] = useState('');
+  const [selectedDaa, setSelectedDaa] = useState(0);
+  const [heatmapMode, setHeatmapMode] = useState('none');
 
   const [selectedLayoutBlock, setSelectedLayoutBlock] = useState('all');
   const [selectedLayoutTreatment, setSelectedLayoutTreatment] = useState('all');
@@ -1306,12 +1437,38 @@ export default function Projects({ onMenuClick }) {
     const potStripeDirection = activeProject.PotStripeDirection || 'Horizontal Rows';
     const potObsMode = activeProject.PotObsMode || 'row-wise';
 
+    const projectCategory = activeProject?.Category || activeCategory;
+    const categoryConfig = getCategoryConfig(projectCategory);
+    const obsFields = categoryConfig.observationFields || [];
+
     const projectTrials = (state.trials || []).filter(t => String(t.ProjectID) === String(activeProject.ID));
     const uniqueTreatments = [...new Set(projectTrials.map(t => t.FormulationName || 'Unnamed Treatment'))];
 
     const projectBlocks = (state.blocks || []).filter(b => String(b.ProjectID) === String(activeProject.ID));
     const blocksCount = projectBlocks.length || 3;
     const rowsPerBlock = Math.floor(potRows / blocksCount) || 3;
+
+    // Helpers for Heatmap scaling
+    const allHeatmapVals = projectTrials.map(t => {
+      const eff = safeJsonParse(t.EfficacyDataJSON, []);
+      const latest = eff.length ? eff[eff.length - 1] : null;
+      if (heatmapMode === 'efficacy') {
+        const sorted = [...eff].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+        if (sorted.length >= 2) {
+          const baseline = sorted[0];
+          const primaryObsField = getPrimaryObservationField(projectCategory);
+          const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+          const latestVal = parseFloat(sorted[sorted.length - 1]?.[primaryObsField] ?? 0) || 0;
+          return calculateEfficacy(projectCategory, latestVal, baseVal);
+        }
+      } else if (latest && heatmapMode !== 'none') {
+        return parseFloat(latest[heatmapMode]);
+      }
+      return null;
+    }).filter(v => v !== null && !isNaN(v));
+
+    const minVal = allHeatmapVals.length ? Math.min(...allHeatmapVals) : 0;
+    const maxVal = allHeatmapVals.length ? Math.max(...allHeatmapVals) : 100;
 
     const gridRows = [];
     for (let r = 1; r <= potRows; r++) {
@@ -1358,11 +1515,53 @@ export default function Projects({ onMenuClick }) {
         const matchesTreatment = selectedLayoutTreatment === 'all' || (trial && trial.FormulationName === selectedLayoutTreatment);
         const isHighlighted = matchesBlock && matchesTreatment;
 
+        let heatmapStyle = {};
+        let heatmapValLabel = '';
+        if (heatmapMode !== 'none' && trial) {
+          const eff = safeJsonParse(trial.EfficacyDataJSON, []);
+          const latest = eff.length ? eff[eff.length - 1] : null;
+          let val = null;
+          let label = '';
+          let isHighGood = true;
+
+          if (heatmapMode === 'efficacy') {
+            const sorted = [...eff].sort((a, b) => (parseFloat(a.daa) || 0) - (parseFloat(b.daa) || 0));
+            if (sorted.length >= 2) {
+              const baseline = sorted[0];
+              const primaryObsField = getPrimaryObservationField(projectCategory);
+              const baseVal = parseFloat(baseline?.[primaryObsField] ?? 100) || 100;
+              const latestVal = parseFloat(sorted[sorted.length - 1]?.[primaryObsField] ?? 0) || 0;
+              val = calculateEfficacy(projectCategory, latestVal, baseVal);
+              label = `${val.toFixed(1)}%`;
+            }
+          } else {
+            const field = obsFields.find(f => f.key === heatmapMode);
+            if (latest && field) {
+              val = parseFloat(latest[heatmapMode]);
+              label = `${val}${field.unit || ''}`;
+              isHighGood = field.isHighGood !== false;
+            }
+          }
+
+          if (val !== null && !isNaN(val)) {
+            const range = maxVal - minVal || 1;
+            const pct = (val - minVal) / range;
+            const hue = isHighGood ? (pct * 120) : ((1 - pct) * 120);
+            heatmapStyle = {
+              backgroundColor: `hsla(${hue}, 85%, 93%, 0.95)`,
+              borderColor: `hsla(${hue}, 80%, 45%, 0.8)`,
+              color: `hsla(${hue}, 90%, 20%, 1)`
+            };
+            heatmapValLabel = label;
+          }
+        }
+
         rowCells.push(
           <div 
             key={`${r}-${c}`}
             onClick={() => trial && navigate(`/trials?focus=${trial.ID}`)}
-            className={`flex-1 aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-1.5 cursor-pointer shadow-sm relative group transition-all duration-300 ${colorClasses} ${
+            style={heatmapMode !== 'none' && trial ? heatmapStyle : {}}
+            className={`flex-1 aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-1.5 cursor-pointer shadow-sm relative group transition-all duration-300 ${heatmapMode !== 'none' && trial ? '' : colorClasses} ${
               isHighlighted 
                 ? 'scale-100 ring-2 ring-emerald-500 ring-offset-1 z-10' 
                 : 'opacity-10 scale-90 border-dashed pointer-events-none'
@@ -1370,21 +1569,31 @@ export default function Projects({ onMenuClick }) {
             title={`Pot R${r}C${c}: ${trtName}`}
           >
             <span className="text-[10px] font-bold">{(potLayout === 'rcbd-pot' || potObsMode === 'column-wise') ? `R${r}C${c}` : (trial?.PotLabel || `R${r}C${c}`)}</span>
-            {trial && (
-              <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">
-                Block {trial.Replication || '1'}
+            
+            {heatmapMode !== 'none' && heatmapValLabel ? (
+              <span className="text-[10px] font-extrabold mt-1 text-center bg-white/70 px-1 py-0.5 rounded shadow-sm border border-slate-200/50">
+                {heatmapValLabel}
               </span>
-            )}
-            {trial && (
-              <span className="text-[9px] font-bold mt-1 text-center truncate max-w-full leading-tight">
-                {trtName}
-              </span>
+            ) : (
+              <>
+                {trial && (
+                  <span className="text-[8px] opacity-75 font-semibold mt-0.5 truncate max-w-full">
+                    Block {trial.Replication || '1'}
+                  </span>
+                )}
+                {trial && (
+                  <span className="text-[9px] font-bold mt-1 text-center truncate max-w-full leading-tight">
+                    {trtName}
+                  </span>
+                )}
+              </>
             )}
             
             <div className="absolute z-20 hidden group-hover:block bg-slate-900 text-white text-[10px] rounded-lg p-2.5 shadow-xl -top-20 left-1/2 -translate-x-1/2 w-48 pointer-events-none">
               <p className="font-bold border-b border-slate-700 pb-1 mb-1">Pot Position: Row {r}, Col {c}</p>
               <p><span className="text-slate-400">Treatment:</span> {trtName}</p>
               {trial?.Dosage && <p><span className="text-slate-400">Dosage:</span> {trial.Dosage}</p>}
+              {heatmapMode !== 'none' && heatmapValLabel && <p><span className="text-slate-400">Heatmap Value:</span> {heatmapValLabel}</p>}
               <p><span className="text-slate-400">Status:</span> <span className={dataStatus === 'Final' ? 'text-emerald-400 font-bold' : 'text-amber-400'}>{dataStatus}</span></p>
               <p className="text-[8px] text-slate-500 mt-1 italic text-center">Click to open data entry sheet</p>
             </div>
@@ -1410,6 +1619,28 @@ export default function Projects({ onMenuClick }) {
 
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+        {/* Heatmap Mode Controller */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h4 className="font-bold text-slate-800 text-sm">Spatial Heatmap Overlay</h4>
+            <p className="text-xs text-slate-500">Render real-time color gradients across pots based on observation metrics.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Overlay Metric:</span>
+            <select
+              value={heatmapMode}
+              onChange={e => setHeatmapMode(e.target.value)}
+              className="text-xs border rounded-lg px-2.5 py-1.5 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+              <option value="none">Default (Treatment Colors)</option>
+              <option value="efficacy">Efficacy (calculated %)</option>
+              {obsFields.map(f => (
+                <option key={f.key} value={f.key}>{f.label} ({f.unit || 'rating'})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {/* Project Summary Card */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div>
@@ -2794,6 +3025,259 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
     const projectCategory = activeProject?.Category || activeCategory;
     const projectConfig = getCategoryConfig(projectCategory);
 
+    const theme = getThemeClasses(projectConfig.color?.accent || 'emerald');
+
+    if (viewMode === 'split-viewer') {
+      const controlTrials = projectTrials.filter(t => t.IsControl === true || t.IsControl === 'true');
+      const treatedTrials = projectTrials.filter(t => !(t.IsControl === true || t.IsControl === 'true'));
+      
+      const activeControlTrial = controlTrials.find(t => t.ID === selectedControlTrialId) || controlTrials[0] || projectTrials[0];
+      const activeTreatedTrial = treatedTrials.find(t => t.ID === selectedTreatedTrialId) || treatedTrials[0] || projectTrials[0];
+
+      const allDaas = [...new Set(projectTrials.flatMap(t => {
+        const eff = safeJsonParse(t.EfficacyDataJSON, []);
+        return eff.map(o => Number(o.daa));
+      }))].filter(n => !isNaN(n)).sort((a, b) => a - b);
+      if (allDaas.length === 0) allDaas.push(0);
+
+      const currentDaa = allDaas.includes(selectedDaa) ? selectedDaa : allDaas[0];
+
+      const getPhotoForDaa = (trial, targetDaa) => {
+        if (!trial) return null;
+        const photos = safeJsonParse(trial.PhotoURLs, []);
+        if (photos.length === 0) return null;
+        const eff = safeJsonParse(trial.EfficacyDataJSON, []);
+        const obsAtDaa = eff.find(o => Number(o.daa) === targetDaa);
+        if (obsAtDaa && obsAtDaa.date) {
+          const obsDate = obsAtDaa.date.split('T')[0];
+          const match = photos.find(p => {
+            const pSrc = typeof p === 'string' ? p : (p.fileData || p.url || '');
+            const pDate = p.date || '';
+            return pDate.split('T')[0] === obsDate;
+          });
+          if (match) return match;
+        }
+        const calcMatch = photos.find(p => {
+          if (!p.date || !trial.Date) return false;
+          const diffTime = Math.abs(new Date(p.date.split('T')[0]) - new Date(trial.Date.split('T')[0]));
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays === targetDaa;
+        });
+        if (calcMatch) return calcMatch;
+        return photos[0];
+      };
+
+      const controlPhoto = getPhotoForDaa(activeControlTrial, currentDaa);
+      const treatedPhoto = getPhotoForDaa(activeTreatedTrial, currentDaa);
+
+      const controlPhotoSrc = controlPhoto ? (typeof controlPhoto === 'string' ? controlPhoto : (controlPhoto.fileData || controlPhoto.url)) : null;
+      const treatedPhotoSrc = treatedPhoto ? (typeof treatedPhoto === 'string' ? treatedPhoto : (treatedPhoto.fileData || treatedPhoto.url)) : null;
+
+      const getObsAtDaa = (trial, targetDaa) => {
+        if (!trial) return null;
+        const eff = safeJsonParse(trial.EfficacyDataJSON, []);
+        return eff.find(o => Number(o.daa) === targetDaa);
+      };
+
+      const controlObs = getObsAtDaa(activeControlTrial, currentDaa);
+      const treatedObs = getObsAtDaa(activeTreatedTrial, currentDaa);
+
+      return (
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <TopBar title={`Side-by-Side Analysis - ${activeProject.Name}`} onMenuClick={onMenuClick} />
+          
+          <div className="bg-white border-b px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setViewMode('dashboard')} className="p-2 rounded-full hover:bg-slate-100 transition">
+                <ArrowLeft className="h-6 w-6 text-slate-600" />
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800">Side-by-Side Plot Viewer</h1>
+                <p className="text-xs text-slate-500">Sync treated and control plot imagery at identical Days After Application (DAA)</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 overflow-x-auto py-1 max-w-full">
+              <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">Select DAA:</span>
+              {allDaas.map(d => (
+                <button
+                  key={d}
+                  onClick={() => setSelectedDaa(d)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 ${
+                    currentDaa === d 
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10' 
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  DAA {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto">
+              
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                    <h2 className="font-bold text-sm text-slate-800">Control Plot / Standard Check</h2>
+                  </div>
+                  <select
+                    value={activeControlTrial?.ID || ''}
+                    onChange={e => setSelectedControlTrialId(e.target.value)}
+                    className="text-xs border rounded-lg px-2.5 py-1.5 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 max-w-xs truncate"
+                  >
+                    {controlTrials.map(t => (
+                      <option key={t.ID} value={t.ID}>
+                        {t.FormulationName} (Block {t.Replication || '1'})
+                      </option>
+                    ))}
+                    {controlTrials.length === 0 && (
+                      <option value="">No Control Trials Available</option>
+                    )}
+                  </select>
+                </div>
+                
+                <div className="aspect-video w-full bg-slate-900 flex items-center justify-center relative group overflow-hidden">
+                  {controlPhotoSrc ? (
+                    <img
+                      src={controlPhotoSrc}
+                      alt="Control plot at selected DAA"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-center text-slate-500">
+                      <Image className="w-12 h-12 mx-auto mb-2 opacity-30 text-white" />
+                      <p className="text-sm font-semibold">No Image Available</p>
+                      <p className="text-xs mt-1">No plot photo uploaded for DAA {currentDaa}</p>
+                    </div>
+                  )}
+                  {controlPhoto && (
+                    <div className="absolute bottom-3 left-3 bg-black/70 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                      {controlPhoto.tag || controlPhoto.label || 'Observation'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="bg-slate-50 rounded-xl p-3 border">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Primary Observation</span>
+                        <span className="text-lg font-extrabold text-slate-800">
+                          {controlObs ? `${controlObs[projectConfig.primaryMetric.key] ?? '—'}${projectConfig.primaryMetric.unit || ''}` : '—'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-3 border">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Recorded On</span>
+                        <span className="text-xs font-bold text-slate-700">
+                          {controlObs?.date ? formatDate(controlObs.date) : 'No observation log'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {controlObs?.notes && (
+                      <div className="mb-4">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Observation Notes</span>
+                        <p className="text-xs text-slate-600 bg-slate-50 rounded-lg p-2.5 border italic">
+                          "{controlObs.notes}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t pt-3 flex items-center justify-between text-xs text-slate-400">
+                    <span>Block ID: {activeControlTrial?.BlockID || '—'}</span>
+                    <span>Replication: {activeControlTrial?.Replication || '1'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <h2 className="font-bold text-sm text-slate-800">Treated Plot</h2>
+                  </div>
+                  <select
+                    value={activeTreatedTrial?.ID || ''}
+                    onChange={e => setSelectedTreatedTrialId(e.target.value)}
+                    className="text-xs border rounded-lg px-2.5 py-1.5 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 max-w-xs truncate"
+                  >
+                    {treatedTrials.map(t => (
+                      <option key={t.ID} value={t.ID}>
+                        {t.FormulationName} (Block {t.Replication || '1'})
+                      </option>
+                    ))}
+                    {treatedTrials.length === 0 && (
+                      <option value="">No Treated Trials Available</option>
+                    )}
+                  </select>
+                </div>
+                
+                <div className="aspect-video w-full bg-slate-900 flex items-center justify-center relative group overflow-hidden">
+                  {treatedPhotoSrc ? (
+                    <img
+                      src={treatedPhotoSrc}
+                      alt="Treated plot at selected DAA"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-center text-slate-500">
+                      <Image className="w-12 h-12 mx-auto mb-2 opacity-30 text-white" />
+                      <p className="text-sm font-semibold">No Image Available</p>
+                      <p className="text-xs mt-1">No plot photo uploaded for DAA {currentDaa}</p>
+                    </div>
+                  )}
+                  {treatedPhoto && (
+                    <div className="absolute bottom-3 left-3 bg-black/70 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                      {treatedPhoto.tag || treatedPhoto.label || 'Observation'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="bg-slate-50 rounded-xl p-3 border">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Primary Observation</span>
+                        <span className="text-lg font-extrabold text-slate-800">
+                          {treatedObs ? `${treatedObs[projectConfig.primaryMetric.key] ?? '—'}${projectConfig.primaryMetric.unit || ''}` : '—'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-3 border">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Recorded On</span>
+                        <span className="text-xs font-bold text-slate-700">
+                          {treatedObs?.date ? formatDate(treatedObs.date) : 'No observation log'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {treatedObs?.notes && (
+                      <div className="mb-4">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Observation Notes</span>
+                        <p className="text-xs text-slate-600 bg-slate-50 rounded-lg p-2.5 border italic">
+                          "{treatedObs.notes}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t pt-3 flex items-center justify-between text-xs text-slate-400">
+                    <span>Block ID: {activeTreatedTrial?.BlockID || '—'}</span>
+                    <span>Replication: {activeTreatedTrial?.Replication || '1'}</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (viewMode === 'report') {
       const temps = projectTrials.map(t => parseFloat(t.Temperature)).filter(n => isFinite(n));
       const hums = projectTrials.map(t => parseFloat(t.Humidity)).filter(n => isFinite(n));
@@ -3626,6 +4110,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                                   {analysisResults.normality?.status || '—'}
                                 </span>
                               </div>
+                              {/* Canvas: KDE vs Normal curve */}
+                              {analysisResults.normality?.residuals && analysisResults.normality.residuals.length > 2 && (
+                                <NormalityPlot residuals={analysisResults.normality.residuals} />
+                              )}
                             </div>
 
                             {/* Blocking Efficiency */}
@@ -3786,6 +4274,9 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     </button>
                     <button onClick={handleScientificReport} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 transition">
                       <FileText className="w-4 h-4" /> Scientific Report
+                    </button>
+                    <button onClick={() => setViewMode('split-viewer')} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-amber-700 hover:bg-amber-50 transition">
+                      <LayoutGrid className="w-4 h-4" /> Side-by-Side Plot Viewer
                     </button>
                     <button onClick={handleRegulatoryPDF} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
                       <Printer className="w-4 h-4" /> Regulatory Report (PDF)
