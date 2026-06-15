@@ -4,3 +4,6 @@
 ## 2024-06-12 - Optimizing Trials List Search Performance
 **Learning:** Similar to the global search page, applying `useDeferredValue` to text inputs that filter large datasets prevents main thread blockage and ensures smooth user typing experience.
 **Action:** Used `useDeferredValue` on the `search` input in `Trials.jsx`.
+## 2024-06-13 - Extended Search-as-you-type Optimizations
+**Learning:** The previous optimization using `useDeferredValue` for search inputs in `SmartSearch.jsx` and `Trials.jsx` was highly effective. However, the same anti-pattern existed in `LargeScaleTrials.jsx`, `Organisations.jsx`, and `UserManagement.jsx`. Filtering large sub-trial datasets or mapping extensive organization data synchronously on keystroke can block the main thread and degrade the typing experience.
+**Action:** Applied `useDeferredValue` to the search input in `LargeScaleTrials.jsx`, `Organisations.jsx`, and `UserManagement.jsx` to ensure React prioritizes rendering keystrokes while filtering happens in the background. Continuing this pattern ensures a consistent, high-performance UI across all searchable lists.

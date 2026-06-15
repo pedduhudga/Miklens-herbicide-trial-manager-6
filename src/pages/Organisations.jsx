@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
@@ -10,6 +10,8 @@ import { formatDateTime } from '../utils/dateUtils.js';
 export default function Organisations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
   const [search, setSearch] = useState('');
+  // Optimize search-as-you-type performance by deferring expensive list filtering
+  const deferredSearch = useDeferredValue(search);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState(null);
   const [formData, setFormData] = useState({ Name: '', Description: '' });
@@ -21,12 +23,12 @@ export default function Organisations({ onMenuClick }) {
 
   const filtered = useMemo(() => {
     let list = [...orgs].sort((a, b) => String(b.ID).localeCompare(String(a.ID), undefined, { numeric: true }));
-    if (search) {
-      const q = search.toLowerCase();
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase();
       list = list.filter(o => (o.Name || '').toLowerCase().includes(q));
     }
     return list;
-  }, [orgs, search]);
+  }, [orgs, deferredSearch]);
 
   const openModal = (org = null) => {
     setEditingOrg(org);

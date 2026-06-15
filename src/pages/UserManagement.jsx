@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
 import TopBar from '../components/TopBar.jsx';
 import { useAppState } from '../hooks/useAppState.jsx';
 import { useAuth } from '../hooks/useAuth.js';
@@ -16,6 +16,8 @@ export default function UserManagement({ onMenuClick }) {
   const [editingUser, setEditingUser] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState('');
+  // Optimize search-as-you-type performance by deferring expensive list filtering
+  const deferredSearch = useDeferredValue(search);
 
   const toast = (msg, type = 'success') =>
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type } }));
@@ -29,8 +31,8 @@ export default function UserManagement({ onMenuClick }) {
   }, [state.users, currentUser]);
 
   const filtered = useMemo(() =>
-    users.filter(u => !search || u.username?.toLowerCase().includes(search.toLowerCase()))
-  , [users, search]);
+    users.filter(u => !deferredSearch || u.username?.toLowerCase().includes(deferredSearch.toLowerCase()))
+  , [users, deferredSearch]);
 
   const openModal = (u = null) => {
     setEditingUser(u);
