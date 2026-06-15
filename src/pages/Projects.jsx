@@ -1373,15 +1373,29 @@ export default function Projects({ onMenuClick }) {
       for (let b = 0; b < blocksCount; b++) {
         const startRow = b * rowsPerBlock;
         const endRow = Math.min((b + 1) * rowsPerBlock, potRows);
+        const numRowsInBlock = endRow - startRow;
         
-        const blockTrts = [];
-        while (blockTrts.length < potCols) {
-          trts.forEach(t => { if (blockTrts.length < potCols) blockTrts.push(t); });
-        }
-        const shuffled = shuffleDeterministic(blockTrts, b + 50);
-        for (let r = startRow; r < endRow; r++) {
-          for (let c = 0; c < potCols; c++) {
-            matrix[r][c] = shuffled[c];
+        if (isHorizontal) {
+          const blockTrts = [];
+          while (blockTrts.length < numRowsInBlock) {
+            trts.forEach(t => { if (blockTrts.length < numRowsInBlock) blockTrts.push(t); });
+          }
+          const shuffled = shuffleDeterministic(blockTrts, b + 50);
+          for (let r = startRow; r < endRow; r++) {
+            for (let c = 0; c < potCols; c++) {
+              matrix[r][c] = shuffled[r - startRow] || { name: '?', role: 'none' };
+            }
+          }
+        } else {
+          const blockTrts = [];
+          while (blockTrts.length < potCols) {
+            trts.forEach(t => { if (blockTrts.length < potCols) blockTrts.push(t); });
+          }
+          const shuffled = shuffleDeterministic(blockTrts, b + 50);
+          for (let r = startRow; r < endRow; r++) {
+            for (let c = 0; c < potCols; c++) {
+              matrix[r][c] = shuffled[c] || { name: '?', role: 'none' };
+            }
           }
         }
       }
@@ -1592,13 +1606,19 @@ export default function Projects({ onMenuClick }) {
       for (let c = 1; c <= potCols; c++) {
         let trial;
         const blockNum = Math.floor((r - 1) / rowsPerBlock) + 1;
-        if (potLayout === 'rcbd-pot' && potObsMode === 'column-wise') {
-          trial = projectTrials.find(t => String(t.Replication) === String(blockNum) && String(t.PotCol) === String(c));
+        if (potLayout === 'rcbd-pot') {
+          if (potObsMode === 'column-wise') {
+            trial = projectTrials.find(t => String(t.Replication) === String(blockNum) && String(t.PotCol) === String(c));
+          } else if (potObsMode === 'row-wise') {
+            trial = projectTrials.find(t => String(t.Replication) === String(blockNum) && String(t.PotRow) === String(r));
+          } else {
+            trial = projectTrials.find(t => String(t.Replication) === String(blockNum) && String(t.PotRow) === String(r) && String(t.PotCol) === String(c));
+          }
         } else if (potObsMode === 'row-wise') {
           if (String(potStripeDirection).toLowerCase().includes('horizontal')) {
-            trial = projectTrials.find(t => String(t.PotRow) === String(r) || String(t.Replication) === String(r));
+            trial = projectTrials.find(t => String(t.PotRow) === String(r));
           } else {
-            trial = projectTrials.find(t => String(t.PotCol) === String(c) || String(t.Replication) === String(c));
+            trial = projectTrials.find(t => String(t.PotCol) === String(c));
           }
         } else {
           trial = projectTrials.find(t => (String(t.PotRow) === String(r) && String(t.PotCol) === String(c)) || String(t.PlotNumber) === String(r * 100 + c) || t.PotLabel === `R${r}C${c}`);
@@ -4844,7 +4864,18 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                 <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Stripe Direction</label>
                 <select
                   value={randomizeForm.potStripeDirection}
-                  onChange={e => setRandomizeForm(p => ({ ...p, potStripeDirection: e.target.value }))}
+                  onChange={e => {
+                    const dir = e.target.value;
+                    const isHoriz = dir.toLowerCase().includes('horizontal');
+                    setRandomizeForm(p => ({
+                      ...p,
+                      potStripeDirection: dir,
+                      ...(p.potLayout === 'rcbd-pot' ? {
+                        potObsMode: isHoriz ? 'row-wise' : 'column-wise',
+                        replications: isHoriz ? 'row' : 'column'
+                      } : {})
+                    }));
+                  }}
                   className={INPUT}
                 >
                   <option value="Horizontal Rows">Horizontal Rows</option>
@@ -4889,8 +4920,12 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
               >
                 {randomizeForm.potLayout === 'rcbd-pot' ? (
                   <>
-                    <option value="column-wise">Treatment Column-Wise (12 Units - Recommended)</option>
-                    <option value="plant-wise">Plant-Wise (36 Pots - Research Grade)</option>
+                    {String(randomizeForm.potStripeDirection).toLowerCase().includes('horizontal') ? (
+                      <option value="row-wise">Treatment Row-Wise ({blocksCount * rowsPerBlock} Units - Recommended)</option>
+                    ) : (
+                      <option value="column-wise">Treatment Column-Wise ({blocksCount * potCols} Units - Recommended)</option>
+                    )}
+                    <option value="plant-wise">Plant-Wise ({potRows * potCols} Pots - Research Grade)</option>
                   </>
                 ) : (
                   <>
