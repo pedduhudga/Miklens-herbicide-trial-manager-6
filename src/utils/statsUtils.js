@@ -61,6 +61,23 @@ export function performANOVA(trials, options = {}) {
       }
     }
   });
+
+  // Outlier detection and winsorization/trimming step:
+  // To ensure the agricultural statistical results are mathematically robust and accurate,
+  // we filter out data points that lie > 2.5 standard deviations from the treatment mean.
+  Object.keys(treatments).forEach(trt => {
+    Object.keys(treatments[trt]).forEach(blockId => {
+      const vals = treatments[trt][blockId];
+      if (vals.length > 2) {
+        const stats = calculateStats(vals);
+        treatments[trt][blockId] = vals.filter(v => {
+          if (stats.stdDev === 0) return true;
+          const z = (v - stats.mean) / stats.stdDev;
+          return Math.abs(z) <= 2.5; // Exclude extreme outliers
+        });
+      }
+    });
+  });
   
   const blockIds = [...blocks];
   const treatmentNames = Object.keys(treatments);
