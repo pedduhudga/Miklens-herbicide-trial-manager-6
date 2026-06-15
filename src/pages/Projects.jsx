@@ -667,7 +667,7 @@ export default function Projects({ onMenuClick }) {
     potRows: '9',
     potCols: '4',
     potLayout: 'stripe',
-    potStripeDirection: 'horizontal',
+    potStripeDirection: 'Horizontal Rows',
     potObsMode: 'row-wise',
     potDataMethod: 'total',
     potFields: ['Plant Height', 'Branches', 'Flowers', 'Fruit Count', 'Yield'],
@@ -707,7 +707,7 @@ export default function Projects({ onMenuClick }) {
       let potsVal = 0;
 
       if (potLayout === 'stripe' || potLayout === 'randomized-row') {
-        if (potStripeDirection === 'Horizontal Rows') {
+        if (String(potStripeDirection).toLowerCase().includes('horizontal')) {
           let rCount = 0;
           if (potLayout === 'stripe') {
             for (let r = 0; r < potRows; r++) {
@@ -766,7 +766,7 @@ export default function Projects({ onMenuClick }) {
 
     let isBalanced = true;
     if (potLayout === 'stripe' || potLayout === 'randomized-row') {
-      if (potStripeDirection === 'Horizontal Rows') {
+      if (String(potStripeDirection).toLowerCase().includes('horizontal')) {
         const rowCounts = allocations.map(a => a.rows);
         isBalanced = rowCounts.every(c => c === rowCounts[0]);
       } else {
@@ -1298,7 +1298,7 @@ export default function Projects({ onMenuClick }) {
     const potCols = parseInt(randomizeForm.potCols) || 4;
     const potLayout = randomizeForm.potLayout || 'stripe';
     const potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
-    const isHorizontal = potStripeDirection === 'Horizontal Rows';
+    const isHorizontal = String(potStripeDirection).toLowerCase().includes('horizontal');
     const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
     const rowsPerBlock = Math.floor(potRows / blocksCount) || 1;
     const potObsMode = randomizeForm.potObsMode || 'row-wise';
@@ -1595,7 +1595,7 @@ export default function Projects({ onMenuClick }) {
         if (potLayout === 'rcbd-pot' && potObsMode === 'column-wise') {
           trial = projectTrials.find(t => String(t.Replication) === String(blockNum) && String(t.PotCol) === String(c));
         } else if (potObsMode === 'row-wise') {
-          if (potStripeDirection === 'Horizontal Rows') {
+          if (String(potStripeDirection).toLowerCase().includes('horizontal')) {
             trial = projectTrials.find(t => String(t.PotRow) === String(r) || String(t.Replication) === String(r));
           } else {
             trial = projectTrials.find(t => String(t.PotCol) === String(c) || String(t.Replication) === String(c));
@@ -2544,7 +2544,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
         blocksToSave.push(block);
 
         if (potObsMode === 'row-wise') {
-          const isHorizontal = potStripeDirection === 'Horizontal Rows';
+          const isHorizontal = String(potStripeDirection).toLowerCase().includes('horizontal');
           const numUnits = isHorizontal ? potRows : potCols;
 
           let assignedTreatments = [];
@@ -2604,7 +2604,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
             trialsToSave.push(tToSave);
           });
         } else {
-          const isHorizontal = potStripeDirection === 'Horizontal Rows';
+          const isHorizontal = String(potStripeDirection).toLowerCase().includes('horizontal');
           let rowColAssignments = {};
 
           if (potLayout === 'stripe') {
