@@ -1807,8 +1807,69 @@ export default function Trials({ onMenuClick }) {
 
     const existingIdx = efficacyData.findIndex(o => o.daa === Number(daa));
     if (existingIdx >= 0) {
-      efficacyData[existingIdx] = { ...efficacyData[existingIdx], ...newObs };
+      const existing = efficacyData[existingIdx];
+      const count = Number(existing.sampleCount || 1);
+      
+      const mergedPrimaryValue = parseFloat(((parseFloat(existing.weedCover || 0) * count) + primaryValue) / (count + 1));
+      
+      const mergedObs = {
+        ...existing,
+        sampleCount: count + 1,
+        weedCover: Number(mergedPrimaryValue.toFixed(2)),
+      };
+
+      // Average all dynamic metrics
+      if (aiData.metrics && typeof aiData.metrics === 'object') {
+        Object.entries(aiData.metrics).forEach(([k, v]) => {
+          const num = parseFloat(v);
+          if (!isNaN(num)) {
+            const oldVal = parseFloat(existing[k]);
+            if (!isNaN(oldVal)) {
+              mergedObs[k] = Number((((oldVal * count) + num) / (count + 1)).toFixed(2));
+            } else {
+              mergedObs[k] = num;
+            }
+          }
+        });
+      }
+
+      // Append notes
+      if (newObs.notes) {
+        mergedObs.notes = existing.notes ? `${existing.notes} | ${newObs.notes}` : newObs.notes;
+      }
+      if (newObs.aiEfficacyAssessment) {
+        mergedObs.aiEfficacyAssessment = existing.aiEfficacyAssessment ? `${existing.aiEfficacyAssessment} | ${newObs.aiEfficacyAssessment}` : newObs.aiEfficacyAssessment;
+      }
+
+      // Merge photoUrls (comma separated list)
+      if (photoUrl) {
+        const urls = existing.photoUrl ? existing.photoUrl.split(',').map(u => u.trim()).filter(Boolean) : [];
+        if (!urls.includes(photoUrl)) {
+          urls.push(photoUrl);
+        }
+        mergedObs.photoUrl = urls.join(', ');
+      }
+
+      // Merge targets/weeds details list
+      const mergedWeedDetails = [...(existing.weedDetails || [])];
+      normalizedWeeds.forEach(newW => {
+        const matchIdx = mergedWeedDetails.findIndex(w => w.species.toLowerCase() === newW.species.toLowerCase());
+        if (matchIdx >= 0) {
+          const oldW = mergedWeedDetails[matchIdx];
+          mergedWeedDetails[matchIdx] = {
+            ...oldW,
+            cover: Number((((parseFloat(oldW.cover || 0) * count) + newW.cover) / (count + 1)).toFixed(2)),
+            notes: oldW.notes ? `${oldW.notes}; ${newW.notes}` : newW.notes
+          };
+        } else {
+          mergedWeedDetails.push(newW);
+        }
+      });
+      mergedObs.weedDetails = mergedWeedDetails;
+
+      efficacyData[existingIdx] = mergedObs;
     } else {
+      newObs.sampleCount = 1;
       efficacyData.push(newObs);
     }
     efficacyData.sort((a, b) => a.daa - b.daa);
@@ -5481,11 +5542,52 @@ If none are present, write "None".`;
                     const dataUrl = ev.target.result;
                     setAiGenRunning(dataUrl || true);
                     try {
-                      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Running AI plot analysis...', type: 'info' } }));
+                      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Uploading photo & running AI...', type: 'info' } }));
+                      
                       const trialDate = activeTrial?.Date ? new Date(activeTrial.Date) : new Date();
                       const pDate = obsForm.date ? new Date(obsForm.date) : new Date();
                       const daa = Math.max(0, Math.round((pDate.getTime() - trialDate.getTime()) / (1000 * 60 * 60 * 24)));
+                      const photoDate = formatPhotoDate(pDate.toISOString());
                       
+                      // 1. Upload photo to Google Drive (so it goes to trial's photos)
+                      const fileName = `photo_${activeTrial.ID}_${Date.now()}.jpg`;
+                      const project = activeTrial.ProjectID
+                        ? (state.projects || []).find(p => p.ID === activeTrial.ProjectID)
+                        : null;
+                      const projectName = project ? project.Name : 'Ungrouped Projects';
+                      const dosageSuffix = activeTrial.Dosage ? ` (${activeTrial.Dosage})` : '';
+                      const idSuffix = activeTrial.ID ? ` - ${String(activeTrial.ID).slice(-5)}` : '';
+                      const trialNameWithDate = `${activeTrial.FormulationName || 'Unknown Formulation'}${dosageSuffix} (${activeTrial.Date ? activeTrial.Date.split('T')[0] : photoDate})${idSuffix}`.trim();
+                      const folderPath = [projectName, trialNameWithDate];
+
+                      let driveUrl = null;
+                      if (navigator.onLine && getAppState().isOnline !== false) {
+                        const uploadResult = await uploadPhoto({
+                          trialId: activeTrial.ID,
+                          fileData: dataUrl,
+                          mimeType: 'image/jpeg',
+                          fileName,
+                          isWeed: false,
+                          label: 'Field Observation',
+                          date: photoDate,
+                          folderPath,
+                        }, getAppState);
+                        driveUrl = uploadResult?.url || uploadResult?.fileUrl || null;
+                      }
+
+                      // Update the trial's PhotoURLs list
+                      const currentPhotos = safeJsonParse(activeTrial.PhotoURLs, []);
+                      const finalEntry = driveUrl
+                        ? { url: driveUrl, date: photoDate, label: 'Field Observation', tag: 'Whole Canopy', identifications: [] }
+                        : { fileData: dataUrl, date: photoDate, label: 'Field Observation', tag: 'Whole Canopy', identifications: [] };
+                      currentPhotos.push(finalEntry);
+                      
+                      const updatedTrial = { ...activeTrial, PhotoURLs: JSON.stringify(currentPhotos) };
+                      updateState({ trials: getAppState().trials.map(t => t.ID === updatedTrial.ID ? updatedTrial : t) });
+                      if (activeTrial?.ID === updatedTrial.ID) setActiveTrial(updatedTrial);
+                      await updateTrial({ ID: updatedTrial.ID, PhotoURLs: updatedTrial.PhotoURLs }, getAppState);
+
+                      // 2. Run AI analysis
                       const result = await analyzePhoto(dataUrl, {
                         treatment: activeTrial?.FormulationName,
                         daa: obsForm.daa || daa,
@@ -5495,7 +5597,7 @@ If none are present, write "None".`;
                       
                       if (result.success && result.data) {
                         const aiData = result.data;
-                        const updatedObs = { ...obsForm };
+                        const updatedObs = { ...obsForm, photoUrl: driveUrl || dataUrl };
                         
                         // Populate metrics
                         if (aiData.metrics && typeof aiData.metrics === 'object') {
@@ -5530,7 +5632,7 @@ If none are present, write "None".`;
                         }
                         
                         setObsForm(updatedObs);
-                        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis populated successfully!', type: 'success' } }));
+                        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Photo saved & AI analysis populated!', type: 'success' } }));
                       } else {
                         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI failed to analyze photo: ' + (result.error || 'unknown error'), type: 'error' } }));
                       }
