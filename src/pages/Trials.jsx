@@ -90,6 +90,13 @@ export default function Trials({ onMenuClick }) {
   const formulations = (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'));
   const projects = (state.projects || []).filter(p => p.Category === activeCategory || (!p.Category && activeCategory === 'herbicide'));
 
+  // Memoized project lookup for TrialCard and groupings
+  const projectMap = useMemo(() => {
+    const map = {};
+    projects.forEach(p => { map[p.ID] = p; });
+    return map;
+  }, [projects]);
+
   // --- List view state ---
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -2536,12 +2543,7 @@ export default function Trials({ onMenuClick }) {
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Control days set to ${days}`, type: 'success' } }));
   }, [trials, activeTrial, updateState, getAppState]);
 
-  // Memoized project lookup for TrialCard
-  const projectMap = useMemo(() => {
-    const map = {};
-    projects.forEach(p => { map[p.ID] = p; });
-    return map;
-  }, [projects]);
+
 
   // ── TABS ──────────────────────────────────────────────────────────
   const tabCounts = useMemo(() => ({
