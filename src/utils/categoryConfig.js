@@ -443,7 +443,15 @@ export const CATEGORIES = {
 
 // Helper: get category config by id
 export function getCategoryConfig(categoryId) {
-  return CATEGORIES[categoryId] || CATEGORIES.herbicide;
+  const config = CATEGORIES[categoryId] || CATEGORIES.herbicide;
+  if (typeof window !== 'undefined' && window.activeReportFields && window.activeReportFields[categoryId]) {
+    const activeKeys = window.activeReportFields[categoryId];
+    return {
+      ...config,
+      observationFields: config.observationFields.filter(f => activeKeys[f.key] !== false)
+    };
+  }
+  return config;
 }
 
 // Helper: get all category ids

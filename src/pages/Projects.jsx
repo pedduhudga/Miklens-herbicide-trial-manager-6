@@ -676,6 +676,9 @@ export default function Projects({ onMenuClick }) {
   });
   const [selectedTreatments, setSelectedTreatments] = useState({});
   const [randomizeTreatments, setRandomizeTreatments] = useState([]);
+  const [customiseReportModalOpen, setCustomiseReportModalOpen] = useState(false);
+  const [reportFieldSelection, setReportFieldSelection] = useState({});
+  const [pendingReportExport, setPendingReportExport] = useState(null);
 
   const activeFormulations = useMemo(() => {
     return (state.formulations || []).filter(f => f.Category === activeCategory || (!f.Category && activeCategory === 'herbicide'));
@@ -2798,6 +2801,18 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   };
 
   // ── Scientific Report ─────────────────────────────────────────────────────
+  const triggerExportWithCustomisation = (exportFn) => {
+    const projectCategory = activeProject?.Category || activeCategory;
+    const config = getCategoryConfig(projectCategory);
+    const initialSelection = {};
+    (config.observationFields || []).forEach(f => {
+      initialSelection[f.key] = true;
+    });
+    setReportFieldSelection(initialSelection);
+    setPendingReportExport(() => exportFn);
+    setCustomiseReportModalOpen(true);
+  };
+
   const handleScientificReport = () => {
     if (!activeProject || !analysisResults) { toast('Run analysis first', 'error'); return; }
     setViewMode('report');
@@ -4259,13 +4274,13 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       <ClipboardList className="w-4 h-4 shrink-0" /> Protocol Settings
                     </button>
                     <hr className="my-2 border-slate-100" />
-                    <button onClick={handleExportR} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleExportR)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition">
                       <Download className="w-4 h-4" /> Export to R (CSV)
                     </button>
-                    <button onClick={handleExportSAS} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-green-700 hover:bg-green-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleExportSAS)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-green-700 hover:bg-green-50 transition">
                       <Download className="w-4 h-4" /> Export to SAS
                     </button>
-                    <button onClick={handleExportBundle} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleExportBundle)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition">
                       <Package className="w-4 h-4" /> Export Analysis Bundle
                     </button>
                     <button onClick={handleScientificReport} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 transition">
@@ -4274,13 +4289,13 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                     <button onClick={() => setViewMode('split-viewer')} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-amber-700 hover:bg-amber-50 transition">
                       <LayoutGrid className="w-4 h-4" /> Side-by-Side Plot Viewer
                     </button>
-                    <button onClick={handleRegulatoryPDF} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleRegulatoryPDF)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
                       <Printer className="w-4 h-4" /> Regulatory Report (PDF)
                     </button>
-                    <button onClick={handleExportAdvancedExcel} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleExportAdvancedExcel)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition">
                       <FileText className="w-4 h-4" /> Export Advanced Excel (11-Sheet)
                     </button>
-                    <button onClick={handleRegulatoryDOCX} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50 transition">
+                    <button onClick={() => triggerExportWithCustomisation(handleRegulatoryDOCX)} className="w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50 transition">
                       <FileText className="w-4 h-4" /> Export DOCX
                     </button>
                     <hr className="my-2 border-slate-100" />
@@ -5806,6 +5821,52 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           onClose={() => setShowMap(false)}
         />
       )}
+      {/* ── Customise Report Columns Modal ── */}
+      <Modal isOpen={customiseReportModalOpen} onClose={() => setCustomiseReportModalOpen(false)} title="Customise Report Columns">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Select the observation variables/columns you want to include in the generated report:
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+            {(getCategoryConfig(activeProject?.Category || activeCategory).observationFields || []).map(f => (
+              <label key={f.key} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={reportFieldSelection[f.key] !== false}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setReportFieldSelection(prev => ({ ...prev, [f.key]: checked }));
+                  }}
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="text-sm font-medium text-slate-700">{f.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button
+              onClick={() => setCustomiseReportModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (pendingReportExport) {
+                  const projectCategory = activeProject?.Category || activeCategory;
+                  if (!window.activeReportFields) window.activeReportFields = {};
+                  window.activeReportFields[projectCategory] = reportFieldSelection;
+                  pendingReportExport();
+                }
+                setCustomiseReportModalOpen(false);
+              }}
+              className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition"
+            >
+              Generate Report
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

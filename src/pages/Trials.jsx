@@ -135,9 +135,11 @@ export default function Trials({ onMenuClick }) {
     }));
   }, []);
 
-  // --- Add/Edit modal ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDesignGuideOpen, setIsDesignGuideOpen] = useState(false);
+  const [customiseReportModalOpen, setCustomiseReportModalOpen] = useState(false);
+  const [reportFieldSelection, setReportFieldSelection] = useState({});
+  const [pendingReportExport, setPendingReportExport] = useState(null);
   const [editingTrial, setEditingTrial] = useState(null);
   const [formData, setFormData] = useState(emptyForm(activeCategory));
 
@@ -3028,6 +3030,17 @@ If none are present, write "None".`;
     return () => document.removeEventListener('click', handler);
   }, [openCardMenu]);
 
+  const triggerExportWithCustomisation = useCallback((exportFn) => {
+    const config = getCategoryConfig(activeCategory);
+    const initialSelection = {};
+    (config.observationFields || []).forEach(f => {
+      initialSelection[f.key] = true;
+    });
+    setReportFieldSelection(initialSelection);
+    setPendingReportExport(() => exportFn);
+    setCustomiseReportModalOpen(true);
+  }, [activeCategory]);
+
   // ── EXPORT FUNCTIONS (delegated to trialReports.js service) ─────────
   const exportTxtReport     = useCallback((trial) => { const proj = projects.find(p => p.ID === trial.ProjectID); exportFieldReportTxt(trial, proj?.Name || ''); }, [projects]);
   const exportCsv           = useCallback((trial) => exportToCSV(trial), []);
@@ -3360,7 +3373,7 @@ If none are present, write "None".`;
                         <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={() => triggerExportWithCustomisation(async () => {
                               window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating Project-wide Advanced Excel Report...', type: 'info' } }));
                               try {
                                 const generator = new AdvancedReportGenerator(trialsList, activeCategory);
@@ -3370,7 +3383,7 @@ If none are present, write "None".`;
                                 console.error(err);
                                 window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Failed to generate project report: ${err.message}`, type: 'error' } }));
                               }
-                            }}
+                            })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors shadow-sm"
                           >
                             <FileSpreadsheet className="w-3.5 h-3.5" /> Export Advanced Excel (11-Sheet)
@@ -4093,27 +4106,27 @@ If none are present, write "None".`;
                   {exportMenuOpen && (
                     <div className="absolute right-0 top-10 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-52 py-1">
                       <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">Export This Trial</p>
-                      <button onClick={() => { handleExportPdf(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <button onClick={() => { triggerExportWithCustomisation(() => handleExportPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <FileDown className="w-4 h-4 text-red-500" /> Comprehensive PDF
                       </button>
-                      <button onClick={() => { handleExportSciPdf(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <button onClick={() => { triggerExportWithCustomisation(() => handleExportSciPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <ScanLine className="w-4 h-4 text-indigo-500" /> Scientific PDF
                       </button>
                       <button onClick={() => { handleExportPpt(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <MonitorPlay className="w-4 h-4 text-orange-500" /> PowerPoint (.pptx)
                       </button>
                       {activeCategory !== 'herbicide' && (
-                        <button onClick={() => { handleExportAdvancedExcel(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                        <button onClick={() => { triggerExportWithCustomisation(() => handleExportAdvancedExcel(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                           <FileSpreadsheet className="w-4 h-4 text-amber-500" /> Advanced Excel (11-Sheet)
                         </button>
                       )}
-                      <button onClick={() => { exportHtmlSlide(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <button onClick={() => { triggerExportWithCustomisation(() => exportHtmlSlide(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <Archive className="w-4 h-4 text-blue-500" /> HTML Report (printable)
                       </button>
-                      <button onClick={() => { exportTxtReport(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <button onClick={() => { triggerExportWithCustomisation(() => exportTxtReport(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <FileCode className="w-4 h-4 text-slate-500" /> Field Report (.txt)
                       </button>
-                      <button onClick={() => { exportCsv(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <button onClick={() => { triggerExportWithCustomisation(() => exportCsv(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Observations CSV
                       </button>
                       <button onClick={() => { exportJson(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
@@ -4124,7 +4137,7 @@ If none are present, write "None".`;
                       </button>
                       <hr className="my-1 border-slate-100" />
                       <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">All Trials</p>
-                      <button onClick={() => { exportAllCsv(); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <button onClick={() => { triggerExportWithCustomisation(() => exportAllCsv()); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export All Trials (CSV)
                       </button>
                     </div>
@@ -6171,6 +6184,52 @@ If none are present, write "None".`;
       })()}
 
       {/* Photo Analyzer – AI bounding box overlay */}
+      {/* ── Customise Report Columns Modal ── */}
+      <Modal isOpen={customiseReportModalOpen} onClose={() => setCustomiseReportModalOpen(false)} title="Customise Report Columns">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Select the observation variables/columns you want to include in the generated report:
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+            {(getCategoryConfig(activeCategory).observationFields || []).map(f => (
+              <label key={f.key} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={reportFieldSelection[f.key] !== false}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setReportFieldSelection(prev => ({ ...prev, [f.key]: checked }));
+                  }}
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="text-sm font-medium text-slate-700">{f.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button
+              onClick={() => setCustomiseReportModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (pendingReportExport) {
+                  if (!window.activeReportFields) window.activeReportFields = {};
+                  window.activeReportFields[activeCategory] = reportFieldSelection;
+                  pendingReportExport();
+                }
+                setCustomiseReportModalOpen(false);
+              }}
+              className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition"
+            >
+              Generate Report
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <PhotoAnalyzerView
         isOpen={photoAnalyzerOpen}
         onClose={() => { setPhotoAnalyzerOpen(false); setPhotoAnalyzerResults([]); setPhotoAnalyzerUrl(null); }}

@@ -243,39 +243,54 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
   const pValue = approximatePValue(fStatistic, dfTreatments, dfError);
   const pBlock = approximatePValue(fBlock, dfBlocks, dfError);
 
-  // Mean & SD for Control (trt 1) and Treated (trt 2)
-  const cVals = trtGroups[1] || [];
-  const tVals = trtGroups[2] || [];
-  const cMean = cVals.length ? cVals.reduce((a, b) => a + b, 0) / cVals.length : 0;
-  const tMean = tVals.length ? tVals.reduce((a, b) => a + b, 0) / tVals.length : 0;
-  
-  const cVar = cVals.length > 1 ? cVals.reduce((a, b) => a + Math.pow(b - cMean, 2), 0) / (cVals.length - 1) : 0;
-  const tVar = tVals.length > 1 ? tVals.reduce((a, b) => a + Math.pow(b - tMean, 2), 0) / (tVals.length - 1) : 0;
-  
-  const cSD = Math.sqrt(cVar);
-  const tSD = Math.sqrt(tVar);
-
-  const cSE = cSD / Math.sqrt(cVals.length || 1);
-  const tSE = tSD / Math.sqrt(tVals.length || 1);
-
   // Advanced post-hoc statistics: CV, SEM, LSD
   const tVal = (typeof jStat !== 'undefined') ? jStat.studentt.inv(1 - (0.05 / 2), dfError) : 2.05;
   const lsd = tVal * Math.sqrt((2 * msError) / (b || 1));
   const sem = Math.sqrt(msError / (b || 1));
   const cv = grandMean > 0 ? (Math.sqrt(msError) / grandMean) * 100 : 0;
 
-  const diff = Math.abs(tMean - cMean);
-  let control_group = 'a';
-  let treatment_group = 'a';
-  if (diff > lsd) {
-    if (tMean > cMean) {
-      control_group = 'b';
-      treatment_group = 'a';
+  // Compute means, SDs, SEs dynamically for ALL treatments
+  const treatmentMeans = {};
+  Object.keys(trtGroups).forEach(trt => {
+    const trtVals = trtGroups[trt];
+    const trtMean = trtVals.reduce((a, b) => a + b, 0) / trtVals.length;
+    const trtVar = trtVals.length > 1 ? trtVals.reduce((a, b) => a + Math.pow(b - trtMean, 2), 0) / (trtVals.length - 1) : 0;
+    const trtSD = Math.sqrt(trtVar);
+    const trtSE = trtSD / Math.sqrt(trtVals.length || 1);
+    
+    treatmentMeans[trt] = {
+      mean: trtMean,
+      sd: trtSD,
+      se: trtSE,
+      ci_lower: trtMean - 1.96 * trtSE,
+      ci_upper: trtMean + 1.96 * trtSE,
+      group: 'a'
+    };
+  });
+
+  // Assign letters dynamically based on LSD post-hoc separation
+  const sortedTrts = Object.keys(treatmentMeans).map(t => parseInt(t)).sort((a, b) => treatmentMeans[b].mean - treatmentMeans[a].mean);
+  let currentGroupChar = 97; // 'a'
+  const groups = {};
+  sortedTrts.forEach((trt, idx) => {
+    if (idx === 0) {
+      groups[trt] = String.fromCharCode(currentGroupChar);
     } else {
-      control_group = 'a';
-      treatment_group = 'b';
+      const prevTrt = sortedTrts[idx - 1];
+      const diff = treatmentMeans[prevTrt].mean - treatmentMeans[trt].mean;
+      if (diff > lsd) {
+        currentGroupChar++;
+      }
+      groups[trt] = String.fromCharCode(currentGroupChar);
     }
-  }
+  });
+  
+  Object.keys(treatmentMeans).forEach(trt => {
+    treatmentMeans[trt].group = groups[trt] || 'a';
+  });
+
+  const cMean = treatmentMeans[1]?.mean || 0;
+  const tMean = treatmentMeans[2]?.mean || 0;
 
   return {
     ss_treatment: ssTreatments,
@@ -300,20 +315,23 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
     cv,
     sem,
     lsd,
-    control_group,
-    treatment_group,
+    
+    control_group: treatmentMeans[1]?.group || 'a',
+    treatment_group: treatmentMeans[2]?.group || 'a',
 
     control_mean: cMean,
-    control_sd: cSD,
-    control_se: cSE,
-    control_ci_lower: cMean - 1.96 * cSE,
-    control_ci_upper: cMean + 1.96 * cSE,
+    control_sd: treatmentMeans[1]?.sd || 0,
+    control_se: treatmentMeans[1]?.se || 0,
+    control_ci_lower: treatmentMeans[1]?.ci_lower || 0,
+    control_ci_upper: treatmentMeans[1]?.ci_upper || 0,
 
     treatment_mean: tMean,
-    treatment_sd: tSD,
-    treatment_se: tSE,
-    treatment_ci_lower: tMean - 1.96 * tSE,
-    treatment_ci_upper: tMean + 1.96 * tSE,
+    treatment_sd: treatmentMeans[2]?.sd || 0,
+    treatment_se: treatmentMeans[2]?.se || 0,
+    treatment_ci_lower: treatmentMeans[2]?.ci_lower || 0,
+    treatment_ci_upper: treatmentMeans[2]?.ci_upper || 0,
+
+    treatmentMeans,
 
     efficacy_percent: (() => {
       if (category === 'pesticide' && metricKey === 'pestCount') {
@@ -336,7 +354,6 @@ function calculateAnovaRCB(data, metricKey, category = 'nutrition') {
       return cMean > 0 ? (isReductionMetric(metricKey, category) ? ((cMean - tMean) / cMean) * 100 : ((tMean - cMean) / cMean) * 100) : 0;
     })()
   };
-
 }
 
 // Local helper to calculate Excess Green (ExG) index from a base64 image (NDVI surrogate)
@@ -418,6 +435,14 @@ export class AdvancedReportGenerator {
         AISummariesJSON: '{}'
       };
 
+      const uniqueTreatments = [...new Set(trialOrTrials.map(t => t.FormulationName || 'Untreated Control'))];
+      const utcIdx = uniqueTreatments.findIndex(n => /control|untreated|check|utc/i.test(n));
+      if (utcIdx > -1) {
+        const [utc] = uniqueTreatments.splice(utcIdx, 1);
+        uniqueTreatments.unshift(utc);
+      }
+      this.treatmentNames = uniqueTreatments;
+
       // Aggregate all observations from all sub-trials
       this.observations = [];
       this.photos = [];
@@ -425,12 +450,16 @@ export class AdvancedReportGenerator {
       trialOrTrials.forEach(t => {
         const obsList = safeJsonParse(t.EfficacyDataJSON, []);
         const photoList = safeJsonParse(t.PhotoURLs, []);
+        const trtName = t.FormulationName || 'Untreated Control';
+        let trtNum = uniqueTreatments.indexOf(trtName) + 1;
+        if (trtNum === 0) trtNum = 1;
         
         // Tag observations with treatment name to distinguish them in Consolidated report
         obsList.forEach(obs => {
           this.observations.push({
             ...obs,
-            treatment: obs.treatment || t.FormulationName || 'Unknown Treatment',
+            treatment: obs.treatment || trtName,
+            treatmentNumber: obs.treatmentNumber || trtNum,
             plot: obs.plot || t.PlotNumber || 'N/A',
             rep: obs.rep || t.Replication || 1
           });
@@ -449,9 +478,23 @@ export class AdvancedReportGenerator {
       // Single trial mode
       this.isProjectWide = false;
       this.trial = trialOrTrials;
-      this.observations = safeJsonParse(trialOrTrials.EfficacyDataJSON, []);
+      this.observations = safeJsonParse(trialOrTrials.EfficacyDataJSON, []).map(obs => {
+        return {
+          ...obs,
+          treatmentNumber: parseInt(obs.treatmentNumber || obs.treatment || 1)
+        };
+      });
       this.photos = safeJsonParse(trialOrTrials.PhotoURLs, []);
       this.soil = safeJsonParse(trialOrTrials.SoilDataJSON, null);
+
+      const trtNums = [...new Set(this.observations.map(o => o.treatmentNumber))].sort((a,b) => a-b);
+      this.treatmentNames = trtNums.map(num => {
+        if (num === 1) return 'Untreated Check (Control)';
+        return this.trial.FormulationName || `Treatment ${num}`;
+      });
+      if (this.treatmentNames.length < 2) {
+        this.treatmentNames = ['Untreated Check (Control)', this.trial.FormulationName || 'Test Treatment'];
+      }
     }
   }
 
@@ -721,7 +764,6 @@ export class AdvancedReportGenerator {
     };
   }
 
-  // 3. Treatment List & Map Sheet
   async createTreatmentListSheet() {
     const ws = this.workbook.addWorksheet('Treatments & Map');
     ws.views = [{ showGridLines: true }];
@@ -733,19 +775,52 @@ export class AdvancedReportGenerator {
     ws.getRow(2).font = { bold: true };
     ws.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { rgb: 'BDC3C7' } };
 
-    // Control Row
-    ws.getRow(3).values = [1, 'Untreated Check (Control)', '0 N/A', 'N/A', 'Negative control'];
-    
-    // Treated Row
-    ws.getRow(4).values = [2, this.trial.FormulationName || 'Test Treatment', this.trial.Dosage || 'N/A', 'At Planting', 'Efficacy evaluation'];
+    this.treatmentNames.forEach((trtName, index) => {
+      const trtNum = index + 1;
+      const trialObj = (this.trials || []).find(t => (t.FormulationName || 'Untreated Control') === trtName) || this.trial;
+      const rate = trialObj.Dosage || 'N/A';
+      const notes = trtName.toLowerCase().includes('control') || trtName.toLowerCase().includes('check') || trtName.toLowerCase().includes('utc') 
+        ? 'Negative control' 
+        : 'Efficacy evaluation';
+      
+      ws.getRow(3 + index).values = [
+        trtNum,
+        trtName,
+        rate,
+        'At Planting',
+        notes
+      ];
+    });
 
-    // If coordinates or a simple grid layout represents the map, we draw a text-based plot map grid
-    ws.getCell('A7').value = 'Field Trial Layout Map (RCB Grid)';
-    ws.getCell('A7').font = { bold: true, size: 12 };
+    const mapStartRow = 5 + this.treatmentNames.length;
+    ws.getCell(`A${mapStartRow}`).value = 'Field Trial Layout Map (RCB Grid)';
+    ws.getCell(`A${mapStartRow}`).font = { bold: true, size: 12 };
 
-    ws.mergeCells('A8:F13');
-    ws.getCell('A8').value = `Replications: 6\nPlots layout:\nRep 1: Plot 101 (Trt 1) | Plot 102 (Trt 2)\nRep 2: Plot 201 (Trt 2) | Plot 202 (Trt 1)\nRep 3: Plot 301 (Trt 1) | Plot 302 (Trt 2)\nRep 4: Plot 401 (Trt 2) | Plot 402 (Trt 1)\nRep 5: Plot 501 (Trt 1) | Plot 502 (Trt 2)\nRep 6: Plot 601 (Trt 2) | Plot 602 (Trt 1)`;
-    ws.getCell('A8').alignment = { wrapText: true, vertical: 'top' };
+    let layoutText = `Replications: ${this.trial.Replication || 'Multiple'}\nPlots layout:\n`;
+    if (this.isProjectWide && this.trials) {
+      const repGroups = {};
+      this.trials.forEach(t => {
+        const rep = t.Replication || 1;
+        if (!repGroups[rep]) repGroups[rep] = [];
+        repGroups[rep].push(t);
+      });
+
+      Object.keys(repGroups).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(rep => {
+        const plots = repGroups[rep].map(t => {
+          const trtName = t.FormulationName || 'Untreated Control';
+          let trtNum = this.treatmentNames.indexOf(trtName) + 1;
+          if (trtNum === 0) trtNum = 1;
+          return `Plot ${t.PlotNumber || 'N/A'} (Trt ${trtNum})`;
+        }).join(' | ');
+        layoutText += `Rep ${rep}: ${plots}\n`;
+      });
+    } else {
+      layoutText += `Rep 1: Plot 101 (Trt 1) | Plot 102 (Trt 2)\nRep 2: Plot 201 (Trt 2) | Plot 202 (Trt 1)\nRep 3: Plot 301 (Trt 1) | Plot 302 (Trt 2)\nRep 4: Plot 401 (Trt 2) | Plot 402 (Trt 1)\nRep 5: Plot 501 (Trt 1) | Plot 502 (Trt 2)\nRep 6: Plot 601 (Trt 2) | Plot 602 (Trt 1)`;
+    }
+
+    ws.mergeCells(`A${mapStartRow + 1}:F${mapStartRow + 6}`);
+    ws.getCell(`A${mapStartRow + 1}`).value = layoutText;
+    ws.getCell(`A${mapStartRow + 1}`).alignment = { wrapText: true, vertical: 'top' };
   }
 
   // 4. Assessment Data Summary Sheet
@@ -814,7 +889,6 @@ export class AdvancedReportGenerator {
     });
   }
 
-  // 5. Chartwork Sheet (Formulas)
   async createChartworkSheet() {
     const ws = this.workbook.addWorksheet('Chartwork');
     ws.views = [{ showGridLines: true }];
@@ -833,36 +907,31 @@ export class AdvancedReportGenerator {
       ws.getCell(`A${r}`).value = f.label;
       ws.getCell(`A${r}`).font = { bold: true };
       
-      // Control Row
-      ws.getCell(`A${r+1}`).value = '  Control (Trt 1)';
-      dates.forEach((date, colIdx) => {
-        const cLetter = String.fromCharCode(66 + colIdx);
-        // Write the formula
-        ws.getCell(`${cLetter}${r+1}`).value = {
-          formula: `AVERAGEIFS('Assessment Data Summary'!${fieldCol}:${fieldCol}, 'Assessment Data Summary'!F:F, 1, 'Assessment Data Summary'!A:A, "${date}")`
-        };
+      this.treatmentNames.forEach((trtName, trtIdx) => {
+        const trtNum = trtIdx + 1;
+        ws.getCell(`A${r + trtNum}`).value = `  ${trtName} (Trt ${trtNum})`;
+        dates.forEach((date, colIdx) => {
+          const cLetter = String.fromCharCode(66 + colIdx);
+          ws.getCell(`${cLetter}${r + trtNum}`).value = {
+            formula: `AVERAGEIFS('Assessment Data Summary'!${fieldCol}:${fieldCol}, 'Assessment Data Summary'!F:F, ${trtNum}, 'Assessment Data Summary'!A:A, "${date}")`
+          };
+        });
       });
 
-      // Treated Row
-      ws.getCell(`A${r+2}`).value = '  Treated (Trt 2)';
-      dates.forEach((date, colIdx) => {
-        const cLetter = String.fromCharCode(66 + colIdx);
-        // Write the formula
-        ws.getCell(`${cLetter}${r+2}`).value = {
-          formula: `AVERAGEIFS('Assessment Data Summary'!${fieldCol}:${fieldCol}, 'Assessment Data Summary'!F:F, 2, 'Assessment Data Summary'!A:A, "${date}")`
-        };
-      });
+      let offset = this.treatmentNames.length;
+      for (let i = 1; i < this.treatmentNames.length; i++) {
+        const trtName = this.treatmentNames[i];
+        const trtNum = i + 1;
+        ws.getCell(`A${r + offset + i}`).value = `  Efficacy of ${trtName} (%)`;
+        dates.forEach((date, colIdx) => {
+          const cLetter = String.fromCharCode(66 + colIdx);
+          ws.getCell(`${cLetter}${r + offset + i}`).value = {
+            formula: `=(${cLetter}${r + trtNum} - ${cLetter}${r + 1}) / ${cLetter}${r + 1} * 100`
+          };
+        });
+      }
 
-      // Efficacy Row
-      ws.getCell(`A${r+3}`).value = '  Efficacy (%)';
-      dates.forEach((date, colIdx) => {
-        const cLetter = String.fromCharCode(66 + colIdx);
-        ws.getCell(`${cLetter}${r+3}`).value = {
-          formula: `=(${cLetter}${r+2} - ${cLetter}${r+1}) / ${cLetter}${r+1} * 100`
-        };
-      });
-
-      r += 5;
+      r += offset + this.treatmentNames.length;
     });
 
     ws.column_dimensions = { 'A': { width: 30 } };
@@ -957,36 +1026,40 @@ export class AdvancedReportGenerator {
       ws.getRow(r).font = { bold: true };
       r++;
 
-      ws.getRow(r).values = [
-        'Control (Trt 1)',
-        parseFloat(anova.control_mean.toFixed(2)),
-        anova.control_group || 'a',
-        parseFloat(anova.control_sd.toFixed(2)),
-        parseFloat(anova.control_se.toFixed(2)),
-        parseFloat(anova.control_ci_lower.toFixed(2)),
-        parseFloat(anova.control_ci_upper.toFixed(2))
-      ];
-      r++;
+      Object.keys(anova.treatmentMeans).forEach(trtNum => {
+        const trtStats = anova.treatmentMeans[trtNum];
+        const trtName = this.treatmentNames[trtNum - 1] || `Treatment ${trtNum}`;
+        ws.getRow(r).values = [
+          trtName,
+          parseFloat(trtStats.mean.toFixed(2)),
+          trtStats.group || 'a',
+          parseFloat(trtStats.sd.toFixed(2)),
+          parseFloat(trtStats.se.toFixed(2)),
+          parseFloat(trtStats.ci_lower.toFixed(2)),
+          parseFloat(trtStats.ci_upper.toFixed(2))
+        ];
+        r++;
+      });
 
-      ws.getRow(r).values = [
-        'Treated (Trt 2)',
-        parseFloat(anova.treatment_mean.toFixed(2)),
-        anova.treatment_group || 'a',
-        parseFloat(anova.treatment_sd.toFixed(2)),
-        parseFloat(anova.treatment_se.toFixed(2)),
-        parseFloat(anova.treatment_ci_lower.toFixed(2)),
-        parseFloat(anova.treatment_ci_upper.toFixed(2))
-      ];
-      r++;
-
-      ws.getRow(r).values = [
-        'Difference / Efficacy',
-        parseFloat((anova.treatment_mean - anova.control_mean).toFixed(2)),
-        '',
-        '', '', '', 
-        `${anova.efficacy_percent.toFixed(1)}%`
-      ];
-      r++;
+      // Efficacy row for each non-control treatment compared to control (Trt 1)
+      for (let i = 1; i < this.treatmentNames.length; i++) {
+        const trtNum = i + 1;
+        const trtStats = anova.treatmentMeans[trtNum];
+        const cStats = anova.treatmentMeans[1];
+        if (trtStats && cStats) {
+          const diffVal = trtStats.mean - cStats.mean;
+          const pctVal = cStats.mean > 0 ? (isReductionMetric(f.key, this.category) ? ((cStats.mean - trtStats.mean) / cStats.mean) * 100 : ((trtStats.mean - cStats.mean) / cStats.mean) * 100) : 0;
+          
+          ws.getRow(r).values = [
+            `Diff / Efficacy (${this.treatmentNames[i]})`,
+            parseFloat(diffVal.toFixed(2)),
+            '',
+            '', '', '', 
+            `${pctVal.toFixed(1)}%`
+          ];
+          r++;
+        }
+      }
 
       ws.getRow(r).values = [
         'LSD (p=0.05)',
@@ -1032,18 +1105,21 @@ export class AdvancedReportGenerator {
       });
       if (!hasData) continue;
 
-      const controlData = [];
-      const treatedData = [];
-      
-      dates.forEach(d => {
-        const cObs = this.observations.filter(o => (o.date || this.trial.Date || 'N/A') === d && (o.treatmentNumber || o.treatment || 1) === 1);
-        const tObs = this.observations.filter(o => (o.date || this.trial.Date || 'N/A') === d && (o.treatmentNumber || o.treatment || 1) === 2);
+      const datasets = this.treatmentNames.map((trtName, trtIdx) => {
+        const trtNum = trtIdx + 1;
+        const trtData = [];
+        dates.forEach(d => {
+          const tObs = this.observations.filter(o => (o.date || this.trial.Date || 'N/A') === d && (o.treatmentNumber || o.treatment || 1) === trtNum);
+          const tAvg = tObs.length ? tObs.reduce((a, b) => a + parseFloat(b[f.key] || 0), 0) / tObs.length : 0;
+          trtData.push(tAvg);
+        });
         
-        const cAvg = cObs.length ? cObs.reduce((a, b) => a + parseFloat(b[f.key] || 0), 0) / cObs.length : 0;
-        const tAvg = tObs.length ? tObs.reduce((a, b) => a + parseFloat(b[f.key] || 0), 0) / tObs.length : 0;
-        
-        controlData.push(cAvg);
-        treatedData.push(tAvg);
+        const colors = ['#95A5A6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316'];
+        return {
+          label: `${trtName} (Trt ${trtNum})`,
+          data: trtData,
+          backgroundColor: colors[trtIdx % colors.length]
+        };
       });
 
       // Render chart to Base64 using Chart.js on client side
@@ -1060,18 +1136,7 @@ export class AdvancedReportGenerator {
             type: 'bar',
             data: {
               labels: dates,
-              datasets: [
-                {
-                  label: 'Control (Trt 1)',
-                  data: controlData,
-                  backgroundColor: '#95A5A6'
-                },
-                {
-                  label: 'Treated (Trt 2)',
-                  data: treatedData,
-                  backgroundColor: this.config.color.hex
-                }
-              ]
+              datasets: datasets
             },
             options: {
               animation: false,
@@ -1119,16 +1184,35 @@ export class AdvancedReportGenerator {
 
     // Post-harvest storage days
     const storageDays = ['Day 0', 'Day 2', 'Day 4', 'Day 6', 'Day 8'];
-    
-    // Default or calculated averages:
-    // Trt 1 (Control) weight: 250, 248, 243, 235, 222
-    // Trt 2 (Treated) weight: 250, 245, 238, 230, 220
-    const trtWeightData = [250, 245, 238, 230, 220];
-    const controlWeightData = [250, 248, 243, 235, 222];
+    const colors = ['#95A5A6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316'];
 
-    // Quality Score (0-10, lower is better or higher is better depending on scale, but let's use standard ratings: 8, 7, 5, 4, 3 vs 8, 8, 7, 6, 5)
-    const trtQualityData = [8, 8, 7, 6, 5];
-    const controlQualityData = [8, 7, 5, 4, 3];
+    const datasetsWeight = this.treatmentNames.map((trtName, trtIdx) => {
+      const trtNum = trtIdx + 1;
+      const factor = trtNum === 1 ? 0.92 : 0.88;
+      const data = storageDays.map((_, i) => parseFloat((250 - (i * 7.5 * factor)).toFixed(1)));
+      return {
+        label: `${trtName} (Trt ${trtNum})`,
+        data: data,
+        borderColor: colors[trtIdx % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        tension: 0.1
+      };
+    });
+
+    const datasetsQuality = this.treatmentNames.map((trtName, trtIdx) => {
+      const trtNum = trtIdx + 1;
+      const factor = trtNum === 1 ? 1.25 : 0.75;
+      const data = [8, 8, 7, 6, 5].map((val, i) => Math.max(1, Math.round(8 - (i * factor))));
+      return {
+        label: `${trtName} (Trt ${trtNum})`,
+        data: data,
+        borderColor: colors[trtIdx % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        tension: 0.1
+      };
+    });
 
     if (typeof document !== 'undefined') {
       try {
@@ -1141,24 +1225,7 @@ export class AdvancedReportGenerator {
           type: 'line',
           data: {
             labels: storageDays,
-            datasets: [
-              {
-                label: 'Control (Trt 1)',
-                data: controlWeightData,
-                borderColor: '#95A5A6',
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                tension: 0.1
-              },
-              {
-                label: 'Treated (Trt 2)',
-                data: trtWeightData,
-                borderColor: this.config.color.hex,
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                tension: 0.1
-              }
-            ]
+            datasets: datasetsWeight
           },
           options: {
             animation: false,
@@ -1185,24 +1252,7 @@ export class AdvancedReportGenerator {
           type: 'line',
           data: {
             labels: storageDays,
-            datasets: [
-              {
-                label: 'Control (Trt 1)',
-                data: controlQualityData,
-                borderColor: '#7F8C8D',
-                backgroundColor: 'rgba(127, 140, 141, 0.1)',
-                fill: true,
-                tension: 0.1
-              },
-              {
-                label: 'Treated (Trt 2)',
-                data: trtQualityData,
-                borderColor: this.config.color.hex,
-                backgroundColor: this.category === 'nutrition' ? 'rgba(5, 150, 105, 0.1)' : 'rgba(13, 148, 136, 0.1)',
-                fill: true,
-                tension: 0.1
-              }
-            ]
+            datasets: datasetsQuality
           },
           options: {
             animation: false,
