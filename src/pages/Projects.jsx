@@ -1294,102 +1294,187 @@ export default function Projects({ onMenuClick }) {
   };
 
   const renderLayoutPreview = () => {
+    const potRows = parseInt(randomizeForm.potRows) || 9;
+    const potCols = parseInt(randomizeForm.potCols) || 4;
     const potLayout = randomizeForm.potLayout || 'stripe';
     const potStripeDirection = randomizeForm.potStripeDirection || 'Horizontal Rows';
     const isHorizontal = potStripeDirection === 'Horizontal Rows';
-    
-    const trtList = randomizeTreatments.map(t => {
+    const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
+    const rowsPerBlock = Math.floor(potRows / blocksCount) || 1;
+    const potObsMode = randomizeForm.potObsMode || 'row-wise';
+
+    const trts = randomizeTreatments.map(t => {
       const f = activeFormulations.find(form => String(form.ID) === String(t.formulationId));
-      const name = t.name.trim() || f?.Name || 'Unnamed';
-      return name.charAt(0).toUpperCase();
+      return {
+        name: t.name.trim() || f?.Name || 'Unnamed',
+        role: t.role
+      };
     });
 
-    if (trtList.length === 0) return null;
+    if (trts.length === 0) {
+      return <p className="text-xs text-slate-400 italic text-center py-2">Add treatments to see preview.</p>;
+    }
 
-    const previewGrid = [];
-    const rows = 4;
-    const cols = 4;
+    const uniqueTrts = [...new Set(trts.map(t => t.name))];
 
-    const rcbdPermutations = [
-      [...trtList],
-      [...trtList].reverse(),
-      [...trtList].slice().sort(),
-      [...trtList].slice().sort().reverse()
-    ];
-    rcbdPermutations.forEach(arr => {
-      while (arr.length < cols) {
-        trtList.forEach(c => { if (arr.length < cols) arr.push(c); });
+    // Helper for deterministic pseudo-random shuffling (to avoid shifting preview on every render)
+    const getSeedRandom = (seed) => {
+      const x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    };
+
+    const shuffleDeterministic = (array, seed) => {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const r = getSeedRandom(seed + i);
+        const j = Math.floor(r * (i + 1));
+        const temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
       }
-    });
+      return arr;
+    };
 
-    for (let r = 0; r < rows; r++) {
-      const rowCells = [];
-      for (let c = 0; c < cols; c++) {
-        let trtChar = '?';
-        if (potLayout === 'stripe') {
-          trtChar = isHorizontal 
-            ? trtList[r % trtList.length] 
-            : trtList[c % trtList.length];
-        } else if (potLayout === 'randomized-row') {
-          const rowPerm = [trtList[0], trtList[2 % trtList.length], trtList[1 % trtList.length], trtList[3 % trtList.length]];
-          trtChar = rowPerm[r % rowPerm.length];
-        } else if (potLayout === 'balanced-pot') {
-          const gridRep = [
-            ['S', 'C', 'P', 'L'],
-            ['P', 'L', 'S', 'C'],
-            ['C', 'S', 'L', 'P'],
-            ['L', 'P', 'C', 'S']
-          ];
-          const trtMap = {
-            'C': trtList[0] || 'C',
-            'L': trtList[1 % trtList.length] || 'L',
-            'P': trtList[2 % trtList.length] || 'P',
-            'S': trtList[3 % trtList.length] || 'S'
-          };
-          const repChar = gridRep[r][c];
-          trtChar = trtMap[repChar] || '?';
-        } else if (potLayout === 'rcbd-pot') {
-          const blocksCount = parseInt(randomizeForm.potBlocks) || 3;
-          const rowsPerBlock = Math.floor(rows / blocksCount) || 1;
-          const blockIdx = Math.floor(r / rowsPerBlock);
-          const blockPerm = rcbdPermutations[blockIdx % rcbdPermutations.length];
-          trtChar = blockPerm[c % blockPerm.length];
+    // Generate grid matrix
+    const matrix = [];
+    for (let r = 0; r < potRows; r++) {
+      matrix[r] = [];
+      for (let c = 0; c < potCols; c++) {
+        matrix[r][c] = { name: '?', role: 'none' };
+      }
+    }
+
+    if (potLayout === 'stripe') {
+      const numUnits = isHorizontal ? potRows : potCols;
+      for (let i = 0; i < numUnits; i++) {
+        const t = trts[i % trts.length];
+        if (isHorizontal) {
+          for (let c = 0; c < potCols; c++) matrix[i][c] = t;
+        } else {
+          for (let r = 0; r < potRows; r++) matrix[r][i] = t;
         }
+      }
+    } else if (potLayout === 'randomized-row') {
+      const numUnits = isHorizontal ? potRows : potCols;
+      const baseList = [];
+      while (baseList.length < numUnits) {
+        trts.forEach(t => { if (baseList.length < numUnits) baseList.push(t); });
+      }
+      const shuffled = shuffleDeterministic(baseList, 123);
+      for (let i = 0; i < numUnits; i++) {
+        const t = shuffled[i];
+        if (isHorizontal) {
+          for (let c = 0; c < potCols; c++) matrix[i][c] = t;
+        } else {
+          for (let r = 0; r < potRows; r++) matrix[r][i] = t;
+        }
+      }
+    } else if (potLayout === 'rcbd-pot') {
+      for (let b = 0; b < blocksCount; b++) {
+        const startRow = b * rowsPerBlock;
+        const endRow = Math.min((b + 1) * rowsPerBlock, potRows);
+        
+        const blockTrts = [];
+        while (blockTrts.length < potCols) {
+          trts.forEach(t => { if (blockTrts.length < potCols) blockTrts.push(t); });
+        }
+        const shuffled = shuffleDeterministic(blockTrts, b + 50);
+        for (let r = startRow; r < endRow; r++) {
+          for (let c = 0; c < potCols; c++) {
+            matrix[r][c] = shuffled[c];
+          }
+        }
+      }
+    } else {
+      // balanced-pot
+      const allPots = [];
+      while (allPots.length < potRows * potCols) {
+        trts.forEach(t => { if (allPots.length < potRows * potCols) allPots.push(t); });
+      }
+      const shuffled = shuffleDeterministic(allPots, 999);
+      let idx = 0;
+      for (let r = 0; r < potRows; r++) {
+        for (let c = 0; c < potCols; c++) {
+          matrix[r][c] = shuffled[idx++];
+        }
+      }
+    }
 
-        const colorClasses = getTreatmentColor(trtChar);
+    const gridElements = [];
+    for (let r = 0; r < potRows; r++) {
+      const rowCells = [];
+      for (let c = 0; c < potCols; c++) {
+        const t = matrix[r][c];
+        const label = t.name;
+        const abbrev = label.length > 6 ? label.substring(0, 5) + '..' : label;
+        const colorClasses = getTreatmentColor(label, uniqueTrts);
+
         rowCells.push(
-          <span key={c} className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold border rounded shadow-sm ${colorClasses}`}>
-            {trtChar || '?'}
-          </span>
+          <div 
+            key={c} 
+            className={`w-14 h-10 border rounded flex flex-col items-center justify-center text-[9px] font-bold shadow-sm cursor-help relative group select-none transition-all hover:scale-105 ${colorClasses}`}
+            title={`Row ${r+1}, Col ${c+1}: ${label} (${t.role})`}
+          >
+            <span className="text-[7px] text-slate-400 absolute top-0.5 left-1">R{r+1}C{c+1}</span>
+            <span className="truncate max-w-[50px] mt-2 leading-tight">{abbrev}</span>
+          </div>
         );
       }
-      previewGrid.push(
-        <div key={r} className="flex gap-1 justify-center">
+
+      if (potLayout === 'rcbd-pot' && r > 0 && r % rowsPerBlock === 0) {
+        const blockNum = Math.floor(r / rowsPerBlock) + 1;
+        gridElements.push(
+          <div key={`block-divider-${r}`} className="w-full flex items-center gap-2 my-2 py-1 border-t border-dashed border-emerald-300 justify-center">
+            <span className="bg-emerald-50 px-2 py-0.5 rounded text-[8px] font-bold text-emerald-800 uppercase tracking-wider">
+              Block {blockNum}
+            </span>
+          </div>
+        );
+      }
+
+      gridElements.push(
+        <div key={r} className="flex gap-1.5 justify-center min-w-max py-0.5">
           {rowCells}
         </div>
       );
     }
 
+    if (potLayout === 'rcbd-pot') {
+      gridElements.unshift(
+        <div key="block-divider-0" className="w-full flex items-center gap-2 mb-2 pb-1 border-b border-dashed border-emerald-300 justify-center">
+          <span className="bg-emerald-50 px-2 py-0.5 rounded text-[8px] font-bold text-emerald-800 uppercase tracking-wider">
+            Block 1
+          </span>
+        </div>
+      );
+    }
+
     const layoutNameMap = {
-      'stripe': 'Stripe Layout Preview',
-      'randomized-row': 'Randomized Row Preview',
-      'balanced-pot': 'Balanced Pot Preview',
-      'rcbd-pot': 'RCBD Pot Trial Preview (Columns Shuffled per Block)'
+      'stripe': 'Stripe Layout',
+      'randomized-row': 'Randomized Row',
+      'balanced-pot': 'Balanced Pot',
+      'rcbd-pot': 'RCBD Pot Trial'
     };
 
     return (
-      <div className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 max-w-[200px] mx-auto">
-        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">
-          {layoutNameMap[potLayout] || 'Layout Preview'}
-        </p>
-        <div className="flex flex-col gap-1 items-center justify-center">
-          {previewGrid}
+      <div className="mt-3 p-4 bg-emerald-50/30 rounded-xl border border-emerald-100 space-y-3">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Greenhouse Layout Preview</span>
+          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+            {potRows} Rows × {potCols} Cols ({potRows * potCols} Pots)
+          </span>
         </div>
-        {potLayout === 'rcbd-pot' && (
-          <p className="text-[8px] text-center text-slate-400 mt-1 italic leading-tight">
-            (Columns remain identical within a block, but shuffle independently between blocks)
-          </p>
-        )}
+        <div className="max-h-[300px] overflow-auto p-3 bg-white rounded-lg border shadow-inner">
+          <div className="flex flex-col gap-1 items-center justify-center min-w-max">
+            {gridElements}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-slate-500 bg-white p-2.5 rounded-lg border">
+          <div>Design: <span className="font-bold text-slate-700">{layoutNameMap[potLayout] || potLayout}</span></div>
+          <div>Stripe: <span className="font-bold text-slate-700">{potStripeDirection}</span></div>
+          <div>Obs Mode: <span className="font-bold text-slate-700">{potObsMode}</span></div>
+          {potLayout === 'rcbd-pot' && <div>Blocks: <span className="font-bold text-slate-700">{blocksCount} ({rowsPerBlock} rows/block)</span></div>}
+        </div>
       </div>
     );
   };
