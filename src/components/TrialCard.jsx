@@ -285,56 +285,9 @@ const TrialCard = memo(function TrialCard({
         </div>
       )}
 
-      {/* Inline Photo Carousel */}
-      {photos.length > 0 && (
-        <div className={`relative h-32 w-full overflow-hidden group/carousel border-b border-slate-100 bg-slate-50 ${(!blockInfo || !blockInfo.isColumnWise) ? 'rounded-t-xl' : ''}`} onClick={stopPropagation}>
-          <img
-            src={typeof photos[activePhotoIdx] === 'string' ? photos[activePhotoIdx] : (photos[activePhotoIdx].fileData || photos[activePhotoIdx].url)}
-            alt="Observation"
-            className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-            onClick={() => onViewDetails(trial)}
-          />
-          
-          {photos.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActivePhotoIdx(prev => (prev - 1 + photos.length) % photos.length);
-                }}
-                className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity z-10"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActivePhotoIdx(prev => (prev + 1) % photos.length);
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity z-10"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </>
-          )}
 
-          <div className="absolute bottom-1.5 right-1.5 bg-black/60 text-white px-1.5 py-0.5 rounded text-[9px] font-bold z-10">
-            {photos[activePhotoIdx].tag || photos[activePhotoIdx].label || 'Observation'}
-          </div>
-          <div className="absolute bottom-1.5 left-1.5 bg-black/60 text-white px-1 py-0.5 rounded text-[8px] font-mono z-10">
-            {activePhotoIdx + 1}/{photos.length}
-          </div>
-          {photos[activePhotoIdx].date && (
-            <div className="absolute top-1.5 right-1.5 bg-black/60 text-white px-1 py-0.5 rounded text-[8px] font-mono z-10">
-              {photos[activePhotoIdx].date}
-            </div>
-          )}
-        </div>
-      )}
 
-      <div className={`p-4 ${(blockInfo && blockInfo.isColumnWise) || photos.length > 0 ? 'pt-3' : 'pt-10'} flex-1 flex flex-col`}>
+      <div className={`p-4 ${(blockInfo && blockInfo.isColumnWise) ? 'pt-3' : 'pt-10'} flex-1 flex flex-col`}>
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="min-w-0">
             <h3 className="font-bold text-slate-800 truncate" title={blockInfo && blockInfo.isColumnWise ? `Block ${blockInfo.blockNum} - ${trial.FormulationName}` : trial.FormulationName}>
@@ -466,24 +419,7 @@ const TrialCard = memo(function TrialCard({
           )}
         </div>
 
-        {latestObsDetails && (
-          <div className="mt-2.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-100 dark:border-slate-800" onClick={stopPropagation}>
-            <div className="flex items-center justify-between mb-1 border-b border-slate-200/50 pb-0.5">
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Latest Obs</span>
-              <span className="text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-1 py-0.2 rounded border border-emerald-100 dark:border-emerald-900">
-                DAA {latestObsDetails.daa}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-              {latestObsDetails.parts.map((p, idx) => (
-                <div key={idx} className="flex flex-col">
-                  <span className="text-slate-400 text-[8px] uppercase truncate" title={p.label}>{p.label}</span>
-                  <span className="text-slate-700 dark:text-slate-200 font-bold truncate" title={String(p.value)}>{String(p.value)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+
 
         {/* Quick Rating */}
         <div className="mt-2 flex items-center gap-1" onClick={stopPropagation}>
