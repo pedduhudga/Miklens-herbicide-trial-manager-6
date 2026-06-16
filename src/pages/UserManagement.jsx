@@ -495,7 +495,7 @@ export default function UserManagement({ onMenuClick }) {
               )}
 
               {/* Category Access Control */}
-              {form.role !== 'admin' && form.role !== 'developer' && (
+              {form.role !== 'admin' && (
                 <div className="border-t pt-3">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Category Access</label>
                   <div className="space-y-2">
@@ -536,7 +536,7 @@ export default function UserManagement({ onMenuClick }) {
               )}
 
               {/* Viewable Users (Cross-user sharing) */}
-              {form.role !== 'admin' && form.role !== 'developer' && (
+              {form.role !== 'admin' && (
                 <div className="border-t pt-3">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Viewable Users (Shared Data Access)</label>
                   <div className="max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-100 space-y-1">
@@ -563,7 +563,7 @@ export default function UserManagement({ onMenuClick }) {
               )}
 
               {/* Tab Permissions */}
-              {form.role !== 'admin' && form.role !== 'developer' && (
+              {form.role !== 'admin' && (
                 <div className="border-t pt-3">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Tab Permissions (Enabled Tabs)</label>
                   <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-100">
