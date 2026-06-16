@@ -24,11 +24,16 @@ import { getFirebaseDB, COLLECTIONS, getCategoryCollection } from "./firebase.js
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function cleanForFirestore(obj) {
-  if (!obj || typeof obj !== "object") return obj;
+  if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(cleanForFirestore);
+  }
+  if (typeof obj !== "object") return obj;
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined) continue;
-    out[k] = v;
+    out[k] = cleanForFirestore(v);
   }
   return out;
 }
