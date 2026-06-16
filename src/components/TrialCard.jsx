@@ -352,7 +352,7 @@ const TrialCard = memo(function TrialCard({
                 <MoreVertical className="w-3.5 h-3.5" />
               </button>
               {isMenuOpen && (
-                <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-44 py-1" onClick={stopPropagation}>
+                <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-48 py-1 max-h-72 overflow-y-auto" onClick={stopPropagation}>
                   <button onClick={handleViewDetails} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
                     <Eye className="w-3.5 h-3.5 text-slate-500" /> View Details
                   </button>
