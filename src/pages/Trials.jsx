@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback, useDeferredVa
 import QRCodeLib from 'qrcode';
 import { jStat } from 'jstat';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { addTrial, deleteTrial, updateTrial, uploadPhoto, apiCall } from '../services/dataLayer.js';
@@ -98,6 +99,7 @@ const fuzzyMatch = (text, query) => {
 
 export default function Trials({ onMenuClick }) {
   const { state, updateState, getAppState, dispatch } = useAppState();
+  const { isViewer } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const activeCategory = state.activeCategory || 'herbicide';
@@ -3227,22 +3229,26 @@ If none are present, write "None".`;
             <button onClick={() => setShowFilters(v => !v)} className={`p-2 rounded-lg border transition ${showFilters ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-500'}`}>
               <SlidersHorizontal className="w-4 h-4" />
             </button>
-            <button onClick={exportAllCsv} title="Export all trials to CSV" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition">
-              <FileDown className="w-4 h-4" />
-            </button>
-            <input 
-              type="file" 
-              ref={armFileInputRef} 
-              onChange={handleARMImportChange} 
-              accept=".csv" 
-              className="hidden" 
-            />
-            <button onClick={handleARMImportClick} title="Import trials from ARM CSV" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition">
-              <FolderPlus className="w-4 h-4" />
-            </button>
-            <button onClick={() => handleOpenModal()} className="btn-primary text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap">
-              <Plus className="w-4 h-4" /> New Trial
-            </button>
+            {!isViewer && (
+              <>
+                <button onClick={exportAllCsv} title="Export all trials to CSV" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition">
+                  <FileDown className="w-4 h-4" />
+                </button>
+                <input 
+                  type="file" 
+                  ref={armFileInputRef} 
+                  onChange={handleARMImportChange} 
+                  accept=".csv" 
+                  className="hidden" 
+                />
+                <button onClick={handleARMImportClick} title="Import trials from ARM CSV" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition">
+                  <FolderPlus className="w-4 h-4" />
+                </button>
+                <button onClick={() => handleOpenModal()} className="btn-primary text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap">
+                  <Plus className="w-4 h-4" /> New Trial
+                </button>
+              </>
+            )}
           </div>
 
           {showFilters && (
@@ -4098,60 +4104,66 @@ If none are present, write "None".`;
                 <p className="text-xs text-slate-500 mt-0.5">{formatDateTime(detailTrial.Date)} · {detailTrial.Location || 'No location'}</p>
               </div>
               <div className="flex gap-2 shrink-0" ref={exportMenuRef}>
-                {/* Export dropdown */}
-                <div className="relative">
-                  <button onClick={() => setExportMenuOpen(v => !v)} title="Export" className="p-2 rounded-lg hover:bg-white/60 text-slate-600 flex items-center gap-1">
-                    <FileDown className="w-4 h-4" />
-                  </button>
-                  {exportMenuOpen && (
-                    <div className="absolute right-0 top-10 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-52 py-1">
-                      <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">Export This Trial</p>
-                      <button onClick={() => { triggerExportWithCustomisation(() => handleExportPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <FileDown className="w-4 h-4 text-red-500" /> Comprehensive PDF
+                {!isViewer && (
+                  <>
+                    {/* Export dropdown */}
+                    <div className="relative">
+                      <button onClick={() => setExportMenuOpen(v => !v)} title="Export" className="p-2 rounded-lg hover:bg-white/60 text-slate-600 flex items-center gap-1">
+                        <FileDown className="w-4 h-4" />
                       </button>
-                      <button onClick={() => { triggerExportWithCustomisation(() => handleExportSciPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <ScanLine className="w-4 h-4 text-indigo-500" /> Scientific PDF
-                      </button>
-                      <button onClick={() => { handleExportPpt(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <MonitorPlay className="w-4 h-4 text-orange-500" /> PowerPoint (.pptx)
-                      </button>
-                      {activeCategory !== 'herbicide' && (
-                        <button onClick={() => { triggerExportWithCustomisation(() => handleExportAdvancedExcel(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                          <FileSpreadsheet className="w-4 h-4 text-amber-500" /> Advanced Excel (11-Sheet)
-                        </button>
+                      {exportMenuOpen && (
+                        <div className="absolute right-0 top-10 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-52 py-1">
+                          <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">Export This Trial</p>
+                          <button onClick={() => { triggerExportWithCustomisation(() => handleExportPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <FileDown className="w-4 h-4 text-red-500" /> Comprehensive PDF
+                          </button>
+                          <button onClick={() => { triggerExportWithCustomisation(() => handleExportSciPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <ScanLine className="w-4 h-4 text-indigo-500" /> Scientific PDF
+                          </button>
+                          <button onClick={() => { handleExportPpt(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <MonitorPlay className="w-4 h-4 text-orange-500" /> PowerPoint (.pptx)
+                          </button>
+                          {activeCategory !== 'herbicide' && (
+                            <button onClick={() => { triggerExportWithCustomisation(() => handleExportAdvancedExcel(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                              <FileSpreadsheet className="w-4 h-4 text-amber-500" /> Advanced Excel (11-Sheet)
+                            </button>
+                          )}
+                          <button onClick={() => { triggerExportWithCustomisation(() => exportHtmlSlide(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <Archive className="w-4 h-4 text-blue-500" /> HTML Report (printable)
+                          </button>
+                          <button onClick={() => { triggerExportWithCustomisation(() => exportTxtReport(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <FileCode className="w-4 h-4 text-slate-500" /> Field Report (.txt)
+                          </button>
+                          <button onClick={() => { triggerExportWithCustomisation(() => exportCsv(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Observations CSV
+                          </button>
+                          <button onClick={() => { exportJson(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <FileDown className="w-4 h-4 text-violet-500" /> Raw JSON
+                          </button>
+                          <button onClick={() => { shareTrial(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <Share2 className="w-3.5 h-3.5 text-sky-500" /> Share / Copy
+                          </button>
+                          <hr className="my-1 border-slate-100" />
+                          <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">All Trials</p>
+                          <button onClick={() => { triggerExportWithCustomisation(() => exportAllCsv()); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export All Trials (CSV)
+                          </button>
+                        </div>
                       )}
-                      <button onClick={() => { triggerExportWithCustomisation(() => exportHtmlSlide(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <Archive className="w-4 h-4 text-blue-500" /> HTML Report (printable)
-                      </button>
-                      <button onClick={() => { triggerExportWithCustomisation(() => exportTxtReport(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <FileCode className="w-4 h-4 text-slate-500" /> Field Report (.txt)
-                      </button>
-                      <button onClick={() => { triggerExportWithCustomisation(() => exportCsv(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Observations CSV
-                      </button>
-                      <button onClick={() => { exportJson(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <FileDown className="w-4 h-4 text-violet-500" /> Raw JSON
-                      </button>
-                      <button onClick={() => { shareTrial(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <Share2 className="w-4 h-4 text-sky-500" /> Share / Copy
-                      </button>
-                      <hr className="my-1 border-slate-100" />
-                      <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">All Trials</p>
-                      <button onClick={() => { triggerExportWithCustomisation(() => exportAllCsv()); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export All Trials (CSV)
-                      </button>
                     </div>
-                  )}
-                </div>
-                <button onClick={() => handleMoveToProject(detailTrial)} title="Move to Project" className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><FolderOpen className="w-4 h-4" /></button>
-                <button onClick={() => { setActiveTrial(null); handleOpenModal(detailTrial); }} title="Edit" className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => handleMoveToProject(detailTrial)} title="Move to Project" className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><FolderOpen className="w-4 h-4" /></button>
+                    <button onClick={() => { setActiveTrial(null); handleOpenModal(detailTrial); }} title="Edit" className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><Edit className="w-4 h-4" /></button>
+                  </>
+                )}
                 <button onClick={() => setActiveTrial(null)} className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><X className="w-5 h-5" /></button>
               </div>
             </div>
 
             {/* Tabs */}
             <div className="flex border-b bg-white overflow-x-auto">
-              {[['info','Info'],['applications','Applications'],['observations','Observations'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']].map(([k, label]) => (
+              {[['info','Info'],['applications','Applications'],['observations','Observations'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']]
+                .filter(([k]) => k !== 'export' || !isViewer)
+                .map(([k, label]) => (
                 <button key={k} onClick={() => setDetailTab(k)}
                   className={`px-4 py-3 text-sm font-semibold border-b-2 transition
                     ${detailTab === k ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -4172,7 +4184,7 @@ If none are present, write "None".`;
                       <h4 className="font-bold text-slate-800 text-sm">Treatment Applications Log</h4>
                       <p className="text-xs text-slate-500">Record sequential treatment applications made to this plot.</p>
                     </div>
-                    {!detailIsCompleted && (
+                    {!detailIsCompleted && !isViewer && (
                       <button 
                         onClick={() => handleOpenAppModal(null)}
                         className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold transition shadow-sm"
@@ -4189,7 +4201,7 @@ If none are present, write "None".`;
                         <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-200">
                           <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                           <p className="text-sm font-semibold text-slate-400">No sequential applications recorded yet</p>
-                          {!detailIsCompleted && (
+                          {!detailIsCompleted && !isViewer && (
                             <button 
                               onClick={() => handleOpenAppModal(null)}
                               className="mt-3 text-xs text-emerald-600 font-bold hover:underline"
@@ -4214,7 +4226,7 @@ If none are present, write "None".`;
                                   {app.date ? formatDateTime(app.date) : 'No date'}
                                 </span>
                               </div>
-                              {!detailIsCompleted && (
+                              {!detailIsCompleted && !isViewer && (
                                 <div className="flex items-center gap-1">
                                   <button 
                                     onClick={() => handleOpenAppModal(app, idx)} 
@@ -4387,23 +4399,25 @@ If none are present, write "None".`;
                       {detailTrial.FinalizationDate && <span className="text-orange-500">· {formatDateTime(detailTrial.FinalizationDate)}</span>}
                     </div>
                   )}
-                  <div className="flex gap-2 pt-2 flex-wrap">
-                    {!detailIsCompleted ? (
-                      <button onClick={handleFinalize} className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                        <Lock className="w-3.5 h-3.5" /> Finalize Trial
+                  {!isViewer && (
+                    <div className="flex gap-2 pt-2 flex-wrap">
+                      {!detailIsCompleted ? (
+                        <button onClick={handleFinalize} className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                          <Lock className="w-3.5 h-3.5" /> Finalize Trial
+                        </button>
+                      ) : (
+                        <button onClick={handleRestart} className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                          <Unlock className="w-3.5 h-3.5" /> Reactivate
+                        </button>
+                      )}
+                      <button onClick={() => { setActiveTrial(null); handleOpenModal(detailTrial, true); }} className="px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
+                        Duplicate
                       </button>
-                    ) : (
-                      <button onClick={handleRestart} className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        <Unlock className="w-3.5 h-3.5" /> Reactivate
+                      <button onClick={() => handleDelete(detailTrial.ID)} className="px-4 py-2 text-sm font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                        Delete
                       </button>
-                    )}
-                    <button onClick={() => { setActiveTrial(null); handleOpenModal(detailTrial, true); }} className="px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
-                      Duplicate
-                    </button>
-                    <button onClick={() => handleDelete(detailTrial.ID)} className="px-4 py-2 text-sm font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
-                      Delete
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4434,17 +4448,21 @@ If none are present, write "None".`;
                         )}
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        {sorted.length >= 2 && (
+                        {sorted.length >= 2 && !isViewer && (
                           <button onClick={() => generateAISummary()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-violet-500 to-purple-500 text-white rounded-lg hover:from-violet-600 hover:to-purple-600 shadow-sm">
                             <Sparkles className="w-3.5 h-3.5" />Generate AI Summary
                           </button>
                         )}
-                        <button onClick={() => setIsGridOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100">
-                          <Grid className="w-3.5 h-3.5" />Grid Tool
-                        </button>
-                        <button onClick={() => openObsModal(null)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                          <Plus className="w-3.5 h-3.5" />Log Observation
-                        </button>
+                        {!isViewer && (
+                          <>
+                            <button onClick={() => setIsGridOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100">
+                              <Grid className="w-3.5 h-3.5" />Grid Tool
+                            </button>
+                            <button onClick={() => openObsModal(null)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                              <Plus className="w-3.5 h-3.5" />Log Observation
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                     {sorted.length > 0 ? (
@@ -4489,10 +4507,12 @@ If none are present, write "None".`;
                                   {obs.aiConfidence && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${obs.aiConfidence === 'HIGH' ? 'bg-emerald-100 text-emerald-700' : obs.aiConfidence === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{obs.aiConfidence}</span>}
                                   {obs.competitionLevel && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">{obs.competitionLevel}</span>}
                                 </div>
-                                <div className="flex gap-1 shrink-0">
-                                  <button onClick={() => openObsModal(detailEfficacy.indexOf(obs) !== -1 ? detailEfficacy.indexOf(obs) : idx)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded"><Edit className="w-3.5 h-3.5" /></button>
-                                  <button onClick={() => handleDeleteObs(detailEfficacy.indexOf(obs) !== -1 ? detailEfficacy.indexOf(obs) : idx)} className="p-1.5 text-slate-400 hover:text-red-600 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
-                                </div>
+                                {!isViewer && (
+                                  <div className="flex gap-1 shrink-0">
+                                    <button onClick={() => openObsModal(detailEfficacy.indexOf(obs) !== -1 ? detailEfficacy.indexOf(obs) : idx)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded"><Edit className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => handleDeleteObs(detailEfficacy.indexOf(obs) !== -1 ? detailEfficacy.indexOf(obs) : idx)} className="p-1.5 text-slate-400 hover:text-red-600 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                                  </div>
+                                )}
                               </div>
                               <div className="grid grid-cols-3 gap-2 mb-2">
                                 <div className="bg-slate-50 p-2 rounded-lg text-center">
@@ -4603,20 +4623,22 @@ If none are present, write "None".`;
 
                   <div className="flex justify-between items-center flex-wrap gap-2">
                     <h3 className="font-semibold text-slate-700">Photos ({detailPhotos.length})</h3>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
-                        <Image className="w-3.5 h-3.5" />Upload
-                      </button>
-                      <button onClick={() => { setCameraMode('weed'); setIsCameraOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600">
-                        <ScanLine className="w-3.5 h-3.5" />Weed Cam
-                      </button>
-                      <button onClick={() => { setCameraMode('general'); setIsCameraOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        <Camera className="w-3.5 h-3.5" />Camera
-                      </button>
-                      <button onClick={() => setAiBatchModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 shadow-lg">
-                        <Sparkles className="w-3.5 h-3.5" />AI Scan All
-                      </button>
-                    </div>
+                    {!isViewer && (
+                      <div className="flex gap-2 flex-wrap">
+                        <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
+                          <Image className="w-3.5 h-3.5" />Upload
+                        </button>
+                        <button onClick={() => { setCameraMode('weed'); setIsCameraOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+                          <ScanLine className="w-3.5 h-3.5" />Weed Cam
+                        </button>
+                        <button onClick={() => { setCameraMode('general'); setIsCameraOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                          <Camera className="w-3.5 h-3.5" />Camera
+                        </button>
+                        <button onClick={() => setAiBatchModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 shadow-lg">
+                          <Sparkles className="w-3.5 h-3.5" />AI Scan All
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {detailPhotos.length > 0 ? (
                     <div className="grid grid-cols-2 gap-3">
@@ -4636,19 +4658,21 @@ If none are present, write "None".`;
                                 className="w-full aspect-square object-cover bg-slate-200"
                                 onError={e => { e.target.onerror = null; e.target.src = rawSrc; }}
                               />
-                              <div className="absolute top-1 right-1 flex gap-1">
-                                <button
-                                  onClick={() => handleAnalyzeSinglePhoto(src, photo.date)}
-                                  disabled={!!aiGenRunning}
-                                  title={aiGenRunning ? 'AI analysis running...' : 'AI Full Scan & Log'}
-                                  className={`p-1.5 rounded-lg text-white shadow transition ${aiGenRunning ? 'bg-purple-400 cursor-wait' : 'bg-purple-600/90 hover:bg-purple-700'}`}>
-                                  {aiGenRunning === src ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                </button>
-                                <button onClick={() => handleDeletePhoto(idx)} title="Delete"
-                                  className="p-1.5 bg-red-500/90 backdrop-blur rounded-lg text-white shadow">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              {!isViewer && (
+                                <div className="absolute top-1 right-1 flex gap-1">
+                                  <button
+                                    onClick={() => handleAnalyzeSinglePhoto(src, photo.date)}
+                                    disabled={!!aiGenRunning}
+                                    title={aiGenRunning ? 'AI analysis running...' : 'AI Full Scan & Log'}
+                                    className={`p-1.5 rounded-lg text-white shadow transition ${aiGenRunning ? 'bg-purple-400 cursor-wait' : 'bg-purple-600/90 hover:bg-purple-700'}`}>
+                                    {aiGenRunning === src ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                  </button>
+                                  <button onClick={() => handleDeletePhoto(idx)} title="Delete"
+                                    className="p-1.5 bg-red-500/90 backdrop-blur rounded-lg text-white shadow">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                             <div className="px-2 pt-1.5 pb-1">
                               <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -4674,14 +4698,18 @@ If none are present, write "None".`;
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100">
                                 <ScanLine className="w-3 h-3" />Cover
                               </button>
-                              <button onClick={() => handleCropExistingPhoto(idx, rawSrc)} title="Crop photo"
-                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
-                                <Crop className="w-3 h-3" />Crop
-                              </button>
-                              <button onClick={() => setPhotoEditModal({ idx, label: photo.label || '', date: toDatetimeLocal(photo.date || new Date()) })} title="Edit label/date"
-                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
-                                <Pencil className="w-3 h-3" />Edit
-                              </button>
+                              {!isViewer && (
+                                <>
+                                  <button onClick={() => handleCropExistingPhoto(idx, rawSrc)} title="Crop photo"
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
+                                    <Crop className="w-3 h-3" />Crop
+                                  </button>
+                                  <button onClick={() => setPhotoEditModal({ idx, label: photo.label || '', date: toDatetimeLocal(photo.date || new Date()) })} title="Edit label/date"
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
+                                    <Pencil className="w-3 h-3" />Edit
+                                  </button>
+                                </>
+                              )}
                               <button onClick={() => { const a = document.createElement('a'); a.href = rawSrc; a.download = photo.fileName || `photo-${idx+1}.jpg`; a.target = '_blank'; a.click(); }} title="Download"
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
                                 <Download className="w-3 h-3" />

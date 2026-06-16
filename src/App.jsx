@@ -52,7 +52,7 @@ function AppLayout() {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   const { state, updateState, getAppState } = useAppState();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isViewer, isAdmin, user } = useAuth();
 
   const handleResolveConflict = (resolvedItem) => {
     updateState({
@@ -263,28 +263,28 @@ function AppLayout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
         <Routes>
           <Route path="/categories" element={<CategorySelector />} />
-          <Route path="/" element={<Dashboard onMenuClick={toggleSidebar} />} />
-          <Route path="/large-scale-trials" element={<LargeScaleTrials onMenuClick={toggleSidebar} />} />
-          <Route path="/projects" element={<Projects onMenuClick={toggleSidebar} />} />
-          <Route path="/scanner" element={<PlotScanner onMenuClick={toggleSidebar} />} />
-          <Route path="/formulations" element={<Formulations onMenuClick={toggleSidebar} />} />
-          <Route path="/trials" element={<Trials onMenuClick={toggleSidebar} />} />
-          <Route path="/reports" element={<Reports onMenuClick={toggleSidebar} />} />
-          <Route path="/organisations" element={<Organisations onMenuClick={toggleSidebar} />} />
-          <Route path="/ingredients" element={<Ingredients onMenuClick={toggleSidebar} />} />
-          <Route path="/ai-assistant" element={<AIAssistant onMenuClick={toggleSidebar} />} />
-          <Route path="/analytics" element={<Analytics onMenuClick={toggleSidebar} />} />
-          <Route path="/statistics" element={<Statistics onMenuClick={toggleSidebar} />} />
-          <Route path="/alerts" element={<Alerts onMenuClick={toggleSidebar} />} />
-          <Route path="/dose-response" element={<DoseResponse onMenuClick={toggleSidebar} />} />
-          <Route path="/resistance" element={<ResistanceTracker onMenuClick={toggleSidebar} />} />
-          <Route path="/map" element={<FieldMap onMenuClick={toggleSidebar} />} />
-          <Route path="/search" element={<SmartSearch onMenuClick={toggleSidebar} />} />
-          <Route path="/data" element={<DataManagement onMenuClick={toggleSidebar} />} />
-          <Route path="/settings" element={<Settings onMenuClick={toggleSidebar} />} />
-          <Route path="/users" element={<UserManagement onMenuClick={toggleSidebar} />} />
-          <Route path="/compare" element={<CompareTrials onMenuClick={toggleSidebar} />} />
-          <Route path="/migration" element={<MigrationTool onMenuClick={toggleSidebar} />} />
+          <Route path="/" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.Dashboard === false ? <Navigate to="/trials" replace /> : <Dashboard onMenuClick={toggleSidebar} />)} />
+          <Route path="/large-scale-trials" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Large Field Trials'] === false ? <Navigate to="/trials" replace /> : <LargeScaleTrials onMenuClick={toggleSidebar} />)} />
+          <Route path="/projects" element={user?.tabPermissions?.['Projects (RCBD)'] === false ? <Navigate to="/trials" replace /> : <Projects onMenuClick={toggleSidebar} />} />
+          <Route path="/scanner" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Plot Scanner'] === false ? <Navigate to="/trials" replace /> : <PlotScanner onMenuClick={toggleSidebar} />)} />
+          <Route path="/formulations" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.Formulations === false ? <Navigate to="/trials" replace /> : <Formulations onMenuClick={toggleSidebar} />)} />
+          <Route path="/trials" element={user?.tabPermissions?.Trials === false ? <Navigate to="/categories" replace /> : <Trials onMenuClick={toggleSidebar} />} />
+          <Route path="/reports" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Reports & Cards'] === false ? <Navigate to="/trials" replace /> : <Reports onMenuClick={toggleSidebar} />)} />
+          <Route path="/organisations" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.Organisations === false ? <Navigate to="/trials" replace /> : <Organisations onMenuClick={toggleSidebar} />)} />
+          <Route path="/ingredients" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Ingredient Costs'] === false ? <Navigate to="/trials" replace /> : <Ingredients onMenuClick={toggleSidebar} />)} />
+          <Route path="/ai-assistant" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['AI Assistant'] === false ? <Navigate to="/trials" replace /> : <AIAssistant onMenuClick={toggleSidebar} />)} />
+          <Route path="/analytics" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.Analytics === false ? <Navigate to="/trials" replace /> : <Analytics onMenuClick={toggleSidebar} />)} />
+          <Route path="/statistics" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.Statistics === false ? <Navigate to="/trials" replace /> : <Statistics onMenuClick={toggleSidebar} />)} />
+          <Route path="/alerts" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Smart Alerts'] === false ? <Navigate to="/trials" replace /> : <Alerts onMenuClick={toggleSidebar} />)} />
+          <Route path="/dose-response" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Dose-Response (ED50)'] === false ? <Navigate to="/trials" replace /> : <DoseResponse onMenuClick={toggleSidebar} />)} />
+          <Route path="/resistance" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Resistance Tracker'] === false ? <Navigate to="/trials" replace /> : <ResistanceTracker onMenuClick={toggleSidebar} />)} />
+          <Route path="/map" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Field Map'] === false ? <Navigate to="/trials" replace /> : <FieldMap onMenuClick={toggleSidebar} />)} />
+          <Route path="/search" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Smart Search'] === false ? <Navigate to="/trials" replace /> : <SmartSearch onMenuClick={toggleSidebar} />)} />
+          <Route path="/data" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.['Data Management'] === false ? <Navigate to="/trials" replace /> : <DataManagement onMenuClick={toggleSidebar} />)} />
+          <Route path="/settings" element={isViewer ? <Navigate to="/trials" replace /> : (user?.tabPermissions?.Settings === false ? <Navigate to="/trials" replace /> : <Settings onMenuClick={toggleSidebar} />)} />
+          <Route path="/users" element={!isAdmin ? <Navigate to="/" replace /> : <UserManagement onMenuClick={toggleSidebar} />} />
+          <Route path="/compare" element={isViewer ? <Navigate to="/trials" replace /> : <CompareTrials onMenuClick={toggleSidebar} />} />
+          <Route path="/migration" element={!isAdmin ? <Navigate to="/" replace /> : <MigrationTool onMenuClick={toggleSidebar} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
 

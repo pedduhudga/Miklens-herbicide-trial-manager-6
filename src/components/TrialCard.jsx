@@ -3,6 +3,7 @@ import { Calendar, MapPin, FlaskConical, Activity, Image as ImageIcon, ChevronLe
 import { safeJsonParse } from '../utils/helpers.js';
 import { formatDateTime } from '../utils/dateUtils.js';
 import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 const RESULT_COLORS = {
   'Excellent': 'bg-emerald-100 text-emerald-700',
@@ -67,6 +68,7 @@ const TrialCard = memo(function TrialCard({
   onMarkComplete,
   onEditControlDays,
 }) {
+  const { isViewer } = useAuth();
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const photos = useMemo(() => safeJsonParse(trial.PhotoURLs, []), [trial.PhotoURLs]);
   const efficacyData = useMemo(() => safeJsonParse(trial.EfficacyDataJSON, []), [trial.EfficacyDataJSON]);
@@ -262,13 +264,15 @@ const TrialCard = memo(function TrialCard({
         ${isSelected ? 'border-2 border-emerald-500 ring-2 ring-emerald-100' : 'border border-slate-100 hover:border-emerald-300'}`}
     >
       {/* Checkbox */}
-      <div className={`absolute top-3 left-3 w-5 h-5 rounded border-2 flex items-center justify-center transition ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'}`}>
-        {isSelected && (
-          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        )}
-      </div>
+      {!isViewer && (
+        <div className={`absolute top-3 left-3 w-5 h-5 rounded border-2 flex items-center justify-center transition ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'}`}>
+          {isSelected && (
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </div>
+      )}
 
       {/* Block Badge for RCBD Pot Trial */}
       {blockInfo && blockInfo.isColumnWise && (
@@ -311,65 +315,67 @@ const TrialCard = memo(function TrialCard({
               {project && <span className="text-xs text-emerald-600 font-medium truncate block">{project.Name}</span>}
             </div>
           </div>
-          <div className="flex gap-1 shrink-0" onClick={stopPropagation}>
-            <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
-              <Edit className="w-3.5 h-3.5" />
-            </button>
-            {/* 3-dot menu */}
-            <div className="relative">
-              <button
-                onClick={handleMenuClick}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" title="More actions">
-                <MoreVertical className="w-3.5 h-3.5" />
+          {!isViewer && (
+            <div className="flex gap-1 shrink-0" onClick={stopPropagation}>
+              <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
+                <Edit className="w-3.5 h-3.5" />
               </button>
-              {isMenuOpen && (
-                <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-44 py-1" onClick={stopPropagation}>
-                  <button onClick={handleViewDetails} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <Eye className="w-3.5 h-3.5 text-slate-500" /> View Details
-                  </button>
-                  <button onClick={handleDuplicate} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <Copy className="w-3.5 h-3.5 text-emerald-500" /> Duplicate
-                  </button>
-                  <button onClick={handleMove} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <FolderOpen className="w-3.5 h-3.5 text-blue-500" /> Move to Project
-                  </button>
-                  <hr className="my-1 border-slate-100" />
-                  <button onClick={handleExportPdf} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <FileDown className="w-3.5 h-3.5 text-red-500" /> Comprehensive PDF
-                  </button>
-                  <button onClick={handleExportSciPdf} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <ScanLine className="w-3.5 h-3.5 text-indigo-500" /> Scientific PDF
-                  </button>
-                  <button onClick={handleExportPpt} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <MonitorPlay className="w-3.5 h-3.5 text-orange-500" /> PowerPoint (.pptx)
-                  </button>
-                  <button onClick={handleExportHtml} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <Archive className="w-3.5 h-3.5 text-blue-500" /> HTML Report
-                  </button>
-                  <button onClick={handleExportTxt} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <FileCode className="w-3.5 h-3.5 text-slate-500" /> Field Report (.txt)
-                  </button>
-                  <button onClick={handleExportCsv} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Export CSV
-                  </button>
-                  <button onClick={handleExportJson} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <FileDown className="w-3.5 h-3.5 text-violet-500" /> Export JSON
-                  </button>
-                  <button onClick={handleShare} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
-                    <Share2 className="w-3.5 h-3.5 text-sky-500" /> Share / Copy
-                  </button>
-                  <hr className="my-1 border-slate-100" />
-                  <button onClick={handleAiGenerate} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-violet-50">
-                    <BrainCircuit className="w-3.5 h-3.5 text-violet-500" /> Generate AI Report
-                  </button>
-                  <hr className="my-1 border-slate-100" />
-                  <button onClick={handleDelete} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
-                  </button>
-                </div>
-              )}
+              {/* 3-dot menu */}
+              <div className="relative">
+                <button
+                  onClick={handleMenuClick}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" title="More actions">
+                  <MoreVertical className="w-3.5 h-3.5" />
+                </button>
+                {isMenuOpen && (
+                  <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-44 py-1" onClick={stopPropagation}>
+                    <button onClick={handleViewDetails} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <Eye className="w-3.5 h-3.5 text-slate-500" /> View Details
+                    </button>
+                    <button onClick={handleDuplicate} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <Copy className="w-3.5 h-3.5 text-emerald-500" /> Duplicate
+                    </button>
+                    <button onClick={handleMove} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <FolderOpen className="w-3.5 h-3.5 text-blue-500" /> Move to Project
+                    </button>
+                    <hr className="my-1 border-slate-100" />
+                    <button onClick={handleExportPdf} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <FileDown className="w-3.5 h-3.5 text-red-500" /> Comprehensive PDF
+                    </button>
+                    <button onClick={handleExportSciPdf} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <ScanLine className="w-3.5 h-3.5 text-indigo-500" /> Scientific PDF
+                    </button>
+                    <button onClick={handleExportPpt} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <MonitorPlay className="w-3.5 h-3.5 text-orange-500" /> PowerPoint (.pptx)
+                    </button>
+                    <button onClick={handleExportHtml} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <Archive className="w-3.5 h-3.5 text-blue-500" /> HTML Report
+                    </button>
+                    <button onClick={handleExportTxt} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <FileCode className="w-3.5 h-3.5 text-slate-500" /> Field Report (.txt)
+                    </button>
+                    <button onClick={handleExportCsv} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Export CSV
+                    </button>
+                    <button onClick={handleExportJson} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <FileDown className="w-3.5 h-3.5 text-violet-500" /> Export JSON
+                    </button>
+                    <button onClick={handleShare} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <Share2 className="w-3.5 h-3.5 text-sky-500" /> Share / Copy
+                    </button>
+                    <hr className="my-1 border-slate-100" />
+                    <button onClick={handleAiGenerate} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-violet-50">
+                      <BrainCircuit className="w-3.5 h-3.5 text-violet-500" /> Generate AI Report
+                    </button>
+                    <hr className="my-1 border-slate-100" />
+                    <button onClick={handleDelete} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="space-y-1.5 text-xs text-slate-500">
@@ -412,9 +418,11 @@ const TrialCard = memo(function TrialCard({
               <span className={isCompleted ? 'text-emerald-600 font-semibold' : 'text-blue-600 font-semibold'}>
                 {controlDays}d control{isCompleted ? ' (finalized)' : ''}
               </span>
-              <button onClick={handleEditControlDays} title="Edit control days" className="text-slate-300 hover:text-slate-600 transition">
-                <Pencil className="w-3 h-3" />
-              </button>
+              {!isViewer && (
+                <button onClick={handleEditControlDays} title="Edit control days" className="text-slate-300 hover:text-slate-600 transition">
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -422,26 +430,28 @@ const TrialCard = memo(function TrialCard({
 
 
         {/* Quick Rating */}
-        <div className="mt-2 flex items-center gap-1" onClick={stopPropagation}>
-          <span className="text-[10px] text-slate-400 mr-0.5">Rate:</span>
-          {[['Excellent','bg-emerald-500'],['Good','bg-blue-500'],['Fair','bg-amber-500'],['Poor','bg-red-500']].map(([r, col]) => (
-            <button key={r} onClick={e => handleQuickRate(e, r)}
-              title={trial.Result === r ? `${r} — tap to clear` : r}
-              className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition ${
-                trial.Result === r
-                  ? `${col} text-white ring-2 ring-offset-1 ring-current`
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              }`}>
-              {r[0]}
-            </button>
-          ))}
-          {trial.Result && (
-            <button onClick={e => handleQuickRate(e, trial.Result)} title="Clear rating"
-              className="text-[9px] text-slate-400 hover:text-red-500 ml-0.5 transition">
-              ×
-            </button>
-          )}
-        </div>
+        {!isViewer && (
+          <div className="mt-2 flex items-center gap-1" onClick={stopPropagation}>
+            <span className="text-[10px] text-slate-400 mr-0.5">Rate:</span>
+            {[['Excellent','bg-emerald-500'],['Good','bg-blue-500'],['Fair','bg-amber-500'],['Poor','bg-red-500']].map(([r, col]) => (
+              <button key={r} onClick={e => handleQuickRate(e, r)}
+                title={trial.Result === r ? `${r} — tap to clear` : r}
+                className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition ${
+                  trial.Result === r
+                    ? `${col} text-white ring-2 ring-offset-1 ring-current`
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}>
+                {r[0]}
+              </button>
+            ))}
+            {trial.Result && (
+              <button onClick={e => handleQuickRate(e, trial.Result)} title="Clear rating"
+                className="text-[9px] text-slate-400 hover:text-red-500 ml-0.5 transition">
+                ×
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <ResultBadge result={trial.Result} />
@@ -454,42 +464,46 @@ const TrialCard = memo(function TrialCard({
             <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500' : 'bg-slate-400'}`} />
             <span className={`text-[10px] font-bold ${isLive ? 'text-green-700' : 'text-slate-500'}`}>{isLive ? 'LIVE' : 'INACTIVE'}</span>
           </div>
-          <div className="flex items-center gap-1">
-            {!isCompleted && (
-              <button onClick={handleMarkComplete}
-                title="Mark as Completed"
-                className="text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 flex items-center gap-0.5 transition">
-                <CheckCircle className="w-3 h-3" /> Done
+          {!isViewer && (
+            <div className="flex items-center gap-1">
+              {!isCompleted && (
+                <button onClick={handleMarkComplete}
+                  title="Mark as Completed"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 flex items-center gap-0.5 transition">
+                  <CheckCircle className="w-3 h-3" /> Done
+                </button>
+              )}
+              <button
+                onClick={handleActivateToggle}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded border transition ${
+                  isLive
+                    ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                    : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                }`}>
+                {isLive ? 'Deactivate' : 'Activate'}
               </button>
-            )}
-            <button
-              onClick={handleActivateToggle}
-              className={`text-[10px] font-bold px-2 py-0.5 rounded border transition ${
-                isLive
-                  ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                  : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-              }`}>
-              {isLive ? 'Deactivate' : 'Activate'}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="border-t px-3 py-2 flex items-center justify-between" onClick={stopPropagation}>
-        <div className="flex gap-1">
-          <button onClick={handleQuickPhoto}
-            title="Add Photo"
-            className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition">
-            <Camera className="w-3.5 h-3.5" /> Photo
-          </button>
-          <button onClick={handleQuickGalleryUpload}
-            title="Upload from Gallery"
-            className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition">
-            <ImageIcon className="w-3.5 h-3.5" /> Gallery
-          </button>
-        </div>
+        {!isViewer && (
+          <div className="flex gap-1">
+            <button onClick={handleQuickPhoto}
+              title="Add Photo"
+              className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition">
+              <Camera className="w-3.5 h-3.5" /> Photo
+            </button>
+            <button onClick={handleQuickGalleryUpload}
+              title="Upload from Gallery"
+              className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition">
+              <ImageIcon className="w-3.5 h-3.5" /> Gallery
+            </button>
+          </div>
+        )}
         <button onClick={() => onViewDetails(trial)}
-          className="text-xs text-emerald-600 font-semibold flex items-center gap-1 hover:underline">
+          className={`text-xs text-emerald-600 font-semibold flex items-center gap-1 hover:underline ${isViewer ? 'w-full justify-center' : ''}`}>
           View Details <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>

@@ -532,5 +532,22 @@ export const ADMIN_CATEGORY_ACCESS = {
 // Helper: check if user has access to a category
 export function hasAccess(user, categoryId, action = 'read') {
   if (!user) return false;
-  return true; // Bypassing category restriction locks as requested
+  const role = String(user.Role || user.role || 'user').toLowerCase();
+  
+  if (role === 'admin') {
+    return true;
+  }
+  
+  if (role === 'viewer') {
+    return action === 'read';
+  }
+  
+  // Scientist / User
+  const accessMap = user.categoryAccess || user.CategoryAccess;
+  if (!accessMap) return true; // Default fallback if no permissions configured
+  
+  const categoryPerm = accessMap[categoryId];
+  if (!categoryPerm) return false; // Default closed if category not listed
+  
+  return action === 'write' ? !!categoryPerm.write : !!categoryPerm.read;
 }

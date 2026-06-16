@@ -71,6 +71,7 @@ export function useAuth() {
   const user = state.auth?.user;
   const roleRaw = String(user?.Role || user?.role || '').toLowerCase();
   const isAdmin = roleRaw === 'admin';
+  const isViewer = roleRaw === 'viewer';
   const isAuthenticated = !!user && !!state.auth?.token;
 
   const hasCategoryAccess = useCallback((categoryId, action = 'read') => {
@@ -82,6 +83,7 @@ export function useAuth() {
     token: state.auth?.token,
     isAuthenticated,
     isAdmin,
+    isViewer,
     login,
     logout,
     hasCategoryAccess

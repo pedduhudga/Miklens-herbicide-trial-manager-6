@@ -9,9 +9,12 @@ import {
   onAuthStateChanged,
   updatePassword,
   sendPasswordResetEmail,
+  getAuth as getFirebaseAuthInstance,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
+import { initializeApp, getApps } from 'firebase/app';
 import { getFirebaseAuth, getFirebaseDB, COLLECTIONS } from './firebase.js';
+import { DEFAULT_CATEGORY_ACCESS } from '../utils/categoryConfig.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,8 @@ async function createUserProfile(uid, profileData) {
     IsActive: true,
     DriveFolderId: profileData.DriveFolderId || '',
     ApiKeysJSON: '[]',
+    categoryAccess: profileData.categoryAccess || { ...DEFAULT_CATEGORY_ACCESS },
+    tabPermissions: profileData.tabPermissions || {},
     CreatedAt: new Date().toISOString(),
     UpdatedAt: new Date().toISOString(),
     _createdAt: serverTimestamp(),
@@ -84,15 +89,26 @@ export async function fbLogin(email, password) {
   }
 }
 
-/**
- * Register a new user (admin action or first-time setup).
- * Creates both a Firebase Auth user and a Firestore profile document.
- */
 export async function fbRegisterUser(email, password, profileData = {}) {
   try {
-    const auth = getFirebaseAuth();
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const apps = getApps();
+    if (apps.length === 0) {
+      throw new Error('Primary Firebase App not initialized.');
+    }
+    const config = apps[0].options;
+    const tempAppName = `tempApp_${Date.now()}`;
+    const tempApp = initializeApp(config, tempAppName);
+    const tempAuth = getFirebaseAuthInstance(tempApp);
+
+    const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
     const profile = await createUserProfile(cred.user.uid, { email, ...profileData });
+    
+    try {
+      await tempApp.delete();
+    } catch (e) {
+      console.warn('[Firebase] Temp App cleanup failed:', e);
+    }
+
     return { success: true, uid: cred.user.uid, user: profile };
   } catch (err) {
     const map = {

@@ -54,7 +54,7 @@ const ACCENT_CLASSES = {
 };
 
 export default function Sidebar({ isOpen, onClose }) {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, isViewer, logout } = useAuth();
   const { state, dispatch } = useAppState();
   const navigate = useNavigate();
   const firebaseEnabled = !!state.settings?.firebaseEnabled;
@@ -100,6 +100,26 @@ export default function Sidebar({ isOpen, onClose }) {
     { to: "/settings", icon: <Settings className="w-5 h-5" />, label: "Settings" },
   ];
 
+  const filteredNavItems = navItems.filter(item => {
+    if (isViewer) {
+      return ['/trials', '/projects', '/categories'].includes(item.to);
+    }
+    if (user?.tabPermissions && user.tabPermissions[item.label] === false) {
+      return false;
+    }
+    return true;
+  });
+
+  const filteredBottomItems = bottomItems.filter(item => {
+    if (isViewer) {
+      return false;
+    }
+    if (user?.tabPermissions && user.tabPermissions[item.label] === false) {
+      return false;
+    }
+    return true;
+  });
+
   const sidebarClass = `sidebar bg-white/70 backdrop-blur-md w-64 flex-shrink-0 border-r border-white/40 shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex flex-col fixed inset-y-0 left-0 z-30 md:relative md:translate-x-0 transition-transform duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`;
 
   return (
@@ -137,35 +157,37 @@ export default function Sidebar({ isOpen, onClose }) {
 
             {catDropdownOpen && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
-                {Object.values(CATEGORIES).map(cat => {
-                  const Icon = ICON_MAP[cat.icon] || FlaskConical;
-                  const canAccess = hasAccess(user, cat.id, 'read');
-                  const isActive = cat.id === activeCategory;
-                  return (
-                    <button
-                      key={cat.id}
-                      onClick={() => canAccess && handleCategorySwitch(cat.id)}
-                      disabled={!canAccess}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-xs transition
-                        ${isActive ? 'bg-slate-100 font-bold text-slate-800' : 'text-slate-600 hover:bg-slate-50'}
-                        ${!canAccess ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
-                      `}
-                    >
-                      <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: cat.color.hexLight }}>
-                        <Icon className="w-3.5 h-3.5" style={{ color: cat.color.hex }} />
-                      </div>
-                      <span>{cat.name}</span>
-                      {isActive && <span className="ml-auto text-[9px] font-bold uppercase text-slate-400">Active</span>}
-                    </button>
-                  );
-                })}
+                {Object.values(CATEGORIES)
+                  .filter(cat => hasAccess(user, cat.id, 'read'))
+                  .map(cat => {
+                    const Icon = ICON_MAP[cat.icon] || FlaskConical;
+                    const canAccess = hasAccess(user, cat.id, 'read');
+                    const isActive = cat.id === activeCategory;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => canAccess && handleCategorySwitch(cat.id)}
+                        disabled={!canAccess}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-xs transition
+                          ${isActive ? 'bg-slate-100 font-bold text-slate-800' : 'text-slate-600 hover:bg-slate-50'}
+                          ${!canAccess ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+                        `}
+                      >
+                        <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: cat.color.hexLight }}>
+                          <Icon className="w-3.5 h-3.5" style={{ color: cat.color.hex }} />
+                        </div>
+                        <span>{cat.name}</span>
+                        {isActive && <span className="ml-auto text-[9px] font-bold uppercase text-slate-400">Active</span>}
+                      </button>
+                    );
+                  })}
               </div>
             )}
           </div>
         </div>
 
         <nav className="flex-grow overflow-y-auto p-4 space-y-1">
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -184,7 +206,7 @@ export default function Sidebar({ isOpen, onClose }) {
           ))}
 
           <div className="pt-4 mt-8 border-t border-slate-200/50">
-            {bottomItems.map((item) => (
+            {filteredBottomItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
