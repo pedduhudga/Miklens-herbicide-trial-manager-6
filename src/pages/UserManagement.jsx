@@ -198,7 +198,11 @@ export default function UserManagement({ onMenuClick }) {
             setIsModalOpen(false);
             loadFbUsers();
           } else {
-            toast('Creation failed: ' + res.message, 'error');
+            if (res.message && (res.message.includes('already exists') || res.message.includes('already-in-use'))) {
+              toast('Account already exists in Firebase Auth. Ask user to log in once to re-create their User Management profile.', 'error');
+            } else {
+              toast('Creation failed: ' + res.message, 'error');
+            }
           }
         }
       } catch (err) {
@@ -345,6 +349,7 @@ export default function UserManagement({ onMenuClick }) {
             <thead className="bg-slate-50 border-b">
               <tr>
                 <th className="px-6 py-4 font-semibold text-slate-700">User</th>
+                {!firebaseEnabled && <th className="px-6 py-4 font-semibold text-slate-700">Password</th>}
                 <th className="px-6 py-4 font-semibold text-slate-700">Role</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                 <th className="px-6 py-4 font-semibold text-slate-700 text-right">Actions</th>
@@ -364,6 +369,11 @@ export default function UserManagement({ onMenuClick }) {
                       </div>
                     </div>
                   </td>
+                  {!firebaseEnabled && (
+                    <td className="px-6 py-4 font-mono text-xs text-slate-600">
+                      {u.password || '••••••'}
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${
                       u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
@@ -398,7 +408,7 @@ export default function UserManagement({ onMenuClick }) {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan="4" className="text-center py-10 text-slate-400">
+                  <td colSpan={firebaseEnabled ? 4 : 5} className="text-center py-10 text-slate-400">
                     <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p className="text-sm">{search ? 'No users match your search' : 'No users found'}</p>
                   </td>
