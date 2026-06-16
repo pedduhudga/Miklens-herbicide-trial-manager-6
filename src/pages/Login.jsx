@@ -58,12 +58,13 @@ export default function Login() {
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Username</label>
+            <label htmlFor="username" className="block text-sm font-semibold text-slate-700 mb-2">Username</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
                 <User className="w-5 h-5" />
               </span>
               <input
+                id="username"
                 type="text"
                 required
                 value={username}
@@ -75,12 +76,13 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Password</label>
+            <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-2">Password</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
                 <Key className="w-5 h-5" />
               </span>
               <input
+                id="password"
                 type={showPassword ? "text" : "password"}
                 required
                 value={password}
@@ -91,8 +93,8 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition"
-                tabIndex="-1"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-lg px-2"
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
