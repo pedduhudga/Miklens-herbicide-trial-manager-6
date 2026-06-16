@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import TopBar from '../components/TopBar.jsx';
 import { useAppState } from '../hooks/useAppState.jsx';
 import { useAuth } from '../hooks/useAuth.js';
-import { Users, ShieldAlert, CheckCircle, XCircle, Plus, Pencil, Trash2, X, UserCog, Leaf, Shield, Bug, Beaker, Sprout } from 'lucide-react';
+import { Users, ShieldAlert, CheckCircle, XCircle, Plus, Pencil, Trash2, X, UserCog, Leaf, Shield, Bug, Beaker, Sprout, Eye, EyeOff } from 'lucide-react';
 import { CATEGORIES, DEFAULT_CATEGORY_ACCESS, ADMIN_CATEGORY_ACCESS } from '../utils/categoryConfig.js';
 
 const ICON_MAP = { Leaf, Shield, Bug, Beaker, Sprout };
@@ -41,6 +41,7 @@ export default function UserManagement({ onMenuClick }) {
   const [search, setSearch] = useState('');
   const [fbUsers, setFbUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const firebaseEnabled = !!state.settings?.firebaseEnabled;
 
@@ -96,6 +97,7 @@ export default function UserManagement({ onMenuClick }) {
       categoryAccess: u.categoryAccess || { ...DEFAULT_CATEGORY_ACCESS },
       tabPermissions: u.tabPermissions || {}
     } : { ...emptyForm, categoryAccess: { ...DEFAULT_CATEGORY_ACCESS }, tabPermissions: {} });
+    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -106,6 +108,56 @@ export default function UserManagement({ onMenuClick }) {
       toast('Username must be a valid email for Firebase authentication', 'error');
       return;
     }
+
+    if (!editingUser) {
+      const existingUser = users.find(u => u.username?.toLowerCase() === form.username.trim().toLowerCase());
+      if (existingUser) {
+        if (!existingUser.disabled) {
+          toast('A user with this email already exists in User Management.', 'error');
+          return;
+        }
+        
+        // If they exist but are disabled/deactivated, we will re-enable them and update their permissions
+        if (firebaseEnabled) {
+          setLoading(true);
+          try {
+            const { fbUpdateUserProfile } = await import('../services/firebaseAuth.js');
+            const roleName = form.role === 'admin' ? 'Admin' : form.role === 'viewer' ? 'Viewer' : 'User';
+            const res = await fbUpdateUserProfile(existingUser.id, {
+              Username: form.username.trim(),
+              Role: roleName,
+              IsActive: true,
+              categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
+              tabPermissions: form.role === 'admin' ? {} : form.tabPermissions
+            });
+            if (res.success) {
+              toast('User re-activated and permissions updated');
+              setIsModalOpen(false);
+              loadFbUsers();
+            } else {
+              toast('Re-activation failed: ' + res.message, 'error');
+            }
+          } catch (err) {
+            toast('Operation failed: ' + err.message, 'error');
+          } finally {
+            setLoading(false);
+          }
+        } else {
+          const updated = users.map(u => u.id === existingUser.id
+            ? { ...u, username: form.username.trim(), role: form.role, disabled: false,
+                categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
+                tabPermissions: form.role === 'admin' ? {} : form.tabPermissions,
+                ...(form.password.trim() ? { password: form.password.trim() } : {}) }
+            : u
+          );
+          updateState({ users: updated });
+          toast('User re-activated and permissions updated');
+          setIsModalOpen(false);
+        }
+        return;
+      }
+    }
+
     if (!editingUser && !form.password.trim()) { toast('Password is required for new users', 'error'); return; }
 
     if (firebaseEnabled) {
@@ -185,25 +237,47 @@ export default function UserManagement({ onMenuClick }) {
     if (currentUser && (currentUser.id === id || currentUser.username === userToDel?.username)) {
       toast('Cannot delete your own account', 'error'); return;
     }
-    if (!window.confirm('Delete this user?')) return;
+    if (!window.confirm('Deactivate and remove all permissions for this user?')) return;
+
+    // Build deactivated categories mapping (all permissions false)
+    const deactivatedAccess = Object.keys(CATEGORIES).reduce((acc, catId) => {
+      acc[catId] = { read: false, write: false };
+      return acc;
+    }, {});
+
+    // Build deactivated tab permissions (all tabs false)
+    const deactivatedTabs = ALL_TABS.reduce((acc, tab) => {
+      acc[tab] = false;
+      return acc;
+    }, {});
 
     if (firebaseEnabled) {
       setLoading(true);
       try {
-        const { deleteDoc, doc } = await import('firebase/firestore');
-        const { getFirebaseDB, COLLECTIONS } = await import('../services/firebase.js');
-        const db = getFirebaseDB();
-        await deleteDoc(doc(db, COLLECTIONS.users, id));
-        toast('User profile deleted from Firestore');
-        loadFbUsers();
+        const { fbUpdateUserProfile } = await import('../services/firebaseAuth.js');
+        const res = await fbUpdateUserProfile(id, {
+          IsActive: false,
+          categoryAccess: deactivatedAccess,
+          tabPermissions: deactivatedTabs
+        });
+        if (res.success) {
+          toast('User deactivated and permissions removed');
+          loadFbUsers();
+        } else {
+          toast('Failed to deactivate user', 'error');
+        }
       } catch (err) {
-        toast('Failed to delete user profile: ' + err.message, 'error');
+        toast('Failed to deactivate user: ' + err.message, 'error');
       } finally {
         setLoading(false);
       }
     } else {
-      updateState({ users: users.filter(u => u.id !== id) });
-      toast('User deleted');
+      const updated = users.map(u => u.id === id
+        ? { ...u, disabled: true, categoryAccess: deactivatedAccess, tabPermissions: deactivatedTabs }
+        : u
+      );
+      updateState({ users: updated });
+      toast('User deactivated and permissions removed');
     }
   };
 
@@ -353,9 +427,14 @@ export default function UserManagement({ onMenuClick }) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">{editingUser ? 'New Password (leave blank to keep)' : 'Password *'}</label>
-                <input type="password" value={form.password} onChange={e => setForm(p => ({...p, password: e.target.value}))}
-                  required={!editingUser}
-                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder={editingUser ? 'Leave blank to keep current' : 'Enter password'} />
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} value={form.password} onChange={e => setForm(p => ({...p, password: e.target.value}))}
+                    required={!editingUser}
+                    className="w-full px-3 py-2 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder={editingUser ? 'Leave blank to keep current' : 'Enter password'} />
+                  <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none">
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Role</label>
