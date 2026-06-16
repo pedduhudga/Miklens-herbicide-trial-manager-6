@@ -149,7 +149,7 @@ export default function Sidebar({ isOpen, onClose }) {
                     return (
                       <button
                         key={cat.id}
-                        onClick={() => handleCategorySwitch(cat.id)}
+                        onClick={() => canAccess && handleCategorySwitch(cat.id)}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-xs transition
                           ${isActive ? 'bg-slate-100 font-bold text-slate-800' : 'text-slate-600 hover:bg-slate-50'}
                           ${!canAccess ? 'text-slate-400 font-medium' : 'cursor-pointer'}
