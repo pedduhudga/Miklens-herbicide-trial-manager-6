@@ -172,7 +172,7 @@ function executeAction(action, payload, auth) {
         'addTrial': (p) => {
             try {
                 const parentFolderId = resolveEffectiveFolderId(ss, auth, p.folderId || payload.folderId);
-                ensureTrialFolder(ss, parentFolderId, p);
+                ensureTrialFolder(ss, parentFolderId, p, auth);
             } catch (e) {
                 Logger.log('addTrial ensureTrialFolder error: ' + e.message);
             }
@@ -181,7 +181,7 @@ function executeAction(action, payload, auth) {
         'createTrialRecord': (p) => {
             try {
                 const parentFolderId = resolveEffectiveFolderId(ss, auth, p.folderId || payload.folderId);
-                ensureTrialFolder(ss, parentFolderId, p);
+                ensureTrialFolder(ss, parentFolderId, p, auth);
             } catch (e) {
                 Logger.log('createTrialRecord ensureTrialFolder error: ' + e.message);
             }
@@ -198,7 +198,7 @@ function executeAction(action, payload, auth) {
                 if (p.items && p.items.length) {
                     p.items.forEach(item => {
                         try {
-                            ensureTrialFolder(ss, parentFolderId, item);
+                            ensureTrialFolder(ss, parentFolderId, item, auth);
                         } catch (inner) {
                             Logger.log('addBatchTrials ensureTrialFolder error for one item: ' + inner.message);
                         }
@@ -235,7 +235,7 @@ function executeAction(action, payload, auth) {
         'saveLiveQrSettings': (p) => updateRecord(ss, sheetsConfig.trials, p, auth),
         'organizeExistingPhotos': (p) => organizeExistingPhotos(ss, resolveEffectiveFolderId(ss, auth, p.folderId || payload.folderId), p),
         'scanPhotoConsistency': (p) => scanPhotoConsistency(ss, resolveEffectiveFolderId(ss, auth, p.folderId || payload.folderId)),
-        'listTrialPhotosFromDrive': (p) => listTrialPhotosFromDrive(ss, resolveEffectiveFolderId(ss, auth, p.folderId || payload.folderId), p),
+        'listTrialPhotosFromDrive': (p) => listTrialPhotosFromDrive(ss, resolveEffectiveFolderId(ss, auth, p.folderId || payload.folderId), p, auth),
         // Data Management
         'clearAllData': () => clearAllData(ss, auth),
         // ---- NEW: Offline Sync Queue Processing ----
@@ -533,7 +533,7 @@ function addBatchRecords(ss, sheetName, items, auth) {
  * Ensure that a hierarchical Drive folder exists for a trial.
  * Structure: Root (folderId) / ProjectName / "FormulationName (YYYY-MM-DD)"
  */
-function ensureTrialFolder(ss, parentFolderId, trialPayload) {
+function ensureTrialFolder(ss, parentFolderId, trialPayload, auth) {
     try {
         if (!parentFolderId || !trialPayload) return null;
 
@@ -541,10 +541,11 @@ function ensureTrialFolder(ss, parentFolderId, trialPayload) {
 
         // Determine Project Name
         let projectName = 'Ungrouped Projects';
+        let project = null;
         const projectId = trialPayload.ProjectID || trialPayload.projectId || trialPayload.projectID;
         if (projectId) {
             try {
-                const project = getRecordById(ss, sheetsConfig.projects, projectId);
+                project = getRecordById(ss, sheetsConfig.projects, projectId);
                 if (project && project.Name) {
                     projectName = project.Name;
                 }
@@ -560,7 +561,24 @@ function ensureTrialFolder(ss, parentFolderId, trialPayload) {
         const dateStr = isNaN(dateObj.getTime()) ? new Date().toISOString().split('T')[0] : dateObj.toISOString().split('T')[0];
         const trialFolderName = (formulationName + ' (' + dateStr + ')').trim();
 
-        const folderPath = [projectName, trialFolderName];
+        const rawCategory = trialPayload.Category || (project && project.Category) || 'herbicide';
+        const categoryLower = String(rawCategory).trim().toLowerCase();
+        const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                             categoryLower === 'fungicide' ? 'Fungicide' :
+                             categoryLower === 'pesticide' ? 'Pesticide' :
+                             categoryLower === 'nutrition' ? 'Nutrition' :
+                             categoryLower === 'biostimulant' ? 'Biostimulant' :
+                             categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+        const userName = String(
+            (auth && auth.Name) ||
+            (auth && auth.Username) ||
+            trialPayload.InvestigatorName ||
+            (project && project.Investigator) ||
+            'Default User'
+        ).trim() || 'Default User';
+
+        const folderPath = [categoryName, userName, projectName, trialFolderName];
 
         let targetFolder = rootFolder;
         folderPath.forEach(name => {
@@ -649,14 +667,15 @@ function uploadPhotoToDrive(parentFolderId, payload) {
     };
 }
 
-function getTrialFolderPath(ss, trialPayload) {
+function getTrialFolderPath(ss, trialPayload, auth) {
     if (!trialPayload) throw new Error('Trial payload missing.');
 
     let projectName = 'Ungrouped Projects';
+    let project = null;
     const projectId = trialPayload.ProjectID || trialPayload.projectId || trialPayload.projectID;
     if (projectId) {
         try {
-            const project = getRecordById(ss, sheetsConfig.projects, projectId);
+            project = getRecordById(ss, sheetsConfig.projects, projectId);
             if (project && project.Name) {
                 projectName = project.Name;
             }
@@ -673,7 +692,24 @@ function getTrialFolderPath(ss, trialPayload) {
     const dosageSuffix = dosage ? ' (' + dosage + ')' : '';
     const trialFolderName = (formulationName + dosageSuffix + ' (' + dateStr + ')').trim();
 
-    return [projectName, trialFolderName];
+    const rawCategory = trialPayload.Category || (project && project.Category) || 'herbicide';
+    const categoryLower = String(rawCategory).trim().toLowerCase();
+    const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                         categoryLower === 'fungicide' ? 'Fungicide' :
+                         categoryLower === 'pesticide' ? 'Pesticide' :
+                         categoryLower === 'nutrition' ? 'Nutrition' :
+                         categoryLower === 'biostimulant' ? 'Biostimulant' :
+                         categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+    const userName = String(
+        (auth && auth.Name) ||
+        (auth && auth.Username) ||
+        trialPayload.InvestigatorName ||
+        (project && project.Investigator) ||
+        'Default User'
+    ).trim() || 'Default User';
+
+    return [categoryName, userName, projectName, trialFolderName];
 }
 
 function findNestedFolder(rootFolder, folderPath) {
@@ -713,7 +749,7 @@ function listFilesInFolderRecursive(folder, collector) {
     }
 }
 
-function listTrialPhotosFromDrive(ss, parentFolderId, payload = {}) {
+function listTrialPhotosFromDrive(ss, parentFolderId, payload = {}, auth) {
     if (!parentFolderId) throw new Error('Parent Folder ID missing.');
 
     const trialId = payload.trialId || payload.ID || payload.id;
@@ -723,7 +759,7 @@ function listTrialPhotosFromDrive(ss, parentFolderId, payload = {}) {
     if (!trial) throw new Error('Trial not found.');
 
     const rootFolder = DriveApp.getFolderById(parentFolderId);
-    const folderPath = getTrialFolderPath(ss, trial);
+    const folderPath = getTrialFolderPath(ss, trial, auth);
     const trialFolder = findNestedFolder(rootFolder, folderPath);
 
     if (!trialFolder) {
