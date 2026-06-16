@@ -595,7 +595,27 @@ export default function LargeScaleTrials({ onMenuClick }) {
     const projectName = activeProject?.Name || 'LargeScale Field Trials';
     const dosageSuffix = targetTrial.Dosage ? ` (${targetTrial.Dosage})` : '';
     const trialNameWithDate = `${targetTrial.FormulationName || 'Unknown Spot'}${dosageSuffix} (${targetTrial.Date ? targetTrial.Date.split('T')[0] : photoDate})`.trim();
-    const folderPath = [projectName, trialNameWithDate];
+    
+    const rawCategory = targetTrial.Category || activeProject?.Category || state?.activeCategory || 'herbicide';
+    const categoryLower = String(rawCategory).trim().toLowerCase();
+    const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                         categoryLower === 'fungicide' ? 'Fungicide' :
+                         categoryLower === 'pesticide' ? 'Pesticide' :
+                         categoryLower === 'nutrition' ? 'Nutrition' :
+                         categoryLower === 'biostimulant' ? 'Biostimulant' :
+                         categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+    const userName = String(
+      state?.auth?.user?.Name || 
+      state?.auth?.user?.Username || 
+      state?.auth?.Name || 
+      state?.auth?.Username || 
+      targetTrial.InvestigatorName || 
+      activeProject?.Investigator || 
+      'Default User'
+    ).trim() || 'Default User';
+
+    const folderPath = [categoryName, userName, projectName, trialNameWithDate];
 
     // Optimistically add a placeholder
     const photoEntry = { tempId, fileData: dataUrl, date: photoDate, label: cameraMode === 'weed' ? 'Weed Photo' : 'Field Observation', identifications: [] };

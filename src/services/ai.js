@@ -5300,7 +5300,26 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions. Foc
                         const dosageSuffix = formData.dosage || formData.Dosage ? ` (${formData.dosage || formData.Dosage})` : '';
                         const idSuffix = id ? ` - ${String(id).slice(-5)}` : '';
                         const trialNameWithDate = `${formulation ? formulation.Name : 'Unknown Formulation'}${dosageSuffix} (${formData.date || new Date().toISOString().split('T')[0]})${idSuffix}`.trim();
-                        const folderPath = [projectName, trialNameWithDate];
+                        
+                        const rawCategory = project?.Category || state?.activeCategory || 'herbicide';
+                        const categoryLower = String(rawCategory).trim().toLowerCase();
+                        const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                                             categoryLower === 'fungicide' ? 'Fungicide' :
+                                             categoryLower === 'pesticide' ? 'Pesticide' :
+                                             categoryLower === 'nutrition' ? 'Nutrition' :
+                                             categoryLower === 'biostimulant' ? 'Biostimulant' :
+                                             categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+                        const userName = String(
+                          state?.auth?.user?.Name || 
+                          state?.auth?.user?.Username || 
+                          state?.auth?.Name || 
+                          state?.auth?.Username || 
+                          formData.investigatorName || 
+                          'Default User'
+                        ).trim() || 'Default User';
+
+                        const folderPath = [categoryName, userName, projectName, trialNameWithDate];
 
                         console.log('Uploading photos with path:', folderPath);
                         const uploadedNewPhotos = await uploadPhotos(photosToUpload, folderPath);
@@ -19844,7 +19863,27 @@ Total Trials: ${(state.trials || []).length} | Total Projects: ${(state.projects
                             const dosageSuffix = trial.Dosage ? ` (${trial.Dosage})` : '';
                             const idSuffix = trial.ID ? ` - ${String(trial.ID).slice(-5)}` : '';
                             const trialNameWithDate = `${trial.FormulationName || 'Unknown Formulation'}${dosageSuffix} (${trial.Date ? new Date(trial.Date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]})${idSuffix}`.trim();
-                            folderPath = [projectName, trialNameWithDate];
+                            
+                            const rawCategory = trial.Category || project?.Category || state?.activeCategory || 'herbicide';
+                            const categoryLower = String(rawCategory).trim().toLowerCase();
+                            const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                                                 categoryLower === 'fungicide' ? 'Fungicide' :
+                                                 categoryLower === 'pesticide' ? 'Pesticide' :
+                                                 categoryLower === 'nutrition' ? 'Nutrition' :
+                                                 categoryLower === 'biostimulant' ? 'Biostimulant' :
+                                                 categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+                            const userName = String(
+                              state?.auth?.user?.Name || 
+                              state?.auth?.user?.Username || 
+                              state?.auth?.Name || 
+                              state?.auth?.Username || 
+                              trial.InvestigatorName || 
+                              project?.Investigator || 
+                              'Default User'
+                            ).trim() || 'Default User';
+
+                            folderPath = [categoryName, userName, projectName, trialNameWithDate];
                         }
 
                         // ADD TIMEOUT SAFETY: Prevent hanging on Google Drive API (timeout after 45s)

@@ -1647,7 +1647,26 @@ export default function Trials({ onMenuClick }) {
     const dosageSuffix = targetTrial.Dosage ? ` (${targetTrial.Dosage})` : '';
     const idSuffix = targetTrial.ID ? ` - ${String(targetTrial.ID).slice(-5)}` : '';
     const trialNameWithDate = `${targetTrial.FormulationName || 'Unknown Formulation'}${dosageSuffix} (${targetTrial.Date ? targetTrial.Date.split('T')[0] : photoDate})${idSuffix}`.trim();
-    const folderPath = [projectName, trialNameWithDate];
+    
+    const rawCategory = targetTrial.Category || project?.Category || state?.activeCategory || 'herbicide';
+    const categoryLower = String(rawCategory).trim().toLowerCase();
+    const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                         categoryLower === 'fungicide' ? 'Fungicide' :
+                         categoryLower === 'pesticide' ? 'Pesticide' :
+                         categoryLower === 'nutrition' ? 'Nutrition' :
+                         categoryLower === 'biostimulant' ? 'Biostimulant' :
+                         categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+    const userName = String(
+      state?.auth?.user?.Name || 
+      state?.auth?.user?.Username || 
+      state?.auth?.Name || 
+      state?.auth?.Username || 
+      targetTrial.InvestigatorName || 
+      'Default User'
+    ).trim() || 'Default User';
+
+    const folderPath = [categoryName, userName, projectName, trialNameWithDate];
 
     // Optimistically add a placeholder with tempId so the photo appears immediately
     const photoEntry = { tempId, fileData: dataUrl, date: photoDate, label: cameraMode === 'weed' ? 'Weed Photo' : 'Field Observation', tag: photoTag, identifications: [] };
@@ -5885,7 +5904,26 @@ If none are present, write "None".`;
                       const dosageSuffix = activeTrial.Dosage ? ` (${activeTrial.Dosage})` : '';
                       const idSuffix = activeTrial.ID ? ` - ${String(activeTrial.ID).slice(-5)}` : '';
                       const trialNameWithDate = `${activeTrial.FormulationName || 'Unknown Formulation'}${dosageSuffix} (${activeTrial.Date ? activeTrial.Date.split('T')[0] : photoDate})${idSuffix}`.trim();
-                      const folderPath = [projectName, trialNameWithDate];
+                      
+                      const rawCategory = activeTrial.Category || project?.Category || state?.activeCategory || 'herbicide';
+                      const categoryLower = String(rawCategory).trim().toLowerCase();
+                      const categoryName = categoryLower === 'herbicide' ? 'Herbicide' :
+                                           categoryLower === 'fungicide' ? 'Fungicide' :
+                                           categoryLower === 'pesticide' ? 'Pesticide' :
+                                           categoryLower === 'nutrition' ? 'Nutrition' :
+                                           categoryLower === 'biostimulant' ? 'Biostimulant' :
+                                           categoryLower.charAt(0).toUpperCase() + categoryLower.slice(1);
+
+                      const userName = String(
+                        state?.auth?.user?.Name || 
+                        state?.auth?.user?.Username || 
+                        state?.auth?.Name || 
+                        state?.auth?.Username || 
+                        activeTrial.InvestigatorName || 
+                        'Default User'
+                      ).trim() || 'Default User';
+
+                      const folderPath = [categoryName, userName, projectName, trialNameWithDate];
 
                       let driveUrl = null;
                       if (navigator.onLine && getAppState().isOnline !== false) {
