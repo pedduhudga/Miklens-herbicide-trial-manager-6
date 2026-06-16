@@ -84,6 +84,10 @@ export default function Settings({ onMenuClick }) {
   const [testingKey, setTestingKey] = useState(null);
   const [keyTestResult, setKeyTestResult] = useState({});
   const logoInputRef = useRef(null);
+  const originalTokenRef = useRef(null);
+  if (originalTokenRef.current === null && state.settings?.appSecretToken) {
+    originalTokenRef.current = state.settings.appSecretToken;
+  }
 
   // Multi-provider AI keys from localStorage
   const [aiKeys, setAiKeys] = useState({
@@ -309,10 +313,14 @@ export default function Settings({ onMenuClick }) {
           try {
             await apiCall(
               "saveAllSettings",
-              { settings: settingsToPersist },
+              { 
+                settings: settingsToPersist,
+                handshakeTokenOverride: originalTokenRef.current || s.appSecretToken
+              },
               false,
               getAppState,
             );
+            originalTokenRef.current = s.appSecretToken;
           } catch (e) {
             console.warn("Sheet settings sync failed:", e);
           }
@@ -328,7 +336,10 @@ export default function Settings({ onMenuClick }) {
       if (isAdminUser) {
         const result = await apiCall(
           "saveAllSettings",
-          { settings: settingsToPersist },
+          { 
+            settings: settingsToPersist,
+            handshakeTokenOverride: originalTokenRef.current || s.appSecretToken
+          },
           false,
           getAppState,
         );
@@ -338,6 +349,7 @@ export default function Settings({ onMenuClick }) {
             "warning",
           );
         } else {
+          originalTokenRef.current = s.appSecretToken;
           toast("Settings saved");
         }
         return;
