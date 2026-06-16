@@ -13,12 +13,24 @@ const TYPE_CONFIG = {
   organisation: { label: 'Organisation', icon: Building2,   color: 'bg-rose-100 text-rose-700',    dot: 'bg-rose-500' },
 };
 
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function highlight(text, query) {
-  if (!query || !text) return text || '';
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const parts = String(text).split(new RegExp(`(${escaped})`, 'gi'));
+  if (!text) return '';
+  const safeText = escapeHtml(text);
+  if (!query) return safeText;
+  const escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = safeText.split(new RegExp(`(${escapedQuery})`, 'gi'));
   return parts.map((part) =>
-    part.toLowerCase() === query.toLowerCase()
+    part.toLowerCase() === escapeHtml(query).toLowerCase()
       ? `<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${part}</mark>`
       : part
   ).join('');

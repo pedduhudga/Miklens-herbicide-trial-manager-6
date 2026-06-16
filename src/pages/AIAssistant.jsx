@@ -607,7 +607,11 @@ RIGOROUS SCIENTIFIC ANSWERING PROTOCOL:
                       <div className="text-sm whitespace-pre-wrap leading-relaxed"
                         dangerouslySetInnerHTML={{ __html: msg.content
                           .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                          .replace(/\[(.*?)\]\((.*?)\)/g, `<a href="$2" class="${msg.role === 'user' ? 'text-white/80 hover:text-white' : 'font-semibold underline'}" style="${msg.role === 'assistant' ? `color: ${config.color.hex}` : ''}">$1</a>`)
+                          .replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
+                            const isSafe = /^https?:\/\//i.test(url) || url.startsWith('#') || url.startsWith('/');
+                            const safeUrl = isSafe ? url : '#';
+                            return `<a href="${safeUrl}" class="${msg.role === 'user' ? 'text-white/80 hover:text-white' : 'font-semibold underline'}" style="${msg.role === 'assistant' ? `color: ${config.color.hex}` : ''}">${text}</a>`;
+                          })
                           .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                           .replace(/\*(.*?)\*/g, '<em>$1</em>')
                           .replace(/\n/g, '<br/>') }} />

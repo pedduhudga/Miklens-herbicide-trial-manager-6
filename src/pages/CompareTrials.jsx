@@ -533,7 +533,13 @@ ${contextData}`;
           </div>
           {aiSummary ? (
             <div className="bg-indigo-50 rounded-xl p-4 text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: aiSummary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
+              dangerouslySetInnerHTML={{ __html: String(aiSummary)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br/>')
+              }} />
           ) : (
             <p className="text-sm text-slate-400">Click "Generate AI Report" to perform an end-to-end scientific comparison analysis across the selected trials.</p>
           )}

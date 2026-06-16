@@ -107,6 +107,11 @@ function doPost(e) {
             }
         }
 
+        if (expectedToken === 'miklens-secure-api-token-2026') {
+            Logger.log(`Rejected request: default security token is used.`);
+            return sendResponse({ status: 'error', message: 'Unauthorized: Default security token detected. You must change the default appSecretToken in settings to secure this proxy.' });
+        }
+
         if (!appSecretToken || appSecretToken !== expectedToken) {
             Logger.log(`Unauthorized request attempt: Action: ${action}`);
             return sendResponse({ status: 'error', message: 'Unauthorized: Invalid security handshake token.' });
@@ -153,7 +158,8 @@ function executeAction(action, payload, auth) {
     // This allows Firebase users to interact with the sheet mirror and upload photos.
     if (!authUser) {
         if (auth.Role) {
-            authUser = { ...auth, IsActive: 'true' };
+            const safeRole = (auth.Role === 'Admin' || auth.Role === 'Developer') ? 'User' : auth.Role;
+            authUser = { ...auth, Role: safeRole, IsActive: 'true' };
         } else {
             throw new Error('Invalid session user. Please log in again.');
         }
@@ -272,7 +278,7 @@ function executeAction(action, payload, auth) {
         'saveAnalysisResults': (p) => {
             const project = getRecordById(ss, sheetsConfig.projects, p.projectId);
             if (!project) throw new Error('Project not found');
-            return updateRecord(ss, sheetsConfig.projects, { ID: p.projectId, AnalysisResultsJSON: JSON.stringify(p.results) });
+            return updateRecord(ss, sheetsConfig.projects, { ID: p.projectId, AnalysisResultsJSON: JSON.stringify(p.results) }, auth);
         },
         'getTrialEmbeddings': () => getTrialEmbeddings(ss, auth),
         'upsertTrialEmbedding': (p) => upsertTrialEmbedding(ss, p),
@@ -289,7 +295,7 @@ function executeAction(action, payload, auth) {
             PValue: p.pValue,
             Significance: p.significance,
             ResultsJSON: JSON.stringify(p.results)
-        }),
+        }, auth),
         'getUsersList': () => { if (auth.Role !== 'Admin') throw new Error('Admin only.'); return getUsersList(ss); },
         'adminRunUserDiagnostics': (p) => { if (auth.Role !== 'Admin') throw new Error('Admin only.'); return adminRunUserDiagnostics(ss, p); },
         'adminExportUserData': (p) => { if (auth.Role !== 'Admin') throw new Error('Admin only.'); return adminExportUserData(ss, p); },
