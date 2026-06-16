@@ -158,8 +158,8 @@ function executeAction(action, payload, auth) {
     // This allows Firebase users to interact with the sheet mirror and upload photos.
     if (!authUser) {
         if (auth.Role) {
-            const safeRole = (auth.Role === 'Admin' || auth.Role === 'Developer' || auth.Role === 'User') ? 'Viewer' : auth.Role;
-            authUser = { ...auth, Role: safeRole, IsActive: 'true' };
+            // Since user logic is managed strictly via Firebase, we trust the Firebase-authenticated role
+            authUser = { ...auth, IsActive: 'true' };
         } else {
             throw new Error('Invalid session user. Please log in again.');
         }
