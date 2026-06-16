@@ -505,10 +505,19 @@ export default function Trials({ onMenuClick }) {
       }
       if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
       if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'shared') {
+        const ownUid = user?.uid || user?.ID || user?.id;
+        const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
+        const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
+        if (aShared === bShared) {
+          return new Date(b.Date || 0) - new Date(a.Date || 0);
+        }
+        return bShared ? 1 : -1;
+      }
       return 0;
     });
     return list;
-  }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd]);
+  }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd, user]);
 
   const groupedRcbdTrials = useMemo(() => {
     if (activeTab !== 'rcbd') return { groups: {}, orphaned: [] };
@@ -3419,6 +3428,7 @@ If none are present, write "None".`;
                 <option value="date-asc">Oldest First</option>
                 <option value="name">By Formulation</option>
                 <option value="obs">Most Observations</option>
+                <option value="shared">Shared Status</option>
               </select>
               <div className="col-span-2 flex gap-2 items-center">
                 <span className="text-xs font-semibold text-slate-500 shrink-0">From</span>

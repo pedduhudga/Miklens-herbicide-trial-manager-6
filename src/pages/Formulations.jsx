@@ -312,6 +312,11 @@ export default function Formulations({ onMenuClick }) {
                         <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared{isSharedEdit ? ' (Edit Access)' : ''}
                       </span>
                     )}
+                    {!isShared && Array.isArray(form.SharedWith) && form.SharedWith.length > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 border border-teal-200 flex items-center gap-0.5" title={`Shared with ${form.SharedWith.length} user(s)`}>
+                        <Share2 className="w-2.5 h-2.5" /> Shared ({form.SharedWith.length})
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-2 text-sm text-gray-600">

@@ -4673,6 +4673,11 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                           <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared
                         </span>
                       )}
+                      {!isShared && Array.isArray(p.SharedWith) && p.SharedWith.length > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 border border-teal-200 flex items-center gap-0.5" title={`Shared with ${p.SharedWith.length} user(s)`}>
+                          <Share2 className="w-2.5 h-2.5" /> Shared ({p.SharedWith.length})
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>

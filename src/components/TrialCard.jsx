@@ -74,6 +74,7 @@ const TrialCard = memo(function TrialCard({
   const isOwnData = isAdmin || !trial.CreatedBy || trial.CreatedBy === ownUid;
   const isShared = !!(trial.CreatedBy && trial.CreatedBy !== ownUid);
   const isSharedEdit = Array.isArray(trial.SharedWithEdit) && trial.SharedWithEdit.includes(ownUid);
+  const hasBeenShared = !isShared && Array.isArray(trial.SharedWith) && trial.SharedWith.length > 0;
   const isEditable = !isViewer && (isOwnData || isSharedEdit);
   const canDownloadTrial = !isViewer && isOwnData && user?.tabPermissions?.['Allow Downloads'] !== false;
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
@@ -334,6 +335,11 @@ const TrialCard = memo(function TrialCard({
               {trial.IsControl && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Control</span>}
               {trial.IsStandardCheck && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Standard</span>}
               {trial.IsCompleted && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">Finalized</span>}
+              {hasBeenShared && (
+                <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5" title={`Shared with ${trial.SharedWith.length} user(s)`}>
+                  <Share2 className="w-2.5 h-2.5" /> Shared ({trial.SharedWith.length})
+                </span>
+              )}
               {trial.TrialDesign && trial.TrialDesign !== 'RCBD' && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">{trial.TrialDesign}</span>}
               {project && <span className="text-xs text-emerald-600 font-medium truncate block">{project.Name}</span>}
             </div>
