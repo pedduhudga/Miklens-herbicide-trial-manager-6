@@ -128,9 +128,10 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
             spreadsheetId: state.settings.sheetId,
             folderId: getEffectiveFolderId(),
         };
+        const appSecretToken = (state.settings && state.settings.appSecretToken) || 'miklens-secure-api-token-2026';
         const res = await fetch(String(state.settings.scriptUrl).replace(/\s/g, ''), {
             method: 'POST',
-            body: JSON.stringify({ action, payload: fullPayload, auth: getAuthPayload() }),
+            body: JSON.stringify({ action, payload: fullPayload, auth: getAuthPayload(), appSecretToken }),
         });
 
         if (!res.ok) {

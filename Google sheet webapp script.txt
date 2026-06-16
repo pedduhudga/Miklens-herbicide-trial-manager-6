@@ -86,7 +86,31 @@ function handleRequest(wrapper) {
 function doPost(e) {
     try {
         const request = JSON.parse(e.postData.contents);
-        const { action, payload, auth } = request;
+        const { action, payload, auth, appSecretToken } = request;
+
+        // Secure Handshake validation
+        let ss;
+        try {
+            ss = SpreadsheetApp.getActiveSpreadsheet();
+        } catch (err) {
+            Logger.log("No active spreadsheet found: " + err.message);
+        }
+        if (!ss && payload && payload.spreadsheetId) {
+            ss = SpreadsheetApp.openById(payload.spreadsheetId);
+        }
+
+        let expectedToken = 'miklens-secure-api-token-2026';
+        if (ss) {
+            const settings = getSettingsFromSheet(ss);
+            if (settings && settings.appSecretToken) {
+                expectedToken = settings.appSecretToken;
+            }
+        }
+
+        if (!appSecretToken || appSecretToken !== expectedToken) {
+            Logger.log(`Unauthorized request attempt: Action: ${action}`);
+            return sendResponse({ status: 'error', message: 'Unauthorized: Invalid security handshake token.' });
+        }
 
         // Log incoming request (redacting large data)
         const logPayload = { ...payload };
