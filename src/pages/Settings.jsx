@@ -1093,13 +1093,19 @@ export default function Settings({ onMenuClick }) {
                 key: "sheetId",
                 placeholder: "https://docs.google.com/spreadsheets/d/...",
               },
-            ].map(({ label, key, placeholder }) => (
+              {
+                label: "Security Handshake Token",
+                key: "appSecretToken",
+                placeholder: "Enter custom secret token (do not use default)...",
+                type: "password",
+              },
+            ].map(({ label, key, placeholder, type }) => (
               <div key={key}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {label}
                 </label>
                 <input
-                  type="text"
+                  type={type || "text"}
                   value={s[key] || ""}
                   onChange={(e) => updateSettings({ [key]: e.target.value })}
                   placeholder={placeholder}
