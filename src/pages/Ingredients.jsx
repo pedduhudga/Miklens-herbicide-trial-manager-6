@@ -4,11 +4,17 @@ import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { addIngredient, deleteIngredient } from '../services/dataLayer.js';
-import { Edit, Trash2, Plus, Search, ChevronDown, ChevronUp, FlaskConical } from 'lucide-react';
+import { Edit, Trash2, Plus, Search, ChevronDown, ChevronUp, FlaskConical, Share2 } from 'lucide-react';
 
 export default function Ingredients({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
-  const { isViewer } = useAuth();
+  const { isViewer, user, isAdmin } = useAuth();
+  const isOwnData = (record) => {
+    if (isAdmin) return true;
+    if (!record) return true;
+    const ownUid = user?.uid || user?.ID || user?.id;
+    return !record.CreatedBy || record.CreatedBy === ownUid;
+  };
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState(null);
   const [expandedIngId, setExpandedIngId] = useState(null);
@@ -91,6 +97,10 @@ export default function Ingredients({ onMenuClick }) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot modify or save ingredients.', type: 'error' } }));
       return;
     }
+    if (editingIngredient && !isOwnData(editingIngredient)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: "Permission Denied: You cannot modify another user's ingredient.", type: 'error' } }));
+      return;
+    }
     const payload = {
       ...formData,
       ID: editingIngredient ? editingIngredient.ID : Date.now().toString()
@@ -118,6 +128,11 @@ export default function Ingredients({ onMenuClick }) {
   const handleDelete = async (id) => {
     if (isViewer) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete ingredients.', type: 'error' } }));
+      return;
+    }
+    const ingToDelete = state.ingredients?.find(i => i.ID === id);
+    if (ingToDelete && !isOwnData(ingToDelete)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: "Permission Denied: You cannot delete another user's ingredient.", type: 'error' } }));
       return;
     }
     if (!window.confirm('Are you sure you want to delete this ingredient?')) return;
@@ -176,6 +191,15 @@ export default function Ingredients({ onMenuClick }) {
                               PubChem Verified
                             </span>
                           )}
+                          {(() => {
+                            const ownUid = user?.uid || user?.ID || user?.id;
+                            const isShared = !!(ing.CreatedBy && ing.CreatedBy !== ownUid);
+                            return isShared && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-0.5">
+                                <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared
+                              </span>
+                            );
+                          })()}
                         </div>
                         <p className="text-sm text-slate-500 font-medium mt-0.5">
                           {CURRENCY_SYMBOL}{parseFloat(ing.Cost || 0).toFixed(2)} / {ing.Unit}
@@ -183,7 +207,7 @@ export default function Ingredients({ onMenuClick }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                      {!isViewer && (
+                      {!isViewer && isOwnData(ing) && (
                         <>
                           <button
                             onClick={() => handleOpenModal(ing)}

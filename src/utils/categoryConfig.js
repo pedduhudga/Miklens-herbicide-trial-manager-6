@@ -533,8 +533,7 @@ export const ADMIN_CATEGORY_ACCESS = {
 export function hasAccess(user, categoryId, action = 'read') {
   if (!user) return false;
   const role = String(user.Role || user.role || 'user').toLowerCase();
-  
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'developer') {
     return true;
   }
   

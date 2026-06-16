@@ -45,10 +45,40 @@ function snapsToArray(snapshot) {
 
 export async function fbGetAll(collectionName, userId = null) {
   const db = getFirebaseDB();
-  let q = collection(db, collectionName);
-  // Disabled filtering by user ID so all data is visible to all users
-  const snap = await getDocs(q);
-  return snapsToArray(snap);
+  const baseCol = collection(db, collectionName);
+
+  if (!userId) {
+    const snap = await getDocs(baseCol);
+    return snapsToArray(snap);
+  }
+
+  const allowedUids = Array.isArray(userId) ? userId : [userId];
+
+  // Chunk allowedUids into arrays of maximum 30 elements (Firestore limits 'in' queries to 30)
+  const chunks = [];
+  for (let i = 0; i < allowedUids.length; i += 30) {
+    chunks.push(allowedUids.slice(i, i + 30));
+  }
+
+  const promises = chunks.map(async (chunk) => {
+    const q = query(baseCol, where("CreatedBy", "in", chunk));
+    const snap = await getDocs(q);
+    return snapsToArray(snap);
+  });
+
+  const results = await Promise.all(promises);
+  // Flatten and deduplicate by ID
+  const merged = [];
+  const seen = new Set();
+  for (const arr of results) {
+    for (const item of arr) {
+      if (!seen.has(item.ID)) {
+        seen.add(item.ID);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
 }
 
 export async function fbGetById(collectionName, id) {
@@ -262,15 +292,41 @@ export async function fbAddAnalysisLog(data, userId) {
 
 export async function fbGetSprayLogs(userId, projectId = null, trialId = null) {
   const db = getFirebaseDB();
+  const baseCol = collection(db, COLLECTIONS.sprayLogs);
   let conditions = [];
-  // Disabled user-specific filtering to make all spray logs visible
   if (projectId) conditions.push(where("ProjectID", "==", projectId));
   if (trialId) conditions.push(where("TrialID", "==", trialId));
-  const q = conditions.length
-    ? query(collection(db, COLLECTIONS.sprayLogs), ...conditions)
-    : collection(db, COLLECTIONS.sprayLogs);
-  const snap = await getDocs(q);
-  return snapsToArray(snap);
+
+  if (!userId) {
+    const q = conditions.length ? query(baseCol, ...conditions) : baseCol;
+    const snap = await getDocs(q);
+    return snapsToArray(snap);
+  }
+
+  const allowedUids = Array.isArray(userId) ? userId : [userId];
+  const chunks = [];
+  for (let i = 0; i < allowedUids.length; i += 30) {
+    chunks.push(allowedUids.slice(i, i + 30));
+  }
+
+  const promises = chunks.map(async (chunk) => {
+    const q = query(baseCol, ...conditions, where("CreatedBy", "in", chunk));
+    const snap = await getDocs(q);
+    return snapsToArray(snap);
+  });
+
+  const results = await Promise.all(promises);
+  const merged = [];
+  const seen = new Set();
+  for (const arr of results) {
+    for (const item of arr) {
+      if (!seen.has(item.ID)) {
+        seen.add(item.ID);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
 }
 
 export async function fbAddSprayLog(data, userId) {
@@ -319,8 +375,7 @@ export async function fbImportAll(dataMap, userId) {
 
 // ─── Category-aware data loading ─────────────────────────────────────────────
 
-export async function fbGetAllData(userId, isAdmin = false, category = 'herbicide') {
-  const ownerId = isAdmin ? null : userId;
+export async function fbGetAllData(allowedUids, category = 'herbicide') {
   const trialsCol = getCategoryCollection(category, 'trials');
   const formulationsCol = getCategoryCollection(category, 'formulations');
   const ingredientsCol = getCategoryCollection(category, 'ingredients');
@@ -338,12 +393,12 @@ export async function fbGetAllData(userId, isAdmin = false, category = 'herbicid
 
   const [trials, formulations, ingredients, organisations, projects, blocks] =
     await Promise.all([
-      wrapPromise(trialsCol, fbGetAll(trialsCol, ownerId)),
-      wrapPromise(formulationsCol, fbGetAll(formulationsCol, ownerId)),
-      wrapPromise(ingredientsCol, fbGetAll(ingredientsCol, ownerId)),
-      wrapPromise('organisations', fbGetOrganisations(ownerId)),
-      wrapPromise(projectsCol, fbGetAll(projectsCol, ownerId)),
-      wrapPromise(blocksCol, fbGetAll(blocksCol, ownerId))
+      wrapPromise(trialsCol, fbGetAll(trialsCol, allowedUids)),
+      wrapPromise(formulationsCol, fbGetAll(formulationsCol, allowedUids)),
+      wrapPromise(ingredientsCol, fbGetAll(ingredientsCol, allowedUids)),
+      wrapPromise('organisations', fbGetOrganisations(allowedUids)),
+      wrapPromise(projectsCol, fbGetAll(projectsCol, allowedUids)),
+      wrapPromise(blocksCol, fbGetAll(blocksCol, allowedUids))
     ]);
   return { trials, formulations, ingredients, organisations, projects, blocks };
 }

@@ -10,7 +10,7 @@ import {
   Lock, Unlock, Download, FileText, RefreshCw, BarChart2, Shuffle,
   ClipboardList, Package, Sparkles, Save, Loader2, CheckCircle2,
   AlertTriangle, AlertCircle, ShieldAlert, LayoutGrid, TrendingUp,
-  Sigma, Printer, MapPin, Thermometer, Droplets, CloudRain, Image
+  Sigma, Printer, MapPin, Thermometer, Droplets, CloudRain, Image, Share2
 } from 'lucide-react';
 import Chart from 'chart.js/auto';
 import { safeJsonParse } from '../utils/helpers.js';
@@ -482,6 +482,13 @@ export default function Projects({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
   const { isViewer, isAdmin, user } = useAuth();
   const navigate = useNavigate();
+
+  const isOwnData = useCallback((record) => {
+    if (isAdmin) return true;
+    if (!record) return true;
+    const ownUid = user?.uid || user?.ID || user?.id;
+    return !record.CreatedBy || record.CreatedBy === ownUid;
+  }, [user, isAdmin]);
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
   const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 'N/A';
@@ -3252,6 +3259,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
       return;
     }
     const proj = (state.projects || []).find(p => String(p.ID) === String(id));
+    if (!isOwnData(proj)) {
+      toast('This project belongs to another scientist and cannot be deleted.', 'error');
+      return;
+    }
     const projectName = proj ? proj.Name : 'this project';
     if (!window.confirm(`Are you sure you want to delete "${projectName}"? This will permanently delete the project and all its associated blocks and plots/trials. This cannot be undone.`)) return;
     
@@ -4618,17 +4629,27 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
             const treats = [...new Set(pt.map(t => t.FormulationName).filter(Boolean))];
             const statusClass = p.Status === 'Locked' ? 'bg-slate-800 text-white' : p.Status === 'Finalized' ? '${theme.badge}' : 'bg-amber-100 text-amber-700';
 
+            const isShared = !!(p.CreatedBy && p.CreatedBy !== (user?.uid || user?.ID || user?.id));
             return (
               <div key={p.ID} onClick={() => openProject(p.ID)}
                 className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition cursor-pointer active:scale-[0.99]">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-slate-800 truncate">{p.Name}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusClass}`}>{p.Status || 'Draft'}</span>
+                    <div className="flex gap-1.5 items-center mt-1 flex-wrap">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusClass}`}>{p.Status || 'Draft'}</span>
+                      {isShared && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-0.5">
+                          <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={(e) => handleDelete(e, p.ID)} className="text-slate-300 hover:text-red-500 transition p-1 shrink-0 ml-2">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {isOwnData(p) && (
+                    <button onClick={(e) => handleDelete(e, p.ID)} className="text-slate-300 hover:text-red-500 transition p-1 shrink-0 ml-2">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-2 mb-4 text-sm text-slate-500">

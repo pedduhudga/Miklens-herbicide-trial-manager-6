@@ -71,8 +71,9 @@ export function useAuth() {
   const user = state.auth?.user;
   const roleRaw = String(user?.Role || user?.role || '').toLowerCase();
   const isAdmin = roleRaw === 'admin';
+  const isDeveloper = roleRaw === 'developer';
   const activeCategory = state.activeCategory || 'herbicide';
-  const isViewer = roleRaw === 'viewer' || (!isAdmin && !hasAccess(user, activeCategory, 'write'));
+  const isViewer = roleRaw === 'viewer' || (!isAdmin && !isDeveloper && !hasAccess(user, activeCategory, 'write'));
   const isAuthenticated = !!user && !!state.auth?.token;
 
   const hasCategoryAccess = useCallback((categoryId, action = 'read') => {
@@ -84,6 +85,7 @@ export function useAuth() {
     token: state.auth?.token,
     isAuthenticated,
     isAdmin,
+    isDeveloper,
     isViewer,
     login,
     logout,

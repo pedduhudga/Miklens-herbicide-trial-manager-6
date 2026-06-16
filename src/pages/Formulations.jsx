@@ -6,11 +6,17 @@ import Modal from '../components/Modal.jsx';
 import { addFormulation, deleteFormulation, updateFormulation } from '../services/dataLayer.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Share2 } from 'lucide-react';
 
 export default function Formulations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
-  const { isViewer } = useAuth();
+  const { isViewer, user, isAdmin } = useAuth();
+  const isOwnData = (record) => {
+    if (isAdmin) return true;
+    if (!record) return true;
+    const ownUid = user?.uid || user?.ID || user?.id;
+    return !record.CreatedBy || record.CreatedBy === ownUid;
+  };
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -248,9 +254,11 @@ export default function Formulations({ onMenuClick }) {
               const avgScore = ratedTrials.length ? ratedTrials.reduce((s, t) => s + RESULT_SCORES[t.Result], 0) / ratedTrials.length : null;
               const avgLabel = avgScore !== null ? (avgScore >= 3.5 ? 'Excellent' : avgScore >= 2.5 ? 'Good' : avgScore >= 1.5 ? 'Fair' : 'Poor') : null;
               const avgLabelColor = { Excellent: 'bg-emerald-100 text-emerald-700', Good: 'bg-blue-100 text-blue-700', Fair: 'bg-amber-100 text-amber-700', Poor: 'bg-red-100 text-red-700' };
+              const ownUid = user?.uid || user?.ID || user?.id;
+              const isShared = !!(form.CreatedBy && form.CreatedBy !== ownUid);
               return (
                 <div key={form.ID} className="bg-white p-6 rounded-xl shadow-lg relative transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border border-transparent hover:border-emerald-500/50">
-                  {!isViewer && (
+                  {!isViewer && isOwnData(form) && (
                     <div className="absolute top-4 right-4 flex gap-2">
                       <button onClick={() => handleOpenModal(form, true)} className="bg-slate-200 text-slate-700 px-3 py-1 rounded-md text-sm hover:bg-slate-300">Duplicate</button>
                       <button onClick={() => handleOpenModal(form)} className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-md text-sm hover:bg-emerald-200">Edit</button>
@@ -258,7 +266,14 @@ export default function Formulations({ onMenuClick }) {
                     </div>
                   )}
 
-                  <h3 className="font-bold text-lg text-slate-800">{form.Name}</h3>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-bold text-lg text-slate-800">{form.Name}</h3>
+                    {isShared && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-0.5">
+                        <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared
+                      </span>
+                    )}
+                  </div>
 
                   <div className="mt-2 text-sm text-gray-600">
                     <ul className="list-disc list-inside">

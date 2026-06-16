@@ -99,8 +99,15 @@ const fuzzyMatch = (text, query) => {
 
 export default function Trials({ onMenuClick }) {
   const { state, updateState, getAppState, dispatch } = useAppState();
-  const { isViewer, user } = useAuth();
+  const { isViewer, user, isAdmin, isDeveloper } = useAuth();
   const canDownload = !isViewer && user?.tabPermissions?.['Allow Downloads'] !== false;
+
+  const isOwnData = useCallback((record) => {
+    if (isAdmin) return true;
+    if (!record) return true;
+    const ownUid = user?.uid || user?.ID || user?.id;
+    return !record.CreatedBy || record.CreatedBy === ownUid;
+  }, [user, isAdmin]);
   const location = useLocation();
   const navigate = useNavigate();
   const activeCategory = state.activeCategory || 'herbicide';
@@ -577,6 +584,10 @@ export default function Trials({ onMenuClick }) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot move trials.', type: 'error' } }));
       return;
     }
+    if (!isOwnData(trial)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'This trial belongs to another scientist and cannot be modified.', type: 'error' } }));
+      return;
+    }
     const projectList = projects.map((p, i) => `${i + 1}. ${p.Name}`).join('\n');
     const choice = window.prompt(`Move trial to project:\n\n${projectList}\n\nEnter number:`);
     if (!choice) return;
@@ -596,8 +607,12 @@ export default function Trials({ onMenuClick }) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot save or edit trials.', type: 'error' } }));
       return;
     }
-    const formMatch = formulations.find(f => f.Name === formData.FormulationName);
     const isEdit = !!editingTrial;
+    if (isEdit && !isOwnData(editingTrial)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'This trial belongs to another scientist and cannot be modified.', type: 'error' } }));
+      return;
+    }
+    const formMatch = formulations.find(f => f.Name === formData.FormulationName);
 
     let dateUpdatedAt = isEdit ? editingTrial.DateUpdatedAt : new Date().toISOString();
     if (isEdit && editingTrial.Date !== formData.Date) {
@@ -639,6 +654,11 @@ export default function Trials({ onMenuClick }) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete trials.', type: 'error' } }));
       return;
     }
+    const trialToDelete = trials.find(t => t.ID === id);
+    if (!isOwnData(trialToDelete)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'This trial belongs to another scientist and cannot be deleted.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm('Delete this trial?')) return;
     updateState({ trials: trials.filter(t => t.ID !== id) });
     if (activeTrial?.ID === id) setActiveTrial(null);
@@ -653,6 +673,10 @@ export default function Trials({ onMenuClick }) {
   const handleFinalize = async () => {
     if (isViewer) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot finalize trials.', type: 'error' } }));
+      return;
+    }
+    if (!isOwnData(activeTrial)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'This trial belongs to another scientist and cannot be modified.', type: 'error' } }));
       return;
     }
     if (!activeTrial || !window.confirm('Finalize this trial?')) return;
@@ -670,6 +694,10 @@ export default function Trials({ onMenuClick }) {
   const handleRestart = async () => {
     if (isViewer) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot reactivate trials.', type: 'error' } }));
+      return;
+    }
+    if (!isOwnData(activeTrial)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'This trial belongs to another scientist and cannot be modified.', type: 'error' } }));
       return;
     }
     if (!activeTrial || !window.confirm('Reactivate this trial?')) return;

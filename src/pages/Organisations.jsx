@@ -5,12 +5,18 @@ import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { safeJsonParse } from '../utils/helpers.js';
 import { addOrganisation, deleteOrganisation } from '../services/dataLayer.js';
-import { Trash2, Plus, Edit, Search, Building2, Activity, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Plus, Edit, Search, Building2, Activity, X, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateUtils.js';
 
 export default function Organisations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
-  const { isViewer } = useAuth();
+  const { isViewer, user, isAdmin } = useAuth();
+  const isOwnData = (record) => {
+    if (isAdmin) return true;
+    if (!record) return true;
+    const ownUid = user?.uid || user?.ID || user?.id;
+    return !record.CreatedBy || record.CreatedBy === ownUid;
+  };
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState(null);
@@ -48,6 +54,10 @@ export default function Organisations({ onMenuClick }) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot modify or save organisations.', type: 'error' } }));
       return;
     }
+    if (editingOrg && !isOwnData(editingOrg)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: "Permission Denied: You cannot modify another user's organisation.", type: 'error' } }));
+      return;
+    }
     const isEdit = !!editingOrg;
     const payload = {
       ...(isEdit ? editingOrg : { ID: Date.now().toString() }),
@@ -67,6 +77,11 @@ export default function Organisations({ onMenuClick }) {
   const handleDelete = async (id) => {
     if (isViewer) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete organisations.', type: 'error' } }));
+      return;
+    }
+    const orgToDelete = orgs.find(o => o.ID === id);
+    if (orgToDelete && !isOwnData(orgToDelete)) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: "Permission Denied: You cannot delete another user's organisation.", type: 'error' } }));
       return;
     }
     if (!window.confirm('Delete this organisation?')) return;
@@ -106,19 +121,27 @@ export default function Organisations({ onMenuClick }) {
             const trialIds = safeJsonParse(org.TrialIDs, []);
             const orgTrials = trialIds.map(id => trials.find(t => t.ID === id)).filter(Boolean);
             const isExpanded = expandedOrg === org.ID;
+            const isShared = !!(org.CreatedBy && org.CreatedBy !== (user?.uid || user?.ID || user?.id));
             return (
               <div key={org.ID} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                 <div className="p-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl shrink-0"><Building2 className="w-5 h-5" /></div>
                     <div className="min-w-0">
-                      <h3 className="font-bold text-slate-800 truncate">{org.Name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-slate-800 truncate">{org.Name}</h3>
+                        {isShared && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-0.5">
+                            <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared
+                          </span>
+                        )}
+                      </div>
                       {org.Description && <p className="text-xs text-slate-400 truncate">{org.Description}</p>}
                       <p className="text-xs text-slate-400 mt-0.5">{orgTrials.length} trial{orgTrials.length !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    {!isViewer && (
+                    {!isViewer && isOwnData(org) && (
                       <>
                         <button onClick={() => openModal(org)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit className="w-4 h-4" /></button>
                         <button onClick={() => handleDelete(org.ID)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><Trash2 className="w-4 h-4" /></button>

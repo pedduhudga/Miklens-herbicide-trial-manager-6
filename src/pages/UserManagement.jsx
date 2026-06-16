@@ -31,7 +31,7 @@ const ALL_TABS = [
   "Allow Downloads"
 ];
 
-const emptyForm = { username: '', password: '', role: 'user', disabled: false, categoryAccess: { ...DEFAULT_CATEGORY_ACCESS }, tabPermissions: {} };
+const emptyForm = { username: '', password: '', role: 'user', disabled: false, categoryAccess: { ...DEFAULT_CATEGORY_ACCESS }, tabPermissions: {}, viewableUsers: [], allowDataAccess: false };
 
 export default function UserManagement({ onMenuClick }) {
   const { isAdmin, user: currentUser } = useAuth();
@@ -61,7 +61,9 @@ export default function UserManagement({ onMenuClick }) {
         role: String(u.Role || u.role || 'user').toLowerCase(),
         disabled: u.IsActive === false || u.disabled === true,
         categoryAccess: u.categoryAccess || { ...DEFAULT_CATEGORY_ACCESS },
-        tabPermissions: u.tabPermissions || {}
+        tabPermissions: u.tabPermissions || {},
+        viewableUsers: u.viewableUsers || u.ViewableUsers || [],
+        allowDataAccess: !!(u.allowDataAccess || u.AllowDataAccess)
       }));
       setFbUsers(mapped);
     } catch (e) {
@@ -96,7 +98,9 @@ export default function UserManagement({ onMenuClick }) {
     setForm(u ? {
       username: u.username, password: '', role: u.role || 'user', disabled: !!u.disabled,
       categoryAccess: u.categoryAccess || { ...DEFAULT_CATEGORY_ACCESS },
-      tabPermissions: u.tabPermissions || {}
+      tabPermissions: u.tabPermissions || {},
+      viewableUsers: u.viewableUsers || [],
+      allowDataAccess: !!u.allowDataAccess
     } : { ...emptyForm, categoryAccess: { ...DEFAULT_CATEGORY_ACCESS }, tabPermissions: {} });
     setShowPassword(false);
     setIsModalOpen(true);
@@ -123,13 +127,15 @@ export default function UserManagement({ onMenuClick }) {
           setLoading(true);
           try {
             const { fbUpdateUserProfile } = await import('../services/firebaseAuth.js');
-            const roleName = form.role === 'admin' ? 'Admin' : form.role === 'viewer' ? 'Viewer' : 'User';
+            const roleName = form.role === 'admin' ? 'Admin' : form.role === 'viewer' ? 'Viewer' : form.role === 'developer' ? 'Developer' : 'User';
             const res = await fbUpdateUserProfile(existingUser.id, {
               Username: form.username.trim(),
               Role: roleName,
               IsActive: true,
               categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
-              tabPermissions: form.role === 'admin' ? {} : form.tabPermissions
+              tabPermissions: form.role === 'admin' ? {} : form.tabPermissions,
+              viewableUsers: form.viewableUsers || [],
+              allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false
             });
             if (res.success) {
               toast('User re-activated and permissions updated');
@@ -148,6 +154,8 @@ export default function UserManagement({ onMenuClick }) {
             ? { ...u, username: form.username.trim(), role: form.role, disabled: false,
                 categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
                 tabPermissions: form.role === 'admin' ? {} : form.tabPermissions,
+                viewableUsers: form.viewableUsers || [],
+                allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false,
                 ...(form.password.trim() ? { password: form.password.trim() } : {}) }
             : u
           );
@@ -165,7 +173,7 @@ export default function UserManagement({ onMenuClick }) {
       setLoading(true);
       try {
         const { fbRegisterUser, fbUpdateUserProfile } = await import('../services/firebaseAuth.js');
-        const roleName = form.role === 'admin' ? 'Admin' : form.role === 'viewer' ? 'Viewer' : 'User';
+        const roleName = form.role === 'admin' ? 'Admin' : form.role === 'viewer' ? 'Viewer' : form.role === 'developer' ? 'Developer' : 'User';
         const profileData = {
           role: roleName,
           categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
@@ -179,7 +187,9 @@ export default function UserManagement({ onMenuClick }) {
             Role: roleName,
             IsActive: !form.disabled,
             categoryAccess: profileData.categoryAccess,
-            tabPermissions: profileData.tabPermissions
+            tabPermissions: profileData.tabPermissions,
+            viewableUsers: form.viewableUsers || [],
+            allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false
           });
           if (res.success) {
             toast('User updated');
@@ -192,7 +202,9 @@ export default function UserManagement({ onMenuClick }) {
           const res = await fbRegisterUser(form.username.trim(), form.password.trim(), {
             role: roleName,
             categoryAccess: profileData.categoryAccess,
-            tabPermissions: profileData.tabPermissions
+            tabPermissions: profileData.tabPermissions,
+            viewableUsers: form.viewableUsers || [],
+            allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false
           });
           if (res.success) {
             toast('User created');
@@ -218,6 +230,8 @@ export default function UserManagement({ onMenuClick }) {
           ? { ...u, username: form.username.trim(), role: form.role, disabled: form.disabled,
               categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
               tabPermissions: form.role === 'admin' ? {} : form.tabPermissions,
+              viewableUsers: form.viewableUsers || [],
+              allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false,
               ...(form.password.trim() ? { password: form.password.trim() } : {}) }
           : u
         );
@@ -227,7 +241,9 @@ export default function UserManagement({ onMenuClick }) {
           id: `user-${Date.now()}`, username: form.username.trim(), password: form.password.trim(),
           role: form.role, disabled: false,
           categoryAccess: form.role === 'admin' ? { ...ADMIN_CATEGORY_ACCESS } : form.categoryAccess,
-          tabPermissions: form.tabPermissions || {}
+          tabPermissions: form.tabPermissions || {},
+          viewableUsers: form.viewableUsers || [],
+          allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false
         };
         updated = [...users, newUser];
         toast('User created');
@@ -378,6 +394,7 @@ export default function UserManagement({ onMenuClick }) {
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${
                       u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                      u.role === 'developer' ? 'bg-indigo-100 text-indigo-700' :
                       u.role === 'viewer' ? 'bg-amber-100 text-amber-700' :
                       'bg-blue-100 text-blue-700'
                     }`}>
@@ -454,8 +471,21 @@ export default function UserManagement({ onMenuClick }) {
                   <option value="user">User (Scientist)</option>
                   <option value="admin">Admin</option>
                   <option value="viewer">Viewer</option>
+                  <option value="developer">Developer</option>
                 </select>
               </div>
+              {form.role === 'developer' && (
+                <div className="pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 bg-indigo-50 border border-indigo-100 rounded-lg">
+                    <input type="checkbox" checked={form.allowDataAccess} onChange={e => setForm(p => ({...p, allowDataAccess: e.target.checked}))}
+                      className="w-4 h-4 accent-indigo-600" />
+                    <div>
+                      <span className="text-xs font-bold text-indigo-700 block">Allow Data Access</span>
+                      <span className="text-[10px] text-indigo-500 block">Developer can view and edit real trial data. Otherwise, they see empty sandboxed screens.</span>
+                    </div>
+                  </label>
+                </div>
+              )}
               {editingUser && (
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.disabled} onChange={e => setForm(p => ({...p, disabled: e.target.checked}))}
@@ -465,7 +495,7 @@ export default function UserManagement({ onMenuClick }) {
               )}
 
               {/* Category Access Control */}
-              {form.role !== 'admin' && (
+              {form.role !== 'admin' && form.role !== 'developer' && (
                 <div className="border-t pt-3">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Category Access</label>
                   <div className="space-y-2">
@@ -505,8 +535,35 @@ export default function UserManagement({ onMenuClick }) {
                 </div>
               )}
 
+              {/* Viewable Users (Cross-user sharing) */}
+              {form.role !== 'admin' && form.role !== 'developer' && (
+                <div className="border-t pt-3">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Viewable Users (Shared Data Access)</label>
+                  <div className="max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-100 space-y-1">
+                    {users.filter(u => u.id !== editingUser?.id && u.role !== 'admin' && u.role !== 'developer').map(other => (
+                      <label key={other.id} className="flex items-center gap-2 text-xs cursor-pointer p-1 hover:bg-slate-100 rounded">
+                        <input type="checkbox" checked={(form.viewableUsers || []).includes(other.id)}
+                          onChange={e => {
+                            const current = form.viewableUsers || [];
+                            const updated = e.target.checked
+                              ? [...current, other.id]
+                              : current.filter(id => id !== other.id);
+                            setForm(p => ({ ...p, viewableUsers: updated }));
+                          }}
+                          className="w-3.5 h-3.5 accent-blue-500" />
+                        <span className="text-slate-700 truncate">{other.username} ({other.role})</span>
+                      </label>
+                    ))}
+                    {users.filter(u => u.id !== editingUser?.id && u.role !== 'admin' && u.role !== 'developer').length === 0 && (
+                      <span className="text-xs text-slate-400 block text-center py-2">No other scientists/viewers available to share data with.</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Select users whose trial data this user should be allowed to view (read-only).</p>
+                </div>
+              )}
+
               {/* Tab Permissions */}
-              {form.role !== 'admin' && (
+              {form.role !== 'admin' && form.role !== 'developer' && (
                 <div className="border-t pt-3">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Tab Permissions (Enabled Tabs)</label>
                   <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-100">
@@ -531,6 +588,12 @@ export default function UserManagement({ onMenuClick }) {
               {form.role === 'admin' && (
                 <p className="text-xs text-indigo-500 bg-indigo-50 px-3 py-2 rounded-lg font-medium">
                   ⚡ Admin users have full read/write access to all categories and tabs.
+                </p>
+              )}
+
+              {form.role === 'developer' && (
+                <p className="text-xs text-indigo-500 bg-indigo-50 px-3 py-2 rounded-lg font-medium">
+                  ⚡ Developers have full access to all features but see no data by default. Enable "Allow Data Access" to let them view/edit real data.
                 </p>
               )}
               <div className="flex justify-end gap-3 pt-2 border-t">
