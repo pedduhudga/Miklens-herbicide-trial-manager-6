@@ -128,7 +128,7 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
             spreadsheetId: state.settings.sheetId,
             folderId: getEffectiveFolderId(),
         };
-        const appSecretToken = localStorage.getItem('SAVED_APP_SECRET_TOKEN') || (state.settings && state.settings.appSecretToken) || 'miklens-secure-api-token-2026';
+        const appSecretToken = payload.handshakeTokenOverride || (state.settings && state.settings.appSecretToken) || 'miklens-secure-api-token-2026';
         const res = await fetch(String(state.settings.scriptUrl).replace(/\s/g, ''), {
             method: 'POST',
             body: JSON.stringify({ action, payload: fullPayload, auth: getAuthPayload(), appSecretToken }),
@@ -145,13 +145,7 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
         let rawResult;
         try { rawResult = JSON.parse(text); } catch (e) { return buildQueueError('parse', 'Invalid JSON from server'); }
 
-        const processed = processRawResult(rawResult);
-        if (processed && !processed._errType) {
-            if (state.settings && state.settings.appSecretToken) {
-                localStorage.setItem('SAVED_APP_SECRET_TOKEN', state.settings.appSecretToken);
-            }
-        }
-        return processed;
+        return processRawResult(rawResult);
     } catch (error) {
         if (OFFLINE_ACTIONS.includes(action)) {
             return queueItem('fetch', error.message);

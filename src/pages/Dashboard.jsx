@@ -232,7 +232,9 @@ export default function Dashboard({ onMenuClick }) {
     setWeedResults({ query: q, results: ranked, total: matched.length });
   };
 
-  const displayName = user?.Name || user?.Username || user?.username || 'Researcher';
+  const rawName = user?.Name || user?.Username || user?.username || 'Researcher';
+  const cleanName = rawName.includes('@') ? rawName.split('@')[0] : rawName;
+  const displayName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 

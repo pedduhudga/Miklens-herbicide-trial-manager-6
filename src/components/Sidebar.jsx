@@ -55,6 +55,9 @@ const ACCENT_CLASSES = {
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user, isAdmin, isViewer, logout } = useAuth();
+  const rawUname = user?.Name || user?.Username || user?.username || 'Researcher';
+  const cleanUname = rawUname.includes('@') ? rawUname.split('@')[0] : rawUname;
+  const displayUname = cleanUname.charAt(0).toUpperCase() + cleanUname.slice(1);
   const { state, dispatch } = useAppState();
   const navigate = useNavigate();
   const firebaseEnabled = !!state.settings?.firebaseEnabled;
@@ -249,11 +252,11 @@ export default function Sidebar({ isOpen, onClose }) {
           <div className="mt-auto p-4 border-t border-slate-200/50 bg-white/50">
             <div className="flex items-center gap-3 mb-4 px-2">
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold uppercase" style={{ background: catConfig.color.hexLight, color: catConfig.color.hex }}>
-                {user.username?.[0] || 'U'}
+                {displayUname[0] || 'U'}
               </div>
               <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-bold text-slate-800 truncate">{user.username}</span>
-                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">{user.role}</span>
+                <span className="text-sm font-bold text-slate-800 truncate">{displayUname}</span>
+                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">{user.role || user.Role}</span>
               </div>
             </div>
             <button

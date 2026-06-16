@@ -1355,14 +1355,19 @@ export default function Settings({ onMenuClick }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-700">
-                {user?.Name ||
-                  user?.Username ||
-                  user?.username ||
-                  "Unknown User"}
+                {(() => {
+                  const raw = user?.Name || user?.Username || user?.username || "Unknown User";
+                  const clean = raw.includes('@') ? raw.split('@')[0] : raw;
+                  return clean.charAt(0).toUpperCase() + clean.slice(1);
+                })()}
               </p>
               <p className="text-xs text-slate-400">
                 {user?.Role || user?.role || "Researcher"} ·{" "}
-                {state.auth?.username || ""}
+                {(() => {
+                  const raw = state.auth?.username || "";
+                  const clean = raw.includes('@') ? raw.split('@')[0] : raw;
+                  return clean.charAt(0).toUpperCase() + clean.slice(1);
+                })()}
               </p>
             </div>
             <button

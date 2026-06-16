@@ -63,6 +63,10 @@ export default function CategorySelector() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const rawUname = user?.username || user?.Username || user?.Name || 'User';
+  const cleanUname = rawUname.includes('@') ? rawUname.split('@')[0] : rawUname;
+  const displayUname = cleanUname.charAt(0).toUpperCase() + cleanUname.slice(1);
+
   const lastUsed = state.activeCategory;
 
   // Count trials per category (look at all data for counts)
@@ -101,11 +105,11 @@ export default function CategorySelector() {
         {user && (
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex flex-col items-end">
-              <span className="text-sm font-semibold text-slate-700">{user.username || user.Username || 'User'}</span>
+              <span className="text-sm font-semibold text-slate-700">{displayUname}</span>
               <span className="text-xs text-slate-400 uppercase tracking-wider">{user.role || user.Role || 'user'}</span>
             </div>
             <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold uppercase text-sm">
-              {(user.username || user.Username || 'U')[0]}
+              {displayUname[0] || 'U'}
             </div>
             <button
               onClick={logout}
