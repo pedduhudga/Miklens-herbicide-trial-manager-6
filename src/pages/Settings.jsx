@@ -79,7 +79,7 @@ const DEFAULT_ONLINE_QR_SETTINGS = {
 
 export default function Settings({ onMenuClick }) {
   const { state, updateSettings, updateState, getAppState } = useAppState();
-  const { logout, user } = useAuth();
+  const { logout, user, isViewer } = useAuth();
   const [newKey, setNewKey] = useState("");
   const [testingKey, setTestingKey] = useState(null);
   const [keyTestResult, setKeyTestResult] = useState({});
@@ -93,6 +93,7 @@ export default function Settings({ onMenuClick }) {
   });
 
   const saveAiKey = (provider, key) => {
+    if (isViewer) return;
     const newKeys = { ...aiKeys, [provider]: key };
     setAiKeys(newKeys);
     localStorage.setItem(`AI_KEY_${provider.toUpperCase()}`, key);
@@ -112,6 +113,7 @@ export default function Settings({ onMenuClick }) {
 
   // ── API Keys ──────────────────────────────────────────────────────────────
   const handleAddKey = () => {
+    if (isViewer) return;
     if (!newKey.trim()) return;
     updateSettings({ apiKeys: [...(s.apiKeys || []), newKey.trim()] });
     setNewKey("");
@@ -119,6 +121,7 @@ export default function Settings({ onMenuClick }) {
   };
 
   const handleRemoveKey = (index) => {
+    if (isViewer) return;
     if (!window.confirm("Remove this API key?")) return;
     const updatedKeys = [...(s.apiKeys || [])];
     updatedKeys.splice(index, 1);
@@ -177,6 +180,7 @@ export default function Settings({ onMenuClick }) {
 
   // ── Logo ──────────────────────────────────────────────────────────────────
   const handleLogoChange = (e) => {
+    if (isViewer) return;
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -246,6 +250,7 @@ export default function Settings({ onMenuClick }) {
   const qrOnlineFields = parseOnlineQrSettings(s.qrOnlineFields);
 
   const toggleQrField = (mode, field) => {
+    if (isViewer) return;
     if (mode === "offline") {
       const updated = qrOfflineFields.includes(field)
         ? qrOfflineFields.filter((f) => f !== field)
@@ -260,6 +265,10 @@ export default function Settings({ onMenuClick }) {
 
   // ── Save / Logout ─────────────────────────────────────────────────────────
   const handleSave = async () => {
+    if (isViewer) {
+      toast("Viewers cannot save settings", "error");
+      return;
+    }
     const settingsToPersist = {
       ...s,
       qrOnlineFields,
@@ -1204,7 +1213,10 @@ export default function Settings({ onMenuClick }) {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <button
               onClick={handleSave}
-              className="btn-primary text-white px-6 py-2 rounded-lg font-bold shadow-md flex items-center gap-2"
+              disabled={isViewer}
+              className={`text-white px-6 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 ${
+                isViewer ? "bg-slate-300 cursor-not-allowed opacity-60" : "btn-primary"
+              }`}
             >
               <Save className="w-4 h-4" /> Save All Settings
             </button>

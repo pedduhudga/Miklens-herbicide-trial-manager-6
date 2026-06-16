@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { addIngredient, deleteIngredient } from '../services/dataLayer.js';
@@ -7,6 +8,7 @@ import { Edit, Trash2, Plus, Search, ChevronDown, ChevronUp, FlaskConical } from
 
 export default function Ingredients({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const { isViewer } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState(null);
   const [expandedIngId, setExpandedIngId] = useState(null);
@@ -135,12 +137,14 @@ export default function Ingredients({ onMenuClick }) {
       <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-slate-800">Ingredients Library</h2>
-          <button
-            onClick={() => handleOpenModal()}
-            className="btn-primary px-4 py-2 rounded-xl shadow-md flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" /> Add Ingredient
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="btn-primary px-4 py-2 rounded-xl shadow-md flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" /> Add Ingredient
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden">
@@ -171,20 +175,24 @@ export default function Ingredients({ onMenuClick }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleOpenModal(ing)}
-                        className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                        title="Edit"
-                      >
-                        <Edit className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(ing.ID)}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+                      {!isViewer && (
+                        <>
+                          <button
+                            onClick={() => handleOpenModal(ing)}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                            title="Edit"
+                          >
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(ing.ID)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => setExpandedIngId(expandedIngId === ing.ID ? null : ing.ID)}
                         className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition"

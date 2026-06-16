@@ -20,8 +20,12 @@ if (typeof window !== 'undefined') {
   }
 }
 
+import { useAuth } from '../hooks/useAuth.js';
+
 export default function DataManagement({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const { isViewer, user } = useAuth();
+  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
   const activeCategory = state.activeCategory || 'herbicide';
   const catConfig = getCategoryConfig(activeCategory);
   const primaryObsField = getPrimaryObservationField(activeCategory);
@@ -99,6 +103,10 @@ export default function DataManagement({ onMenuClick }) {
 
   // ── Export ────────────────────────────────────────────────────────────────
   const handleExportJSON = () => {
+    if (!canDownload) {
+      toast("Download permission is disabled for your account", "error");
+      return;
+    }
     const data = {
       trials: state.trials || [],
       projects: state.projects || [],
@@ -117,10 +125,18 @@ export default function DataManagement({ onMenuClick }) {
   };
 
   const handleExportStandaloneHTML = () => {
+    if (!canDownload) {
+      toast("Download permission is disabled for your account", "error");
+      return;
+    }
     toast('Standalone HTML export is only available in the full Google Apps Script environment.', 'info');
   };
 
   const handleExportCSV = (key, label) => {
+    if (!canDownload) {
+      toast("Download permission is disabled for your account", "error");
+      return;
+    }
     const data = state[key] || [];
     if (!data.length) { toast(`No ${label} to export`, 'info'); return; }
     exportCSV(data, `${label}_${new Date().toISOString().split('T')[0]}`);
@@ -129,6 +145,10 @@ export default function DataManagement({ onMenuClick }) {
 
   // ── Import ────────────────────────────────────────────────────────────────
   const handleImportJSON = (e) => {
+    if (isViewer) {
+      toast("Viewers cannot import data", "error");
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -161,6 +181,10 @@ export default function DataManagement({ onMenuClick }) {
   };
 
   const runAsynchronousRepair = async (taskName, repairFunc) => {
+    if (isViewer) {
+      toast("Viewers cannot perform data repairs", "error");
+      return;
+    }
     const trials = [...(state.trials || [])];
     if (!trials.length) {
       toast('No trials on record to repair', 'info');
@@ -218,6 +242,10 @@ export default function DataManagement({ onMenuClick }) {
 
 
   const handleScanTrials = async () => {
+    if (isViewer) {
+      toast("Viewers cannot perform data scans", "error");
+      return;
+    }
     const trials = state.trials || [];
     if (!trials.length) {
       toast('No trials on record to scan', 'info');
@@ -324,6 +352,10 @@ export default function DataManagement({ onMenuClick }) {
 
 
   const handleForceFullRerepair = async () => {
+    if (isViewer) {
+      toast("Viewers cannot perform data repairs", "error");
+      return;
+    }
     if (!window.confirm(`This will sequentially re-run all ${targetLabel} Linking and Tracking repair steps on every trial. Continue?`)) return;
     setRepairProgress('');
     setScanSummary('');
@@ -838,6 +870,10 @@ export default function DataManagement({ onMenuClick }) {
 
 
   const handleForceAiReanalysisAll = async () => {
+    if (isViewer) {
+      toast("Viewers cannot perform AI photo re-analysis", "error");
+      return;
+    }
     const hasKeys = (state.settings?.apiKeys || []).length > 0 || state.settings?.geminiApiKey;
     if (!hasKeys) {
       toast('No API keys configured. Please add one in Settings.', 'error');
@@ -1037,6 +1073,10 @@ export default function DataManagement({ onMenuClick }) {
 
   // ── AI Bulk Analysis ──────────────────────────────────────────────────────
   const startBulkAnalysis = () => {
+    if (isViewer) {
+      toast("Viewers cannot perform AI bulk analysis", "error");
+      return;
+    }
     const needsAnalysis = (state.trials || []).filter(
       t => !t.EfficacyDataJSON || t.EfficacyDataJSON === '[]' || !t.AISummariesJSON || t.AISummariesJSON === '{}'
     );
@@ -1218,6 +1258,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
 
 
   const handleRecalculateAllRatings = async () => {
+    if (isViewer) {
+      toast("Viewers cannot recalculate ratings", "error");
+      return;
+    }
     if (isRecalculating) return;
     setIsRecalculating(true);
     const safeJsonParse = (str, fallback = []) => {
@@ -1281,6 +1325,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
 
   // ── Clear All Data ────────────────────────────────────────────────────────
   const handleClearAllData = () => {
+    if (isViewer) {
+      toast("Viewers cannot clear data", "error");
+      return;
+    }
     if (!window.confirm('⚠️ This will permanently delete ALL local data including trials, formulations, projects, and ingredients.\n\nThis action CANNOT be undone.\n\nAre you absolutely sure?')) return;
     if (!window.confirm('Final confirmation: Delete everything?')) return;
     updateState({
@@ -1330,7 +1378,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           <p className="text-gray-600 mb-4 text-sm">Backup and restore your data to Google Drive, Dropbox, or a local file.</p>
           <button
             onClick={() => setShowCloudBackup(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
+            disabled={isViewer}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+              isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-blue-600 text-white hover:bg-blue-700"
+            }`}
           >
             <Cloud className="w-4 h-4" /> Manage Cloud Backup
           </button>
@@ -1344,15 +1395,31 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           <p className="text-gray-600 mb-4 text-sm">Download your data for backup. ZIP includes photos. Standalone HTML is a complete viewable offline archive.</p>
           <div className="flex flex-wrap gap-3">
             <button onClick={handleExportJSON}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition flex items-center gap-2">
+              disabled={!canDownload}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+                !canDownload ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-green-600 text-white hover:bg-green-700"
+              }`}>
               <Download className="w-4 h-4" /> Export to JSON
             </button>
-            <button onClick={() => { exportZIP(state.trials); toast('Generating ZIP…', 'info'); }}
-              className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-800 transition flex items-center gap-2">
+            <button onClick={() => { 
+              if (!canDownload) {
+                toast("Download permission is disabled for your account", "error");
+                return;
+              }
+              exportZIP(state.trials); 
+              toast('Generating ZIP…', 'info'); 
+            }}
+              disabled={!canDownload}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+                !canDownload ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-green-700 text-white hover:bg-green-800"
+              }`}>
               <Archive className="w-4 h-4" /> Export with Photos (ZIP)
             </button>
             <button onClick={handleExportStandaloneHTML}
-              className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition flex items-center gap-2">
+              disabled={!canDownload}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+                !canDownload ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-blue-700 text-white hover:bg-blue-800"
+              }`}>
               <FileCode className="w-4 h-4" /> Export Standalone HTML
             </button>
           </div>
@@ -1363,7 +1430,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
             <div className="flex flex-wrap gap-2">
               {dataSummary.map(({ key, label }) => (
                 <button key={key} onClick={() => handleExportCSV(key, label)}
-                  className="text-xs font-semibold px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 border border-purple-200 transition">
+                  disabled={!canDownload}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${
+                    !canDownload ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60" : "bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200"
+                  }`}>
                   {label}
                 </button>
               ))}
@@ -1585,6 +1655,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
             </p>
             <p className="text-gray-600 mb-4 text-xs">This matches the export CSV schema and will update existing records (matching by ID) or insert new ones.</p>
             <input ref={csvImportRef} type="file" accept=".csv" className="hidden" onChange={(e) => {
+              if (isViewer) {
+                toast("Viewers cannot import CSV files", "error");
+                return;
+              }
               const file = e.target.files?.[0];
               if (!file || !csvImportEntity) return;
               importCSV(file, (data) => {

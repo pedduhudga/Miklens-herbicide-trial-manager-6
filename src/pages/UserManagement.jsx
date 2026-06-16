@@ -27,7 +27,8 @@ const ALL_TABS = [
   "Field Map",
   "Smart Search",
   "Data Management",
-  "Settings"
+  "Settings",
+  "Allow Downloads"
 ];
 
 const emptyForm = { username: '', password: '', role: 'user', disabled: false, categoryAccess: { ...DEFAULT_CATEGORY_ACCESS }, tabPermissions: {} };

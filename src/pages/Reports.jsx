@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
-import { FileBox, Download, LayoutTemplate, GripVertical, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { FileBox, Download, LayoutTemplate, GripVertical, Plus, Trash2, ChevronRight, ShieldAlert } from 'lucide-react';
 import { exportScientificReportAsDOC, exportTrialCardsPDF } from '../utils/exportUtils.js';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 
 export default function Reports({ onMenuClick }) {
   const { state } = useAppState();
+  const { isViewer, user } = useAuth();
+  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
 
@@ -106,6 +109,10 @@ export default function Reports({ onMenuClick }) {
   };
 
   const handleGenerateScientificReport = async () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
     if (!selectedTrialId) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a trial first.', type: 'warning' } }));
       return;
@@ -119,6 +126,10 @@ export default function Reports({ onMenuClick }) {
   };
 
   const handleGenerateTrialCards = async () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
     if (!selectedProjectId) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a project first.', type: 'warning' } }));
       return;
@@ -133,6 +144,10 @@ export default function Reports({ onMenuClick }) {
   };
 
   const handleGenerateAdvancedExcel = async () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
     if (!selectedTrialId) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a trial first.', type: 'warning' } }));
       return;
@@ -156,6 +171,10 @@ export default function Reports({ onMenuClick }) {
   };
 
   const handleGenerateCustom = async () => {
+     if (!canDownload) {
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+        return;
+     }
      if (templateBlocks.length === 0) {
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please add at least one block to your template.', type: 'warning' } }));
         return;
@@ -183,6 +202,10 @@ export default function Reports({ onMenuClick }) {
   };
 
   const handleGenerateARM = async () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
     if (!selectedProjectId) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please select a project first.', type: 'warning' } }));
       return;
@@ -260,92 +283,106 @@ export default function Reports({ onMenuClick }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
-              <div 
-                onClick={handleGenerateScientificReport}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full"
-              >
-                 <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <FileBox className="w-7 h-7" />
-                 </div>
-                 <h3 className="font-bold text-lg text-slate-800 mb-3">Scientific Report (DOCX)</h3>
-                 <p className="text-sm text-slate-500 mb-6 flex-grow">Export detailed, standard format per-trial reports containing full efficacy charts, environmental data, and standardized AI narratives.</p>
-                 <button 
-                   onClick={(e) => { e.stopPropagation(); handleGenerateScientificReport(); }}
-                   className="w-full py-3 bg-slate-50 text-blue-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-blue-100 transition"
-                 >
-                   Select Trials <Download className="w-4 h-4" />
-                 </button>
-              </div>
-
-              <div 
-                onClick={handleGenerateTrialCards}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full"
-              >
-                 <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <FileBox className="w-7 h-7" />
-                 </div>
-                 <h3 className="font-bold text-lg text-slate-800 mb-3">Printable Trial Cards (PDF)</h3>
-                 <p className="text-sm text-slate-500 mb-6 flex-grow">Generate layout-optimized, physical field cards containing plot layouts and scannable QR codes for your stakes.</p>
-                 <button 
-                   onClick={(e) => { e.stopPropagation(); handleGenerateTrialCards(); }}
-                   className="w-full py-3 bg-slate-50 text-emerald-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-emerald-100 transition"
-                 >
-                   Generate Cards <Download className="w-4 h-4" />
-                 </button>
-              </div>
-
-              <div 
-                onClick={handleGenerateAdvancedExcel}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full hover:border-amber-400"
-              >
-                 <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <FileBox className="w-7 h-7" />
-                 </div>
-                 <h3 className="font-bold text-lg text-slate-800 mb-3">Advanced Excel (11-Sheet)</h3>
-                 <p className="text-sm text-slate-500 mb-6 flex-grow">Generate a complete multi-sheet agricultural Excel workbook matching TOK2322C, including ANOVA, statistics, and embedded charts.</p>
-                 <button 
-                   onClick={(e) => { e.stopPropagation(); handleGenerateAdvancedExcel(); }}
-                   className="w-full py-3 bg-amber-50 text-amber-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-amber-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                   disabled={!selectedTrialId}
-                 >
-                   Export Workbook <Download className="w-4 h-4" />
-                 </button>
-              </div>
-
-              <div 
-                onClick={handleGenerateARM}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full hover:border-purple-400"
-              >
-                 <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <FileBox className="w-7 h-7" />
-                 </div>
-                 <h3 className="font-bold text-lg text-slate-800 mb-3">ARM Exchange Data (CSV)</h3>
-                 <p className="text-sm text-slate-500 mb-6 flex-grow">Export trial coordinates, blocks, treatments, and observation logs in the standard Agricultural Research Manager exchange layout.</p>
-                 <button 
-                   onClick={(e) => { e.stopPropagation(); handleGenerateARM(); }}
-                   className="w-full py-3 bg-slate-50 text-purple-700 font-semibold rounded-xl flex items-center justify-center gap-2 group-hover:bg-purple-100 transition"
-                 >
-                   Export ARM File <Download className="w-4 h-4" />
-                 </button>
-              </div>
-
-              <div
-                onClick={() => setShowBuilder(true)}
-                className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl shadow-md border border-purple-800 p-6 hover:shadow-lg transition-all cursor-pointer group flex flex-col h-full text-white"
-              >
-                 <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <LayoutTemplate className="w-7 h-7" />
+               <div 
+                 onClick={canDownload ? handleGenerateScientificReport : null}
+                 className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full ${canDownload ? 'hover:shadow-md cursor-pointer group' : 'opacity-65'}`}
+               >
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-6 ${canDownload ? 'bg-blue-50 text-blue-600 group-hover:scale-110 transition-transform' : 'bg-slate-100 text-slate-400'}`}>
+                     <FileBox className="w-7 h-7" />
                   </div>
-                 <h3 className="font-bold text-lg mb-3">Custom Report Builder</h3>
-                 <p className="text-sm text-purple-100 mb-6 flex-grow">Drag and drop specific charts, tables, and narrative blocks to build a tailored regulatory or scientific export template.</p>
-                 <button className="w-full py-3 bg-white/10 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/20 transition">
-                   Open Builder <ChevronRight className="w-4 h-4" />
-                 </button>
-              </div>
+                  <h3 className="font-bold text-lg text-slate-800 mb-3">Scientific Report (DOCX)</h3>
+                  <p className="text-sm text-slate-500 mb-6 flex-grow">Export detailed, standard format per-trial reports containing full efficacy charts, environmental data, and standardized AI narratives.</p>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); if (canDownload) handleGenerateScientificReport(); }}
+                    disabled={!canDownload}
+                    className={`w-full py-3 font-semibold rounded-xl flex items-center justify-center gap-2 transition ${canDownload ? 'bg-slate-50 text-blue-700 hover:bg-blue-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                  >
+                    {canDownload ? 'Select Trials' : 'Disabled'} <Download className="w-4 h-4" />
+                  </button>
+               </div>
 
-            </div>
+               <div 
+                 onClick={canDownload ? handleGenerateTrialCards : null}
+                 className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full ${canDownload ? 'hover:shadow-md cursor-pointer group' : 'opacity-65'}`}
+               >
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-6 ${canDownload ? 'bg-emerald-50 text-emerald-600 group-hover:scale-110 transition-transform' : 'bg-slate-100 text-slate-400'}`}>
+                     <FileBox className="w-7 h-7" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-800 mb-3">Printable Trial Cards (PDF)</h3>
+                  <p className="text-sm text-slate-500 mb-6 flex-grow">Generate layout-optimized, physical field cards containing plot layouts and scannable QR codes for your stakes.</p>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); if (canDownload) handleGenerateTrialCards(); }}
+                    disabled={!canDownload}
+                    className={`w-full py-3 font-semibold rounded-xl flex items-center justify-center gap-2 transition ${canDownload ? 'bg-slate-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                  >
+                    {canDownload ? 'Generate Cards' : 'Disabled'} <Download className="w-4 h-4" />
+                  </button>
+               </div>
+
+               <div 
+                 onClick={canDownload ? handleGenerateAdvancedExcel : null}
+                 className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full ${canDownload ? 'hover:shadow-md cursor-pointer group hover:border-amber-400' : 'opacity-65'}`}
+               >
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-6 ${canDownload ? 'bg-amber-50 text-amber-600 group-hover:scale-110 transition-transform' : 'bg-slate-100 text-slate-400'}`}>
+                     <FileBox className="w-7 h-7" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-800 mb-3">Advanced Excel (11-Sheet)</h3>
+                  <p className="text-sm text-slate-500 mb-6 flex-grow">Generate a complete multi-sheet agricultural Excel workbook matching TOK2322C, including ANOVA, statistics, and embedded charts.</p>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); if (canDownload) handleGenerateAdvancedExcel(); }}
+                    className={`w-full py-3 font-semibold rounded-xl flex items-center justify-center gap-2 transition ${canDownload ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                    disabled={!selectedTrialId || !canDownload}
+                  >
+                    {canDownload ? 'Export Workbook' : 'Disabled'} <Download className="w-4 h-4" />
+                  </button>
+               </div>
+
+               <div 
+                 onClick={canDownload ? handleGenerateARM : null}
+                 className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full ${canDownload ? 'hover:shadow-md cursor-pointer group hover:border-purple-400' : 'opacity-65'}`}
+               >
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-6 ${canDownload ? 'bg-purple-50 text-purple-600 group-hover:scale-110 transition-transform' : 'bg-slate-100 text-slate-400'}`}>
+                     <FileBox className="w-7 h-7" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-800 mb-3">ARM Exchange Data (CSV)</h3>
+                  <p className="text-sm text-slate-500 mb-6 flex-grow">Export trial coordinates, blocks, treatments, and observation logs in the standard Agricultural Research Manager exchange layout.</p>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); if (canDownload) handleGenerateARM(); }}
+                    disabled={!canDownload}
+                    className={`w-full py-3 font-semibold rounded-xl flex items-center justify-center gap-2 transition ${canDownload ? 'bg-slate-50 text-purple-700 hover:bg-purple-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                  >
+                    {canDownload ? 'Export ARM File' : 'Disabled'} <Download className="w-4 h-4" />
+                  </button>
+               </div>
+
+               <div
+                 onClick={() => {
+                   if (isViewer) {
+                     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot customize report builder templates.', type: 'error' } }));
+                     return;
+                   }
+                   setShowBuilder(true);
+                 }}
+                 className={`rounded-2xl shadow-md p-6 transition-all cursor-pointer group flex flex-col h-full ${isViewer ? 'bg-slate-200 border border-slate-300 text-slate-500 opacity-70' : 'bg-gradient-to-br from-purple-600 to-indigo-700 border border-purple-800 text-white hover:shadow-lg'}`}
+               >
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-6 ${isViewer ? 'bg-slate-300 text-slate-500' : 'bg-white/20 group-hover:scale-110 transition-transform'}`}>
+                     {isViewer ? <ShieldAlert className="w-7 h-7" /> : <LayoutTemplate className="w-7 h-7" />}
+                   </div>
+                  <h3 className="font-bold text-lg mb-3">Custom Report Builder</h3>
+                  <p className={`text-sm mb-6 flex-grow ${isViewer ? 'text-slate-500' : 'text-purple-100'}`}>
+                    {isViewer ? 'Custom templates are disabled for Viewers to prevent modifications to reporting configurations.' : 'Drag and drop specific charts, tables, and narrative blocks to build a tailored regulatory or scientific export template.'}
+                  </p>
+                  <button 
+                    disabled={isViewer}
+                    className={`w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 transition ${isViewer ? 'bg-slate-350 text-slate-400 cursor-not-allowed' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                  >
+                    {isViewer ? 'Locked' : 'Open Builder'} <ChevronRight className="w-4 h-4" />
+                  </button>
+               </div>
+
+             </div>
           </>
         ) : (
           <div className="flex flex-col h-full min-h-[700px]">

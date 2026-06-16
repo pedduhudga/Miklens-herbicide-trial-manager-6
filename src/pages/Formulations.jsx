@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { addFormulation, deleteFormulation, updateFormulation } from '../services/dataLayer.js';
@@ -9,6 +10,7 @@ import { Plus, X } from 'lucide-react';
 
 export default function Formulations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const { isViewer } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingForm, setEditingForm] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -215,14 +217,16 @@ export default function Formulations({ onMenuClick }) {
               className="w-full form-input px-4 py-2 border rounded-lg"
             />
           </div>
-          <div>
-            <button
-              onClick={() => handleOpenModal()}
-              className="btn-primary px-4 py-2 rounded-lg shadow w-full md:w-auto flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> New Formulation
-            </button>
-          </div>
+          {!isViewer && (
+            <div>
+              <button
+                onClick={() => handleOpenModal()}
+                className="btn-primary px-4 py-2 rounded-lg shadow w-full md:w-auto flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> New Formulation
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -238,11 +242,13 @@ export default function Formulations({ onMenuClick }) {
               const avgLabelColor = { Excellent: 'bg-emerald-100 text-emerald-700', Good: 'bg-blue-100 text-blue-700', Fair: 'bg-amber-100 text-amber-700', Poor: 'bg-red-100 text-red-700' };
               return (
                 <div key={form.ID} className="bg-white p-6 rounded-xl shadow-lg relative transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border border-transparent hover:border-emerald-500/50">
-                  <div className="absolute top-4 right-4 flex gap-2">
-                    <button onClick={() => handleOpenModal(form, true)} className="bg-slate-200 text-slate-700 px-3 py-1 rounded-md text-sm hover:bg-slate-300">Duplicate</button>
-                    <button onClick={() => handleOpenModal(form)} className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-md text-sm hover:bg-emerald-200">Edit</button>
-                    <button onClick={() => handleDelete(form.ID)} className="text-red-500 hover:text-red-700 font-bold text-xl leading-none">&times;</button>
-                  </div>
+                  {!isViewer && (
+                    <div className="absolute top-4 right-4 flex gap-2">
+                      <button onClick={() => handleOpenModal(form, true)} className="bg-slate-200 text-slate-700 px-3 py-1 rounded-md text-sm hover:bg-slate-300">Duplicate</button>
+                      <button onClick={() => handleOpenModal(form)} className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-md text-sm hover:bg-emerald-200">Edit</button>
+                      <button onClick={() => handleDelete(form.ID)} className="text-red-500 hover:text-red-700 font-bold text-xl leading-none">&times;</button>
+                    </div>
+                  )}
 
                   <h3 className="font-bold text-lg text-slate-800">{form.Name}</h3>
 

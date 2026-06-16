@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import { safeJsonParse } from '../utils/helpers.js';
@@ -9,6 +10,7 @@ import { formatDateTime } from '../utils/dateUtils.js';
 
 export default function Organisations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const { isViewer } = useAuth();
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState(null);
@@ -84,9 +86,11 @@ export default function Organisations({ onMenuClick }) {
               className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
             {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X className="w-4 h-4" /></button>}
           </div>
-          <button onClick={() => openModal()} className="btn-primary text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap">
-            <Plus className="w-4 h-4" />New Organisation
-          </button>
+          {!isViewer && (
+            <button onClick={() => openModal()} className="btn-primary text-white px-4 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap">
+              <Plus className="w-4 h-4" />New Organisation
+            </button>
+          )}
         </div>
 
         <div className="p-4 space-y-4">
@@ -106,8 +110,12 @@ export default function Organisations({ onMenuClick }) {
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <button onClick={() => openModal(org)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit className="w-4 h-4" /></button>
-                    <button onClick={() => handleDelete(org.ID)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><Trash2 className="w-4 h-4" /></button>
+                    {!isViewer && (
+                      <>
+                        <button onClick={() => openModal(org)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(org.ID)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><Trash2 className="w-4 h-4" /></button>
+                      </>
+                    )}
                     <button onClick={() => setExpandedOrg(isExpanded ? null : org.ID)} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
@@ -144,7 +152,7 @@ export default function Organisations({ onMenuClick }) {
               <Building2 className="w-12 h-12 mx-auto mb-4 opacity-30" />
               <p className="font-semibold">{search ? 'No organisations match your search' : 'No organisations yet'}</p>
               <p className="text-sm mt-1">Create an organisation to group related trials together</p>
-              {!search && <button onClick={() => openModal()} className="mt-4 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition">Create Organisation</button>}
+              {!search && !isViewer && <button onClick={() => openModal()} className="mt-4 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition">Create Organisation</button>}
             </div>
           )}
         </div>
