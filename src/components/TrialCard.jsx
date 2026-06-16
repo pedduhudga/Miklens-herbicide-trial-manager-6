@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useCallback, useState } from 'react';
-import { Calendar, MapPin, FlaskConical, Activity, Image as ImageIcon, ChevronLeft, ChevronRight, Edit, MoreVertical, Eye, Copy, FolderOpen, FileDown, ScanLine, MonitorPlay, Archive, FileCode, FileSpreadsheet, Share2, BrainCircuit, Trash2, Camera, CheckCircle, Clock, Pencil } from 'lucide-react';
+import { Calendar, MapPin, FlaskConical, Activity, Image as ImageIcon, ChevronLeft, ChevronRight, Edit, MoreVertical, Eye, Copy, FolderOpen, FileDown, ScanLine, MonitorPlay, Archive, FileCode, FileSpreadsheet, Share2, BrainCircuit, Trash2, Camera, CheckCircle, Clock, Pencil, CloudSun } from 'lucide-react';
 import { safeJsonParse } from '../utils/helpers.js';
 import { formatDateTime } from '../utils/dateUtils.js';
 import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
@@ -68,7 +68,12 @@ const TrialCard = memo(function TrialCard({
   onQuickGalleryUpload,
   onMarkComplete,
   onEditControlDays,
+  onRecordWeather,
 }) {
+  const handleRecordWeather = useCallback((e) => {
+    e.stopPropagation();
+    onRecordWeather && onRecordWeather(trial);
+  }, [onRecordWeather, trial]);
   const { isViewer, user, isAdmin } = useAuth();
   const ownUid = user?.uid || user?.ID || user?.id;
   const isOwnData = isAdmin || !trial.CreatedBy || trial.CreatedBy === ownUid;
@@ -346,9 +351,14 @@ const TrialCard = memo(function TrialCard({
           </div>
           <div className="flex gap-1 shrink-0" onClick={stopPropagation}>
             {isEditable && (
-              <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
-                <Edit className="w-3.5 h-3.5" />
-              </button>
+              <>
+                <button onClick={handleRecordWeather} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded" title="Record Real-time Weather Info">
+                  <CloudSun className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
+                  <Edit className="w-3.5 h-3.5" />
+                </button>
+              </>
             )}
             {/* 3-dot menu */}
             <div className="relative">

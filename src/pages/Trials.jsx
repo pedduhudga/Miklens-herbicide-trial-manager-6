@@ -2784,6 +2784,59 @@ export default function Trials({ onMenuClick }) {
     } catch(e) {}
   }, [trials, activeTrial, getAppState, updateState, syncTrialToQrScript]);
 
+  const handleRecordWeather = useCallback(async (trial) => {
+    if (!window.confirm(`Do you want to fetch and record the current real-time weather data for "${trial.FormulationName || 'this trial'}"?`)) {
+      return;
+    }
+    let lat = trial.Lat;
+    let lon = trial.Lon;
+    const fetchAndSave = async (targetLat, targetLon) => {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Fetching current weather data...', type: 'info' } }));
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const weather = await fetchWeather(targetLat, targetLon, todayStr, getAppState);
+        if (weather) {
+          const patch = {
+            ID: trial.ID,
+            Temperature: weather.temp !== undefined ? String(weather.temp) : (trial.Temperature || ''),
+            Humidity: weather.humidity !== undefined ? String(weather.humidity) : (trial.Humidity || ''),
+            Windspeed: weather.wind !== undefined ? String(weather.wind) : (trial.Windspeed || ''),
+            Rain: weather.rain !== undefined ? String(weather.rain) : (trial.Rain || '')
+          };
+          const updated = { ...trial, ...patch };
+          updateState({ trials: trials.map(t => t.ID === updated.ID ? updated : t) });
+          await updateTrial(patch, getAppState);
+          await syncTrialToQrScript(patch);
+          window.dispatchEvent(new CustomEvent('app:toast', {
+            detail: { 
+              msg: `Weather updated: Temp ${weather.temp}°C, Humidity ${weather.humidity}%, Wind ${weather.wind} km/h`, 
+              type: 'success' 
+            } 
+          }));
+        } else {
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to fetch weather data.', type: 'error' } }));
+        }
+      } catch (err) {
+        console.error("Failed to update weather:", err);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Error updating weather: ' + err.message, type: 'error' } }));
+      }
+    };
+    if (lat && lon) {
+      await fetchAndSave(lat, lon);
+    } else if (navigator.geolocation) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No trial coordinates. Using GPS location...', type: 'info' } }));
+      navigator.geolocation.getCurrentPosition(
+        pos => fetchAndSave(pos.coords.latitude.toFixed(8), pos.coords.longitude.toFixed(8)),
+        () => {
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Geolocation denied. Cannot fetch weather.', type: 'error' } }));
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Trial coordinates and Geolocation missing.', type: 'error' } }));
+    }
+  }, [trials, getAppState, updateState, syncTrialToQrScript]);
+
   const handleQuickPhoto = useCallback((trial) => {
     quickActionTrialRef.current = trial;
     setCameraMode('general');
@@ -3656,6 +3709,7 @@ If none are present, write "None".`;
                                 onQuickGalleryUpload={handleQuickGalleryUpload}
                                 onMarkComplete={handleMarkComplete}
                                 onEditControlDays={handleEditControlDays}
+                                onRecordWeather={handleRecordWeather}
                               />
                             ))}
                           </div>
@@ -3729,6 +3783,7 @@ If none are present, write "None".`;
                                 onQuickGalleryUpload={handleQuickGalleryUpload}
                                 onMarkComplete={handleMarkComplete}
                                 onEditControlDays={handleEditControlDays}
+                                onRecordWeather={handleRecordWeather}
                               />
                             ))}
                           </div>
@@ -3770,6 +3825,7 @@ If none are present, write "None".`;
                     onQuickGalleryUpload={handleQuickGalleryUpload}
                     onMarkComplete={handleMarkComplete}
                     onEditControlDays={handleEditControlDays}
+                    onRecordWeather={handleRecordWeather}
                   />
                 ))}
               </div>
