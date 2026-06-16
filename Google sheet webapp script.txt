@@ -158,7 +158,7 @@ function executeAction(action, payload, auth) {
     // This allows Firebase users to interact with the sheet mirror and upload photos.
     if (!authUser) {
         if (auth.Role) {
-            const safeRole = (auth.Role === 'Admin' || auth.Role === 'Developer') ? 'User' : auth.Role;
+            const safeRole = (auth.Role === 'Admin' || auth.Role === 'Developer' || auth.Role === 'User') ? 'Viewer' : auth.Role;
             authUser = { ...auth, Role: safeRole, IsActive: 'true' };
         } else {
             throw new Error('Invalid session user. Please log in again.');
@@ -174,7 +174,7 @@ function executeAction(action, payload, auth) {
         ID: String(authUser.ID || auth.ID),
         Username: authUser.Username || auth.Username || '',
         Name: authUser.Name || auth.Name || '',
-        Role: authUser.Role || auth.Role || 'User',
+        Role: authUser.Role || auth.Role || 'Viewer',
         DriveFolderId: authUser.DriveFolderId || auth.DriveFolderId || '',
         ApiKeysJSON: authUser.ApiKeysJSON || auth.ApiKeysJSON || '[]'
     };
