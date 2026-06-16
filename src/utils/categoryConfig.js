@@ -538,11 +538,11 @@ export function hasAccess(user, categoryId, action = 'read') {
     return true;
   }
   
-  if (role === 'viewer') {
-    return action === 'read';
+  if (role === 'viewer' && action === 'write') {
+    return false;
   }
   
-  // Scientist / User
+  // Both Scientist/User and Viewer check categoryAccess
   const accessMap = user.categoryAccess || user.CategoryAccess;
   if (!accessMap) return true; // Default fallback if no permissions configured
   

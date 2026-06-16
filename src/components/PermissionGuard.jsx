@@ -19,18 +19,8 @@ export default function PermissionGuard({ tabName, onMenuClick, children }) {
   // 2. Check tab permissions
   let hasTabPermission = true;
 
-  // Viewer check
-  if (isViewer) {
-    // Viewers are only allowed: Trials, Projects (RCBD), All Categories
-    const allowedViewerTabs = ["Trials", "Projects (RCBD)", "All Categories"];
-    if (!allowedViewerTabs.includes(tabName)) {
-      hasTabPermission = false;
-    }
-  } else {
-    // Normal User / Scientist check
-    if (user?.tabPermissions && user.tabPermissions[tabName] === false) {
-      hasTabPermission = false;
-    }
+  if (user?.tabPermissions && user.tabPermissions[tabName] === false) {
+    hasTabPermission = false;
   }
 
   // 3. Check Category permission (if page is category-specific)
