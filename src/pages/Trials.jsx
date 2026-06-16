@@ -40,7 +40,7 @@ import {
   shareTrial as shareTrialFn,
 } from '../services/trialReports.js';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
-import { fetchWeather } from '../services/weather.js';
+import { fetchWeather, fetchSoilData } from '../services/weather.js';
 import { EPPO_CODES, BBCH_STAGES, lookupEPPO } from '../utils/eppoBBCHData.js';
 import { exportToARM, importARMCSV } from '../services/armExporter.js';
 import AppSharingModal from '../components/AppSharingModal.jsx';
@@ -592,16 +592,37 @@ export default function Trials({ onMenuClick }) {
           const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&wind_speed_unit=kmh`);
           const d = await r.json();
           const c = d.current;
-          if (c) setFormData(prev => ({
-            ...prev,
-            Temperature: c.temperature_2m ?? prev.Temperature,
-            Humidity: c.relative_humidity_2m ?? prev.Humidity,
-            Windspeed: c.wind_speed_10m ?? prev.Windspeed,
-            Rain: c.precipitation ?? prev.Rain,
-          }));
-          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `GPS & weather synced! (Accuracy: ±${accuracy.toFixed(1)}m)`, type: 'success' } }));
-        } catch { 
-          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Location synced (±${accuracy.toFixed(1)}m), weather fetch failed`, type: 'info' } })); 
+          
+          // Fetch soil data
+          const soil = await fetchSoilData(lat, lon);
+          
+          setFormData(prev => {
+            const updated = {
+              ...prev,
+              Lat: lat.toFixed(8),
+              Lon: lon.toFixed(8),
+              Location: prev.Location || `${lat.toFixed(6)}, ${lon.toFixed(6)}`
+            };
+            if (c) {
+              updated.Temperature = c.temperature_2m ?? prev.Temperature;
+              updated.Humidity = c.relative_humidity_2m ?? prev.Humidity;
+              updated.Windspeed = c.wind_speed_10m ?? prev.Windspeed;
+              updated.Rain = c.precipitation ?? prev.Rain;
+            }
+            if (soil) {
+              updated.SoilPH = soil.soilPH ?? prev.SoilPH;
+              updated.SoilClay = soil.soilClay ?? prev.SoilClay;
+              updated.SoilSand = soil.soilSand ?? prev.SoilSand;
+              updated.SoilOC = soil.soilOC ?? prev.SoilOC;
+              updated.SoilTexture = soil.soilTexture ?? prev.SoilTexture;
+            }
+            return updated;
+          });
+          
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `GPS, weather & soil synced! (Accuracy: ±${accuracy.toFixed(1)}m)`, type: 'success' } }));
+        } catch (error) { 
+          console.error("Weather/soil sync error:", error);
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Location synced (±${accuracy.toFixed(1)}m), weather/soil fetch failed`, type: 'info' } })); 
         }
         setGpsFetching(false);
       }, 

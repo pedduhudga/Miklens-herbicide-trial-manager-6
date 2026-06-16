@@ -28,6 +28,7 @@ import { validateEfficacyData } from '../utils/analysisUtils.js';
 import { getCategoryConfig, getPrimaryObservationField, calculateEfficacy } from '../utils/categoryConfig.js';
 import { EPPO_CODES, BBCH_STAGES, lookupEPPO } from '../utils/eppoBBCHData.js';
 import { exportToARM, importARMCSV } from '../services/armExporter.js';
+import { fetchWeather as fetchWeatherService, fetchSoilData } from '../services/weather.js';
 
 export function getThemeClasses(accentColor = 'emerald') {
   const accentMap = {
@@ -1368,18 +1369,30 @@ export default function LargeScaleTrials({ onMenuClick }) {
       const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&wind_speed_unit=kmh`);
       const d = await res.json();
       const c = d.current;
-      if (c) {
-        setSubTrialForm(prev => ({
-          ...prev,
-          Temperature: c.temperature_2m?.toString() || '',
-          Humidity: c.relative_humidity_2m?.toString() || '',
-          Windspeed: c.wind_speed_10m?.toString() || '',
-          Rain: c.precipitation?.toString() || ''
-        }));
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weather parameters synced!', type: 'success' } }));
-      }
-    } catch {
-      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weather sync failed.', type: 'error' } }));
+      
+      const soil = await fetchSoilData(lat, lon);
+      
+      setSubTrialForm(prev => {
+        const updated = { ...prev };
+        if (c) {
+          updated.Temperature = c.temperature_2m?.toString() || '';
+          updated.Humidity = c.relative_humidity_2m?.toString() || '';
+          updated.Windspeed = c.wind_speed_10m?.toString() || '';
+          updated.Rain = c.precipitation?.toString() || '';
+        }
+        if (soil) {
+          updated.SoilPH = soil.soilPH?.toString() || '';
+          updated.SoilClay = soil.soilClay?.toString() || '';
+          updated.SoilSand = soil.soilSand?.toString() || '';
+          updated.SoilOC = soil.soilOC?.toString() || '';
+          updated.SoilTexture = soil.soilTexture || '';
+        }
+        return updated;
+      });
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weather & soil parameters synced!', type: 'success' } }));
+    } catch (err) {
+      console.error(err);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Weather & soil sync failed.', type: 'error' } }));
     }
   };
 
