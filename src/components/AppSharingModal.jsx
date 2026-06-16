@@ -86,8 +86,8 @@ export default function AppSharingModal({ isOpen, onClose, initialSharedWith = [
               return (
                 <div key={uid} className="p-3 flex items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{u.username}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">{u.role || 'Scientist'}</p>
+                    <p className="text-sm font-semibold text-slate-800 truncate">{u.username || u.Username}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">{u.role || u.Role || 'Scientist'}</p>
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     {/* View Checkbox */}
