@@ -177,7 +177,7 @@ const emptyVisitForm = () => ({
 export default function LargeScaleTrials({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
   const { isViewer, user } = useAuth();
-  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
+  const canDownload = !isViewer && user?.tabPermissions?.['Allow Downloads'] !== false;
 
   const toast = (msg, type = 'success') =>
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type } }));

@@ -392,7 +392,7 @@ ${contextData}`;
     }
   };
 
-  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
+  const canDownload = !isViewer && user?.tabPermissions?.['Allow Downloads'] !== false;
 
   const handleExportCsv = () => {
     if (!canDownload) {

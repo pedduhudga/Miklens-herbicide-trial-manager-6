@@ -10,7 +10,7 @@ import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js'
 export default function Reports({ onMenuClick }) {
   const { state } = useAppState();
   const { isViewer, user } = useAuth();
-  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
+  const canDownload = !isViewer && user?.tabPermissions?.['Allow Downloads'] !== false;
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
 

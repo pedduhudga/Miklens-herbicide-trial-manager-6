@@ -99,7 +99,8 @@ const fuzzyMatch = (text, query) => {
 
 export default function Trials({ onMenuClick }) {
   const { state, updateState, getAppState, dispatch } = useAppState();
-  const { isViewer } = useAuth();
+  const { isViewer, user } = useAuth();
+  const canDownload = !isViewer && user?.tabPermissions?.['Allow Downloads'] !== false;
   const location = useLocation();
   const navigate = useNavigate();
   const activeCategory = state.activeCategory || 'herbicide';
@@ -2812,12 +2813,16 @@ export default function Trials({ onMenuClick }) {
   }, [qrMode, buildQrText]);
 
   const downloadQR = useCallback(() => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
     if (!qrCanvasRef.current) return;
     const a = document.createElement('a');
     a.download = `QR_${detailTrial?.FormulationName || 'trial'}_${qrMode}.png`;
     a.href = qrCanvasRef.current.toDataURL('image/png');
     a.click();
-  }, [detailTrial, qrMode]);
+  }, [detailTrial, qrMode, canDownload]);
 
   // ── AI SUMMARY GENERATOR ──────────────────────────────────────────
   const generateAiSummary = useCallback(async () => {
@@ -3069,6 +3074,10 @@ If none are present, write "None".`;
   }, [openCardMenu]);
 
   const triggerExportWithCustomisation = useCallback((exportFn) => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
     const config = getCategoryConfig(activeCategory);
     const initialSelection = {};
     (config.observationFields || []).forEach(f => {
@@ -3077,15 +3086,58 @@ If none are present, write "None".`;
     setReportFieldSelection(initialSelection);
     setPendingReportExport(() => exportFn);
     setCustomiseReportModalOpen(true);
-  }, [activeCategory]);
+  }, [activeCategory, canDownload]);
 
   // ── EXPORT FUNCTIONS (delegated to trialReports.js service) ─────────
-  const exportTxtReport     = useCallback((trial) => { const proj = projects.find(p => p.ID === trial.ProjectID); exportFieldReportTxt(trial, proj?.Name || ''); }, [projects]);
-  const exportCsv           = useCallback((trial) => exportToCSV(trial), []);
-  const exportJson          = useCallback((trial) => exportJsonFile(trial), []);
-  const exportHtmlSlide     = useCallback((trial) => { const proj = projects.find(p => p.ID === trial.ProjectID); exportHtmlReport(trial, proj?.Name || ''); }, [projects]);
-  const exportAllCsv        = useCallback(() => exportAllTrialsCSV(trials, projects), [trials, projects]);
-  const shareTrial          = useCallback((trial) => shareTrialFn(trial), []);
+  const exportTxtReport     = useCallback((trial) => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    const proj = projects.find(p => p.ID === trial.ProjectID);
+    exportFieldReportTxt(trial, proj?.Name || '');
+  }, [projects, canDownload]);
+
+  const exportCsv           = useCallback((trial) => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    exportToCSV(trial);
+  }, [canDownload]);
+
+  const exportJson          = useCallback((trial) => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    exportJsonFile(trial);
+  }, [canDownload]);
+
+  const exportHtmlSlide     = useCallback((trial) => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    const proj = projects.find(p => p.ID === trial.ProjectID);
+    exportHtmlReport(trial, proj?.Name || '');
+  }, [projects, canDownload]);
+
+  const exportAllCsv        = useCallback(() => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    exportAllTrialsCSV(trials, projects);
+  }, [trials, projects, canDownload]);
+
+  const shareTrial          = useCallback((trial) => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download/Export permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    shareTrialFn(trial);
+  }, [canDownload]);
   // Helper: check if AI narrative is stale before export
   const checkAiNarrativeBeforeExport = useCallback((trial, proceed) => {
     const saved = safeJsonParse(trial.AISummariesJSON, {});
@@ -3622,11 +3674,11 @@ If none are present, write "None".`;
           <span className="font-bold text-sm"><span className="bg-emerald-500 px-2 py-0.5 rounded-full mr-2">{selectedForBulk.size}</span>Selected</span>
           <div className="h-4 w-px bg-slate-600" />
           <button onClick={navigateToCompare} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><BarChart3 className="w-4 h-4" />Compare</button>
-          <button onClick={handleBulkFinalize} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><CheckCircle className="w-4 h-4" />Finalize</button>
-          <button onClick={() => setIsBulkEditOpen(true)} className="flex items-center gap-1.5 text-sm hover:text-amber-400 transition"><Edit className="w-4 h-4" />Bulk Edit</button>
-          <button onClick={() => setIsBulkQrModalOpen(true)} className="flex items-center gap-1.5 text-sm hover:text-blue-400 transition"><Printer className="w-4 h-4" />Print Cards</button>
-          <button onClick={() => { const sel = trials.filter(t => selectedForBulk.has(t.ID)); exportMultipleTrialsToCSV(sel); }} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><FileSpreadsheet className="w-4 h-4" />Export CSV</button>
-          <button onClick={handleBulkDelete} className="flex items-center gap-1.5 text-sm hover:text-red-400 transition"><Trash2 className="w-4 h-4" />Delete</button>
+          {!isViewer && <button onClick={handleBulkFinalize} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><CheckCircle className="w-4 h-4" />Finalize</button>}
+          {!isViewer && <button onClick={() => setIsBulkEditOpen(true)} className="flex items-center gap-1.5 text-sm hover:text-amber-400 transition"><Edit className="w-4 h-4" />Bulk Edit</button>}
+          {!isViewer && <button onClick={() => setIsBulkQrModalOpen(true)} className="flex items-center gap-1.5 text-sm hover:text-blue-400 transition"><Printer className="w-4 h-4" />Print Cards</button>}
+          {canDownload && <button onClick={() => { const sel = trials.filter(t => selectedForBulk.has(t.ID)); exportMultipleTrialsToCSV(sel); }} className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"><FileSpreadsheet className="w-4 h-4" />Export CSV</button>}
+          {!isViewer && <button onClick={handleBulkDelete} className="flex items-center gap-1.5 text-sm hover:text-red-400 transition"><Trash2 className="w-4 h-4" />Delete</button>}
           <button onClick={clearBulk} className="ml-1 text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
       )}
@@ -4148,53 +4200,55 @@ If none are present, write "None".`;
                 <p className="text-xs text-slate-500 mt-0.5">{formatDateTime(detailTrial.Date)} · {detailTrial.Location || 'No location'}</p>
               </div>
               <div className="flex gap-2 shrink-0" ref={exportMenuRef}>
+                {canDownload && (
+                  /* Export dropdown */
+                  <div className="relative">
+                    <button onClick={() => setExportMenuOpen(v => !v)} title="Export" className="p-2 rounded-lg hover:bg-white/60 text-slate-600 flex items-center gap-1">
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                    {exportMenuOpen && (
+                      <div className="absolute right-0 top-10 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-52 py-1">
+                        <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">Export This Trial</p>
+                        <button onClick={() => { triggerExportWithCustomisation(() => handleExportPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <FileDown className="w-4 h-4 text-red-500" /> Comprehensive PDF
+                        </button>
+                        <button onClick={() => { triggerExportWithCustomisation(() => handleExportSciPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <ScanLine className="w-4 h-4 text-indigo-500" /> Scientific PDF
+                        </button>
+                        <button onClick={() => { handleExportPpt(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <MonitorPlay className="w-4 h-4 text-orange-500" /> PowerPoint (.pptx)
+                        </button>
+                        {activeCategory !== 'herbicide' && (
+                          <button onClick={() => { triggerExportWithCustomisation(() => handleExportAdvancedExcel(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <FileSpreadsheet className="w-4 h-4 text-amber-500" /> Advanced Excel (11-Sheet)
+                          </button>
+                        )}
+                        <button onClick={() => { triggerExportWithCustomisation(() => exportHtmlSlide(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <Archive className="w-4 h-4 text-blue-500" /> HTML Report (printable)
+                        </button>
+                        <button onClick={() => { triggerExportWithCustomisation(() => exportTxtReport(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <FileCode className="w-4 h-4 text-slate-500" /> Field Report (.txt)
+                        </button>
+                        <button onClick={() => { triggerExportWithCustomisation(() => exportCsv(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Observations CSV
+                        </button>
+                        <button onClick={() => { exportJson(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <FileDown className="w-4 h-4 text-violet-500" /> Raw JSON
+                        </button>
+                        <button onClick={() => { shareTrial(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <Share2 className="w-3.5 h-3.5 text-sky-500" /> Share / Copy
+                        </button>
+                        <hr className="my-1 border-slate-100" />
+                        <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">All Trials</p>
+                        <button onClick={() => { triggerExportWithCustomisation(() => exportAllCsv()); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export All Trials (CSV)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {!isViewer && (
                   <>
-                    {/* Export dropdown */}
-                    <div className="relative">
-                      <button onClick={() => setExportMenuOpen(v => !v)} title="Export" className="p-2 rounded-lg hover:bg-white/60 text-slate-600 flex items-center gap-1">
-                        <FileDown className="w-4 h-4" />
-                      </button>
-                      {exportMenuOpen && (
-                        <div className="absolute right-0 top-10 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 min-w-52 py-1">
-                          <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">Export This Trial</p>
-                          <button onClick={() => { triggerExportWithCustomisation(() => handleExportPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <FileDown className="w-4 h-4 text-red-500" /> Comprehensive PDF
-                          </button>
-                          <button onClick={() => { triggerExportWithCustomisation(() => handleExportSciPdf(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <ScanLine className="w-4 h-4 text-indigo-500" /> Scientific PDF
-                          </button>
-                          <button onClick={() => { handleExportPpt(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <MonitorPlay className="w-4 h-4 text-orange-500" /> PowerPoint (.pptx)
-                          </button>
-                          {activeCategory !== 'herbicide' && (
-                            <button onClick={() => { triggerExportWithCustomisation(() => handleExportAdvancedExcel(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                              <FileSpreadsheet className="w-4 h-4 text-amber-500" /> Advanced Excel (11-Sheet)
-                            </button>
-                          )}
-                          <button onClick={() => { triggerExportWithCustomisation(() => exportHtmlSlide(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <Archive className="w-4 h-4 text-blue-500" /> HTML Report (printable)
-                          </button>
-                          <button onClick={() => { triggerExportWithCustomisation(() => exportTxtReport(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <FileCode className="w-4 h-4 text-slate-500" /> Field Report (.txt)
-                          </button>
-                          <button onClick={() => { triggerExportWithCustomisation(() => exportCsv(detailTrial)); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Observations CSV
-                          </button>
-                          <button onClick={() => { exportJson(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <FileDown className="w-4 h-4 text-violet-500" /> Raw JSON
-                          </button>
-                          <button onClick={() => { shareTrial(detailTrial); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <Share2 className="w-3.5 h-3.5 text-sky-500" /> Share / Copy
-                          </button>
-                          <hr className="my-1 border-slate-100" />
-                          <p className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase">All Trials</p>
-                          <button onClick={() => { triggerExportWithCustomisation(() => exportAllCsv()); setExportMenuOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export All Trials (CSV)
-                          </button>
-                        </div>
-                      )}
-                    </div>
                     <button onClick={() => handleMoveToProject(detailTrial)} title="Move to Project" className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><FolderOpen className="w-4 h-4" /></button>
                     <button onClick={() => { setActiveTrial(null); handleOpenModal(detailTrial); }} title="Edit" className="p-2 rounded-lg hover:bg-white/60 text-slate-600"><Edit className="w-4 h-4" /></button>
                   </>
@@ -4206,7 +4260,7 @@ If none are present, write "None".`;
             {/* Tabs */}
             <div className="flex border-b bg-white overflow-x-auto">
               {[['info','Info'],['applications','Applications'],['observations','Observations'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']]
-                .filter(([k]) => k !== 'export' || !isViewer)
+                .filter(([k]) => k !== 'export' || canDownload)
                 .map(([k, label]) => (
                 <button key={k} onClick={() => setDetailTab(k)}
                   className={`px-4 py-3 text-sm font-semibold border-b-2 transition
@@ -4754,10 +4808,12 @@ If none are present, write "None".`;
                                   </button>
                                 </>
                               )}
+                              {canDownload && (
                               <button onClick={() => { const a = document.createElement('a'); a.href = rawSrc; a.download = photo.fileName || `photo-${idx+1}.jpg`; a.target = '_blank'; a.click(); }} title="Download"
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
                                 <Download className="w-3 h-3" />
                               </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -5041,7 +5097,7 @@ If none are present, write "None".`;
                       className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700">
                       <QrCode className="w-4 h-4" /> Generate QR
                     </button>
-                    {qrGenerated && (
+                    {qrGenerated && canDownload && (
                       <button onClick={downloadQR}
                         className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200">
                         <Download className="w-4 h-4" /> Download PNG
