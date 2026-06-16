@@ -189,7 +189,7 @@ export default function Trials({ onMenuClick }) {
   // --- Observation modal ---
   const [isObsModalOpen, setIsObsModalOpen] = useState(false);
   const [editingObsIdx, setEditingObsIdx] = useState(null);
-  const [obsForm, setObsForm] = useState({ daa: '', date: toDatetimeLocal(new Date()), weedCover: '', notes: '', weedDetails: [], weatherTemp: '', weatherHumidity: '', weatherWind: '', weatherRain: '' });
+  const [obsForm, setObsForm] = useState({ daa: '', date: toDatetimeLocal(new Date()), weedCover: '', notes: '', weedDetails: [], weatherTemp: '', weatherHumidity: '', weatherWind: '', weatherRain: '', bbchStage: '' });
 
   // --- Application modal ---
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
@@ -1126,7 +1126,8 @@ export default function Trials({ onMenuClick }) {
       weatherTemp: '',
       weatherHumidity: '',
       weatherWind: '',
-      weatherRain: ''
+      weatherRain: '',
+      bbchStage: ''
     };
 
     catConfig.observationFields?.forEach(f => {
@@ -1217,6 +1218,7 @@ export default function Trials({ onMenuClick }) {
       weatherHumidity: obsForm.weatherHumidity,
       weatherWind: obsForm.weatherWind,
       weatherRain: obsForm.weatherRain,
+      bbchStage: obsForm.bbchStage || '',
       weedDetails: obsForm.weedDetails || []
     };
 
@@ -1675,7 +1677,7 @@ export default function Trials({ onMenuClick }) {
     const folderPath = [categoryName, userName, projectName, trialNameWithDate];
 
     // Optimistically add a placeholder with tempId so the photo appears immediately
-    const photoEntry = { tempId, fileData: dataUrl, date: photoDate, label: cameraMode === 'weed' ? 'Weed Photo' : 'Field Observation', tag: photoTag, identifications: [] };
+    const photoEntry = { tempId, fileData: dataUrl, date: photoDate, label: cameraMode === 'weed' ? 'Weed Photo' : 'Field Observation', tag: photoTag, identifications: [], aiStatus: 'pending' };
     const photosOptimistic = [...safeJsonParse(targetTrial.PhotoURLs, []), photoEntry];
     const optimisticTrial = { ...targetTrial, PhotoURLs: JSON.stringify(photosOptimistic) };
     updateState({ trials: getAppState().trials.map(t => t.ID === optimisticTrial.ID ? optimisticTrial : t) });
@@ -1756,8 +1758,8 @@ export default function Trials({ onMenuClick }) {
       // 2. Replace placeholder with final Drive URL entry
       const currentPhotos = safeJsonParse(targetTrial.PhotoURLs, []).filter(p => p.tempId !== tempId);
       const finalEntry = driveUrl
-        ? { url: driveUrl, date: photoDate, label: photoEntry.label, tag: photoTag, identifications: [] }
-        : { ...photoEntry, tempId: undefined };
+        ? { url: driveUrl, date: photoDate, label: photoEntry.label, tag: photoTag, identifications: [], aiStatus: 'pending' }
+        : { ...photoEntry, tempId: undefined, aiStatus: 'pending' };
       currentPhotos.push(finalEntry);
 
       const updatedTrial = { ...targetTrial, PhotoURLs: JSON.stringify(currentPhotos) };
@@ -2235,13 +2237,36 @@ export default function Trials({ onMenuClick }) {
     setTimeout(() => setAiBatchProgress({ current: 0, total: 0, message: '' }), 5000);
   };
 
+  const updatePhotoAiStatus = useCallback(async (trialId, photoSrc, status, errorMsg = '') => {
+    const trial = trials.find(t => t.ID === trialId);
+    if (!trial) return;
+    const photos = safeJsonParse(trial.PhotoURLs, []);
+    const updatedPhotos = photos.map(p => {
+      const src = p.fileData || p.url;
+      if (src === photoSrc || p.tempId === photoSrc) {
+        return { ...p, aiStatus: status, aiError: errorMsg };
+      }
+      return p;
+    });
+    const patch = { ID: trial.ID, PhotoURLs: JSON.stringify(updatedPhotos) };
+    const updatedTrial = { ...trial, ...patch };
+    updateState({ trials: trials.map(t => t.ID === trialId ? updatedTrial : t) });
+    if (activeTrial?.ID === trialId) setActiveTrial(updatedTrial);
+    try {
+      await updateTrial(patch, getAppState);
+    } catch (e) {
+      console.error('Failed to update photo AI status:', e);
+    }
+  }, [trials, activeTrial, getAppState, updateState]);
+
   const handleAnalyzeSinglePhoto = async (photoSrc, photoDate) => {
     if (!activeTrial || aiGenRunning) return;
-    setAiGenRunning(true);
+    setAiGenRunning(photoSrc || true);
     const daa = calculateDAA(photoDate, activeTrial.Date);
 
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `Analyzing photo with AI (DAA ${daa})...`, type: 'info' } }));
     try {
+      await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'processing');
       const result = await analyzePhoto(photoSrc, {
         treatment: activeTrial.FormulationName,
         daa,
@@ -2251,11 +2276,14 @@ export default function Trials({ onMenuClick }) {
 
       if (result.success) {
         await createObservationFromAI(activeTrial, daa, result.data, photoDate, photoSrc);
+        await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'completed');
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Detected ${result.data.weeds?.length || 0} weed species at DAA ${daa}. Observation saved.`, type: 'success' } }));
       } else {
+        await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'failed', result.error || 'AI analysis skipped');
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis failed: ' + (result.error || 'Unknown error'), type: 'error' } }));
       }
     } catch (e) {
+      await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'failed', e.message);
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis error: ' + e.message, type: 'error' } }));
     } finally {
       setAiGenRunning(false);
@@ -4937,13 +4965,28 @@ If none are present, write "None".`;
                                 className="w-full aspect-square object-cover bg-slate-200"
                                 onError={e => { e.target.onerror = null; e.target.src = rawSrc; }}
                               />
+                              {/* Status Indicators */}
+                              <div className="absolute bottom-1 left-1 flex gap-1">
+                                {photo.aiStatus === 'completed' && (
+                                  <span className="text-[9px] font-bold bg-green-500/90 backdrop-blur text-white px-1.5 py-0.5 rounded shadow">AI OK</span>
+                                )}
+                                {photo.aiStatus === 'processing' && (
+                                  <span className="text-[9px] font-bold bg-blue-500/90 backdrop-blur text-white px-1.5 py-0.5 rounded shadow animate-pulse">Analyzing</span>
+                                )}
+                                {photo.aiStatus === 'pending' && (
+                                  <span className="text-[9px] font-bold bg-amber-500/90 backdrop-blur text-white px-1.5 py-0.5 rounded shadow">Pending</span>
+                                )}
+                                {photo.aiStatus === 'failed' && (
+                                  <span className="text-[9px] font-bold bg-red-500/90 backdrop-blur text-white px-1.5 py-0.5 rounded shadow" title={photo.aiError || 'Failed'}>AI Failed</span>
+                                )}
+                              </div>
                               {!isViewer && (
                                 <div className="absolute top-1 right-1 flex gap-1">
                                   <button
                                     onClick={() => handleAnalyzeSinglePhoto(src, photo.date)}
                                     disabled={!!aiGenRunning}
-                                    title={aiGenRunning ? 'AI analysis running...' : 'AI Full Scan & Log'}
-                                    className={`p-1.5 rounded-lg text-white shadow transition ${aiGenRunning ? 'bg-purple-400 cursor-wait' : 'bg-purple-600/90 hover:bg-purple-700'}`}>
+                                    title={photo.aiStatus === 'completed' ? 'Re-run AI Analysis' : aiGenRunning ? 'AI analysis running...' : 'AI Full Scan & Log'}
+                                    className={`p-1.5 rounded-lg text-white shadow transition ${aiGenRunning === src ? 'bg-purple-400 cursor-wait' : 'bg-purple-600/90 hover:bg-purple-700'}`}>
                                     {aiGenRunning === src ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                                   </button>
                                   <button onClick={() => handleDeletePhoto(idx)} title="Delete"
@@ -6267,6 +6310,14 @@ If none are present, write "None".`;
                 </div>
               );
             })()}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Growth Stage (BBCH)</label>
+            <select value={obsForm.bbchStage || ''} onChange={e => setObsForm({...obsForm, bbchStage: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 mb-3">
+              <option value="">— Select Growth Stage —</option>
+              {BBCH_STAGES.map(s => <option key={s.value} value={s.label}>{s.label}</option>)}
+            </select>
           </div>
 
           <div>

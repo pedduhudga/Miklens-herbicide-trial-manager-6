@@ -1,8 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import TopBar from "../components/TopBar.jsx";
 import { useAppState } from "../hooks/useAppState.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { initFirebase, isFirebaseReady } from "../services/firebase.js";
+import { getDBStats, clearAllStores } from "../services/offlineDB.js";
 import {
   fbSaveUserSettings,
   fbSaveGlobalQRSettings,
@@ -88,6 +89,34 @@ export default function Settings({ onMenuClick }) {
   if (originalTokenRef.current === null && state.settings?.appSecretToken) {
     originalTokenRef.current = state.settings.appSecretToken;
   }
+
+  // Database Diagnostics state
+  const [dbStats, setDbStats] = useState({
+    TRIALS: 0,
+    PROJECTS: 0,
+    FORMULATIONS: 0,
+    INGREDIENTS: 0,
+    SYNC_QUEUE: 0,
+    CONFLICTS: 0,
+  });
+
+  useEffect(() => {
+    let active = true;
+    async function loadStats() {
+      try {
+        const stats = await getDBStats();
+        if (active) {
+          setDbStats(stats);
+        }
+      } catch (err) {
+        console.error("Failed to load offline DB stats:", err);
+      }
+    }
+    loadStats();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Multi-provider AI keys from localStorage
   const [aiKeys, setAiKeys] = useState({
@@ -1348,6 +1377,80 @@ export default function Settings({ onMenuClick }) {
         </div>
 
         {/* ── Account ── */}
+        {/* ── Database Diagnostics ── */}
+        <div className="bg-white p-6 rounded-lg shadow space-y-4">
+          <h2 className="text-xl font-semibold text-gray-700 mb-1 flex items-center gap-2">
+            <Database className="w-5 h-5 text-gray-500" /> Database Diagnostics
+          </h2>
+          <p className="text-sm text-gray-600">
+            View statistics for your offline database (IndexedDB) and pending synchronizations.
+          </p>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+            <div className="p-3 bg-slate-50 border rounded-lg">
+              <span className="block text-gray-500 text-xs font-semibold uppercase">Trials</span>
+              <span className="text-lg font-bold text-gray-800">{dbStats.TRIALS || 0}</span>
+            </div>
+            <div className="p-3 bg-slate-50 border rounded-lg">
+              <span className="block text-gray-500 text-xs font-semibold uppercase">Projects</span>
+              <span className="text-lg font-bold text-gray-800">{dbStats.PROJECTS || 0}</span>
+            </div>
+            <div className="p-3 bg-slate-50 border rounded-lg">
+              <span className="block text-gray-500 text-xs font-semibold uppercase">Formulations</span>
+              <span className="text-lg font-bold text-gray-800">{dbStats.FORMULATIONS || 0}</span>
+            </div>
+            <div className="p-3 bg-slate-50 border rounded-lg">
+              <span className="block text-gray-500 text-xs font-semibold uppercase">Ingredients</span>
+              <span className="text-lg font-bold text-gray-800">{dbStats.INGREDIENTS || 0}</span>
+            </div>
+            <div className="p-3 bg-slate-50 border rounded-lg">
+              <span className="block text-gray-500 text-xs font-semibold uppercase">Pending Sync Queue</span>
+              <span className={`text-lg font-bold ${dbStats.SYNC_QUEUE > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                {dbStats.SYNC_QUEUE || 0}
+              </span>
+            </div>
+            <div className="p-3 bg-slate-50 border rounded-lg">
+              <span className="block text-gray-500 text-xs font-semibold uppercase">Conflicts</span>
+              <span className={`text-lg font-bold ${dbStats.CONFLICTS > 0 ? "text-red-600" : "text-gray-800"}`}>
+                {dbStats.CONFLICTS || 0}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-2 flex-wrap">
+            <button
+              onClick={async () => {
+                try {
+                  const stats = await getDBStats();
+                  setDbStats(stats);
+                  toast("Database statistics refreshed");
+                } catch (err) {
+                  toast("Failed to refresh database stats: " + err.message, "error");
+                }
+              }}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg transition"
+            >
+              Refresh Statistics
+            </button>
+            <button
+              onClick={async () => {
+                if (!window.confirm("CRITICAL WARNING: This will clear all locally saved trials, projects, and formulations from this browser. Any unsynced changes in the queue will be lost. Proceed?")) return;
+                try {
+                  await clearAllStores();
+                  toast("IndexedDB database reset successful", "success");
+                  const stats = await getDBStats();
+                  setDbStats(stats);
+                } catch (err) {
+                  toast("Failed to clear database: " + err.message, "error");
+                }
+              }}
+              className="px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-sm font-semibold rounded-lg transition flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" /> Clear/Reset Cache Safeguard
+            </button>
+          </div>
+        </div>
+
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
           <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
             <Info className="w-4 h-4 text-slate-500" /> Account
