@@ -11,7 +11,7 @@ const ALL_TABS = [
   "Dashboard",
   "All Categories",
   "Large Field Trials",
-  "Projects (RCBD)",
+  "Projects (Grouped)",
   "Plot Scanner",
   "Formulations",
   "Trials",

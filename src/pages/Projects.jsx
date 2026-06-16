@@ -4642,10 +4642,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
   // ══════════════════════════════════════════════════════════════════════════
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-      <TopBar title="Projects (RCBD)" onMenuClick={onMenuClick} />
+      <TopBar title="Projects (Grouped)" onMenuClick={onMenuClick} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
-          <h2 className="text-xl font-bold text-slate-800">All RCBD Projects</h2>
+          <h2 className="text-xl font-bold text-slate-800">All Grouped Projects</h2>
           <button onClick={() => { setFormData({ Name: '', Metric: config.primaryMetric.label, TargetWeed: '', Crop: '', Location: '', Investigator: '', StartDate: '' }); setIsModalOpen(true); }}
             style={{ backgroundColor: config.color.hex }}
             className="flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition hover:opacity-90">

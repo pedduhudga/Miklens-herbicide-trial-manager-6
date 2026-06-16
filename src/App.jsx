@@ -267,7 +267,7 @@ function AppLayout() {
           <Route path="/categories" element={<PermissionGuard tabName="All Categories" onMenuClick={toggleSidebar}><CategorySelector /></PermissionGuard>} />
           <Route path="/" element={<PermissionGuard tabName="Dashboard" onMenuClick={toggleSidebar}><Dashboard onMenuClick={toggleSidebar} /></PermissionGuard>} />
           <Route path="/large-scale-trials" element={<PermissionGuard tabName="Large Field Trials" onMenuClick={toggleSidebar}><LargeScaleTrials onMenuClick={toggleSidebar} /></PermissionGuard>} />
-          <Route path="/projects" element={<PermissionGuard tabName="Projects (RCBD)" onMenuClick={toggleSidebar}><Projects onMenuClick={toggleSidebar} /></PermissionGuard>} />
+          <Route path="/projects" element={<PermissionGuard tabName="Projects (Grouped)" onMenuClick={toggleSidebar}><Projects onMenuClick={toggleSidebar} /></PermissionGuard>} />
           <Route path="/scanner" element={<PermissionGuard tabName="Plot Scanner" onMenuClick={toggleSidebar}><PlotScanner onMenuClick={toggleSidebar} /></PermissionGuard>} />
           <Route path="/formulations" element={<PermissionGuard tabName="Formulations" onMenuClick={toggleSidebar}><Formulations onMenuClick={toggleSidebar} /></PermissionGuard>} />
           <Route path="/trials" element={<PermissionGuard tabName="Trials" onMenuClick={toggleSidebar}><Trials onMenuClick={toggleSidebar} /></PermissionGuard>} />

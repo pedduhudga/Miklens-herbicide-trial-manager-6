@@ -75,7 +75,7 @@ export default function Sidebar({ isOpen, onClose }) {
     { to: "/", icon: <LayoutDashboard className="w-5 h-5" />, label: "Dashboard" },
     { to: "/categories", icon: <Grid3x3 className="w-5 h-5" />, label: "All Categories" },
     { to: "/large-scale-trials", icon: <Compass className="w-5 h-5" />, label: "Large Field Trials" },
-    { to: "/projects", icon: <FolderKanban className="w-5 h-5" />, label: "Projects (RCBD)" },
+    { to: "/projects", icon: <FolderKanban className="w-5 h-5" />, label: "Projects (Grouped)" },
     { to: "/scanner", icon: <ScanQrCode className="w-5 h-5" />, label: "Plot Scanner" },
     { to: "/formulations", icon: <FlaskConical className="w-5 h-5" />, label: "Formulations" },
     { to: "/trials", icon: <ListChecks className="w-5 h-5" />, label: "Trials" },

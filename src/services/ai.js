@@ -4629,7 +4629,7 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions. Foc
             // --- PAGE NAVIGATION & RENDERING ---
             function switchPage(pageId) {
                 state.currentPage = pageId;
-                const pageTitles = { dashboard: 'Dashboard', formulations: 'My Formulations', trials: 'Trials', projects: 'Projects (RCBD)', projectDashboard: 'Project Dashboard', compareTrials: 'Compare Trials', organisations: 'Trial Organisations', ingredients: 'Ingredient Costs', aiAssistant: 'AI Assistant', analytics: 'Analytics & Statistics', smartSearch: 'Smart Search', fieldMap: 'Field Efficacy Map', dataMgmt: 'Data Management', users: 'User Management', settings: 'Settings' };
+                const pageTitles = { dashboard: 'Dashboard', formulations: 'My Formulations', trials: 'Trials', projects: 'Projects (Grouped)', projectDashboard: 'Project Dashboard', compareTrials: 'Compare Trials', organisations: 'Trial Organisations', ingredients: 'Ingredient Costs', aiAssistant: 'AI Assistant', analytics: 'Analytics & Statistics', smartSearch: 'Smart Search', fieldMap: 'Field Efficacy Map', dataMgmt: 'Data Management', users: 'User Management', settings: 'Settings' };
 
                 document.querySelectorAll('#sidebar-nav a').forEach(link => {
                     link.classList.toggle('bg-emerald-50', link.dataset.page === pageId);
