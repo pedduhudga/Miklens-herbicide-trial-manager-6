@@ -123,6 +123,10 @@ export default function Formulations({ onMenuClick }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot modify or save formulations.', type: 'error' } }));
+      return;
+    }
     const cleanIngs = ingredients.filter(i => i.name.trim() !== '');
     if (cleanIngs.length === 0) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'At least one ingredient is required', type: 'error' } }));
@@ -165,6 +169,10 @@ export default function Formulations({ onMenuClick }) {
   };
 
   const handleDelete = async (id) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete formulations.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm('Delete this formulation?')) return;
 
     const newForms = state.formulations.filter(f => f.ID !== id);

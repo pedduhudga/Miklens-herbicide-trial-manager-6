@@ -116,6 +116,10 @@ export default function Ingredients({ onMenuClick }) {
   };
 
   const handleDelete = async (id) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete ingredients.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm('Are you sure you want to delete this ingredient?')) return;
 
     // Optimistic UI Update

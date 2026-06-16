@@ -44,6 +44,10 @@ export default function Organisations({ onMenuClick }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot modify or save organisations.', type: 'error' } }));
+      return;
+    }
     const isEdit = !!editingOrg;
     const payload = {
       ...(isEdit ? editingOrg : { ID: Date.now().toString() }),
@@ -61,6 +65,10 @@ export default function Organisations({ onMenuClick }) {
   };
 
   const handleDelete = async (id) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete organisations.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm('Delete this organisation?')) return;
     updateState({ organisations: orgs.filter(o => o.ID !== id) });
     try {

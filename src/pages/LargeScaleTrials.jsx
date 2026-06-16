@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import QRCodeLib from 'qrcode';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';
 import Modal from '../components/Modal.jsx';
 import CameraCapture from '../components/CameraCapture.jsx';
@@ -175,6 +176,20 @@ const emptyVisitForm = () => ({
 
 export default function LargeScaleTrials({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const { isViewer, user } = useAuth();
+  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
+
+  const toast = (msg, type = 'success') =>
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type } }));
+
+  const checkDownload = (fn, ...args) => {
+    if (!canDownload) {
+      toast('Download permission is disabled for your account.', 'error');
+      return;
+    }
+    fn(...args);
+  };
+
   const activeCategory = state.activeCategory || 'herbicide';
   const config = getCategoryConfig(activeCategory);
   const theme = useMemo(() => getThemeClasses(config.color.accent), [config.color.accent]);
@@ -369,6 +384,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, []);
 
   const onEdit = useCallback((trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot modify sub-trials.', 'error');
+      return;
+    }
     setEditingSubTrial(trial);
     setSubTrialForm({
       FormulationName: trial.FormulationName || '',
@@ -408,6 +427,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, []);
 
   const onDuplicate = useCallback((trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot duplicate sub-trials.', 'error');
+      return;
+    }
     setDuplicateModal(trial);
     setDuplicateFormulation(trial.FormulationName || '');
     setDuplicateDate(toDatetimeLocal(new Date()));
@@ -416,6 +439,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, []);
 
   const onMoveToProject = useCallback(async (trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot move sub-trials.', 'error');
+      return;
+    }
     const activeProjects = (state.projects || []).filter(p => p.Design === 'LargeScale');
     if (activeProjects.length <= 1) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No other large field workspaces to move to.', type: 'info' } }));
@@ -438,6 +465,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, [state.projects, state.trials, selectedSubTrialId, getAppState, updateState]);
 
   const onActivateToggle = useCallback(async (trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot activate/deactivate sub-trials.', 'error');
+      return;
+    }
     const updated = { ...trial, IsLive: String(trial.IsLive) === 'false' };
     try {
       await updateTrial(updated, getAppState);
@@ -449,6 +480,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, [state.trials, getAppState, updateState]);
 
   const onMarkComplete = useCallback(async (trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot finalize sub-trials.', 'error');
+      return;
+    }
     const updated = { ...trial, IsCompleted: true };
     try {
       await updateTrial(updated, getAppState);
@@ -460,6 +495,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, [state.trials, getAppState, updateState]);
 
   const onQuickRate = useCallback(async (trial, rating) => {
+    if (isViewer) {
+      toast('Viewer role cannot rate sub-trials.', 'error');
+      return;
+    }
     const newRating = trial.Result === rating ? '' : rating;
     const updated = { ...trial, Result: newRating };
     try {
@@ -472,18 +511,30 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, [state.trials, getAppState, updateState]);
 
   const onQuickPhoto = useCallback((trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot capture photos.', 'error');
+      return;
+    }
     quickActionTrialRef.current = trial;
     setCameraMode('general');
     setIsCameraOpen(true);
   }, []);
 
   const onQuickGalleryUpload = useCallback((trial) => {
+    if (isViewer) {
+      toast('Viewer role cannot upload files.', 'error');
+      return;
+    }
     quickActionTrialRef.current = trial;
     fileInputRef.current?.click();
   }, []);
 
   // Duplicate handler confirm
   const handleDuplicateConfirm = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot duplicate sub-trials.', 'error');
+      return;
+    }
     if (!duplicateModal) return;
     const isCompleted = duplicateModal.IsCompleted === true || duplicateModal.IsCompleted === 'true';
     const payload = {
@@ -894,6 +945,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   }, [activeCategory, updateState]);
 
   const handleCropExistingPhoto = (idx, currentSrc) => {
+    if (isViewer) {
+      toast('Viewer role cannot crop photos.', 'error');
+      return;
+    }
     openCropperFor(currentSrc, async (croppedUrl) => {
       const photos = safeJsonParse(activeSubTrial.PhotoURLs, []);
       photos[idx] = { ...photos[idx], fileData: croppedUrl, url: undefined };
@@ -906,6 +961,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleDeletePhoto = async (idx) => {
+    if (isViewer) {
+      toast('Viewer role cannot delete photos.', 'error');
+      return;
+    }
     if (!activeSubTrial || !window.confirm('Delete this photo?')) return;
     const photos = safeJsonParse(activeSubTrial.PhotoURLs, []);
     const deletedPhoto = photos[idx];
@@ -1005,6 +1064,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleAnalyzeSinglePhoto = async (photoSrc, photoDate) => {
+    if (isViewer) {
+      toast('Viewer role cannot analyze photos.', 'error');
+      return;
+    }
     if (!activeSubTrial || aiGenRunning) return;
     setAiGenRunning(true);
     const daa = calculateDAA(photoDate, activeSubTrial.Date);
@@ -1032,6 +1095,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const generateAISummary = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot generate AI summaries.', 'error');
+      return;
+    }
     if (!activeSubTrial) return;
     const efficacyData = validateEfficacyData(safeJsonParse(activeSubTrial.EfficacyDataJSON, []));
     if (efficacyData.length < 2) {
@@ -1093,6 +1160,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleQuickPhotoCapture = (dataUrl) => {
+    if (isViewer) {
+      toast('Viewer role cannot capture photos.', 'error');
+      return;
+    }
     const targetTrial = quickActionTrialRef.current || activeSubTrial;
     if (!targetTrial) return;
     quickActionTrialRef.current = null;
@@ -1101,6 +1172,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleQuickFileUpload = async (e) => {
+    if (isViewer) {
+      toast('Viewer role cannot upload files.', 'error');
+      return;
+    }
     const file = e.target.files?.[0];
     const targetTrial = quickActionTrialRef.current || activeSubTrial;
     if (!file || !targetTrial) return;
@@ -1201,6 +1276,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleARMImportChange = useCallback(async (e) => {
+    if (isViewer) {
+      toast('Viewer role cannot import ARM files.', 'error');
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -1344,6 +1423,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleDeleteProjectClick = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot delete projects.', 'error');
+      return;
+    }
     if (!activeProject) return;
     if (!window.confirm(`Are you absolutely sure you want to delete the Master Workspace "${activeProject.Name}"?\n\nThis will permanently delete this workspace and ALL its (${subTrials.length}) sub-trial spots and observation logs. This action cannot be undone.`)) return;
     try {
@@ -1367,6 +1450,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   // Create or Update Project Workspace
   const handleSaveProject = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      toast('Viewer role cannot save or modify projects.', 'error');
+      return;
+    }
     const isEdit = !!projectForm.ID;
     const payload = {
       ...(isEdit ? activeProject : {}),
@@ -1398,6 +1485,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   // Create or Update Sub-Trial
   const handleSaveSubTrial = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      toast('Viewer role cannot save sub-trials.', 'error');
+      return;
+    }
     if (!activeProjectId) return;
  
     const formMatch = state.formulations?.find(f => f.Name === subTrialForm.FormulationName);
@@ -1437,6 +1528,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   // Delete Sub-Trial
   const handleDeleteSubTrial = async (stId, e) => {
+    if (isViewer) {
+      toast('Viewer role cannot delete sub-trials.', 'error');
+      return;
+    }
     e?.stopPropagation();
     if (!window.confirm('Delete this sub-trial and all its logs?')) return;
     try {
@@ -1544,6 +1639,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   // Add / Edit Observation Visit
   const handleSaveVisit = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      toast('Viewer role cannot save observations.', 'error');
+      return;
+    }
     if (!activeSubTrial) return;
 
     // Check if any fields that were previously recorded in this project are missing
@@ -1682,6 +1781,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   // Delete Visit
   const handleDeleteVisit = async (idx) => {
+    if (isViewer) {
+      toast('Viewer role cannot delete observations.', 'error');
+      return;
+    }
     if (!activeSubTrial || !window.confirm('Delete this observation visit record?')) return;
     const efficacyData = validateEfficacyData(safeJsonParse(activeSubTrial.EfficacyDataJSON, []));
     efficacyData.splice(idx, 1);
@@ -1703,6 +1806,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
 
   // Master AI report synthesis
   const handleGenerateMasterReport = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot generate AI reports.', 'error');
+      return;
+    }
     if (subTrials.length === 0) {
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Please add sub-trials to synthesize a report.', type: 'error' } }));
       return;
@@ -1748,6 +1855,10 @@ export default function LargeScaleTrials({ onMenuClick }) {
   };
 
   const handleBulkDeleteSubTrials = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot delete sub-trials.', 'error');
+      return;
+    }
     if (!selectedForBulk.size) return;
     if (!window.confirm(`Delete ${selectedForBulk.size} selected sub-trial spot(s) and all their observations?`)) return;
     try {
@@ -2568,31 +2679,35 @@ export default function LargeScaleTrials({ onMenuClick }) {
                       <span className="text-[10px] font-bold text-slate-400 uppercase block">Export Sub-Trial Data</span>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <button
-                          onClick={() => generateComprehensivePdf(activeSubTrial, { formulations: state.formulations })}
+                          onClick={() => checkDownload(generateComprehensivePdf, activeSubTrial, { formulations: state.formulations })}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
                           <FileText className={`w-4 h-4 ${theme.text}`} /> PDF Report
                         </button>
                         <button
-                          onClick={() => generateScientificReport(activeSubTrial, { formulations: state.formulations })}
+                          onClick={() => checkDownload(generateScientificReport, activeSubTrial, { formulations: state.formulations })}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
                           <FileText className="w-4 h-4 text-sky-600" /> Scientific PDF
                         </button>
                         <button
-                          onClick={() => generatePpt(activeSubTrial)}
+                          onClick={() => checkDownload(generatePpt, activeSubTrial)}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
                           <BarChart2 className="w-4 h-4 text-amber-600" /> PowerPoint
                         </button>
                         <button
-                          onClick={() => exportToCSV(activeSubTrial)}
+                          onClick={() => checkDownload(exportToCSV, activeSubTrial)}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
                           <TrendingUp className="w-4 h-4 text-purple-600" /> CSV Dataset
                         </button>
                         <button
                           onClick={() => {
+                            if (!canDownload) {
+                              toast('Download permission is disabled for your account.', 'error');
+                              return;
+                            }
                             window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating ARM exchange file...', type: 'info' } }));
                             try {
                               const blob = exportToARM(activeSubTrial, activeCategory, activeProject);
@@ -2616,13 +2731,13 @@ export default function LargeScaleTrials({ onMenuClick }) {
                           <TrendingUp className="w-4 h-4 text-emerald-600" /> ARM CSV Exchange
                         </button>
                         <button
-                          onClick={() => exportHtmlReport(activeSubTrial)}
+                          onClick={() => checkDownload(exportHtmlReport, activeSubTrial)}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
                           <Leaf className="w-4 h-4 text-teal-600" /> HTML view
                         </button>
                         <button
-                          onClick={() => exportTrialDocx(activeSubTrial, { formulations: state.formulations })}
+                          onClick={() => checkDownload(exportTrialDocx, activeSubTrial, { formulations: state.formulations })}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2"
                         >
                           <BookOpen className="w-4 h-4 text-indigo-600" /> Word Document
@@ -2794,31 +2909,35 @@ export default function LargeScaleTrials({ onMenuClick }) {
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block font-sans">Export Unified Master Study Report</span>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
                           <button
-                            onClick={() => generateMasterComprehensivePdf(activeProject, subTrials, { formulations: state.formulations, aiSummary: activeProject?._aiMasterSummary })}
+                            onClick={() => checkDownload(generateMasterComprehensivePdf, activeProject, subTrials, { formulations: state.formulations, aiSummary: activeProject?._aiMasterSummary })}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <FileText className={`w-4 h-4 ${theme.text}`} /> Comprehensive PDF
                           </button>
                           <button
-                            onClick={() => generateMasterScientificReport(activeProject, subTrials, { aiSummary: activeProject?._aiMasterSummary })}
+                            onClick={() => checkDownload(generateMasterScientificReport, activeProject, subTrials, { aiSummary: activeProject?._aiMasterSummary })}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <FileText className="w-4 h-4 text-sky-600" /> Scientific PDF
                           </button>
                           <button
-                            onClick={() => generateMasterPpt(activeProject, subTrials)}
+                            onClick={() => checkDownload(generateMasterPpt, activeProject, subTrials)}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <BarChart2 className="w-4 h-4 text-amber-600" /> PowerPoint Deck
                           </button>
                           <button
-                            onClick={() => exportMasterCSV(activeProject, subTrials)}
+                            onClick={() => checkDownload(exportMasterCSV, activeProject, subTrials)}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <TrendingUp className="w-4 h-4 text-purple-600" /> CSV Dataset
                           </button>
                           <button
                             onClick={() => {
+                              if (!canDownload) {
+                                toast('Download permission is disabled for your account.', 'error');
+                                return;
+                              }
                               window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Generating ARM exchange file...', type: 'info' } }));
                               try {
                                 const blob = exportToARM(subTrials, activeCategory, activeProject);
@@ -2842,13 +2961,13 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             <TrendingUp className="w-4 h-4 text-emerald-600" /> ARM CSV Exchange
                           </button>
                           <button
-                            onClick={() => exportMasterHtml(activeProject, subTrials)}
+                            onClick={() => checkDownload(exportMasterHtml, activeProject, subTrials)}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <Leaf className="w-4 h-4 text-teal-600" /> Standalone HTML
                           </button>
                           <button
-                            onClick={() => exportMasterDocx(activeProject, subTrials)}
+                            onClick={() => checkDownload(exportMasterDocx, activeProject, subTrials)}
                             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           >
                             <BookOpen className="w-4 h-4 text-indigo-600" /> Word Document
@@ -2938,14 +3057,14 @@ export default function LargeScaleTrials({ onMenuClick }) {
                             onEdit={onEdit}
                             onDuplicate={onDuplicate}
                             onMoveToProject={onMoveToProject}
-                            onExportPdf={(trial) => generateComprehensivePdf(trial, { formulations: state.formulations })}
-                            onExportSciPdf={(trial) => generateScientificReport(trial, { formulations: state.formulations })}
-                            onExportPpt={(trial) => generatePpt(trial)}
-                            onExportHtml={(trial) => exportHtmlReport(trial)}
-                            onExportTxt={() => {}}
-                            onExportCsv={(trial) => exportToCSV(trial)}
-                            onExportJson={() => {}}
-                            onShare={() => {}}
+                             onExportPdf={(trial) => checkDownload(generateComprehensivePdf, trial, { formulations: state.formulations })}
+                             onExportSciPdf={(trial) => checkDownload(generateScientificReport, trial, { formulations: state.formulations })}
+                             onExportPpt={(trial) => checkDownload(generatePpt, trial)}
+                             onExportHtml={(trial) => checkDownload(exportHtmlReport, trial)}
+                             onExportTxt={() => {}}
+                             onExportCsv={(trial) => checkDownload(exportToCSV, trial)}
+                             onExportJson={() => {}}
+                             onShare={() => {}}
                             onAiGenerate={(trial) => generateAISummary(trial)}
                             onDelete={(id, e) => handleDeleteSubTrial(id, e)}
                             onActivateToggle={onActivateToggle}
@@ -3713,7 +3832,7 @@ export default function LargeScaleTrials({ onMenuClick }) {
           <button
             onClick={() => {
               const sel = subTrials.filter(t => selectedForBulk.has(t.ID));
-              exportMasterCSV(activeProject, sel);
+              checkDownload(exportMasterCSV, activeProject, sel);
             }}
             className="flex items-center gap-1.5 text-sm hover:text-emerald-400 transition"
           >

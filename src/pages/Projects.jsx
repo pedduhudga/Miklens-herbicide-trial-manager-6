@@ -1278,6 +1278,10 @@ export default function Projects({ onMenuClick }) {
   // ── Add block ───────────────────────────────────────────────────────────
   const handleAddBlock = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      toast('Viewer role cannot add blocks.', 'error');
+      return;
+    }
     if (!activeProjectId || !blockForm.Name.trim()) return;
     const payload = {
       ID: Date.now().toString(),
@@ -1826,6 +1830,10 @@ export default function Projects({ onMenuClick }) {
 
   // ── Delete block ────────────────────────────────────────────────────────
   const handleDeleteBlock = async (blockId, blockName) => {
+    if (isViewer) {
+      toast('Viewer role cannot delete blocks.', 'error');
+      return;
+    }
     if (!activeProjectId) return;
     const blockTrials = (state.trials || []).filter(t => String(t.BlockID) === String(blockId));
     const confirmMsg = blockTrials.length > 0
@@ -1851,11 +1859,19 @@ export default function Projects({ onMenuClick }) {
 
   // ── Add plot to block (navigate to Trials page with block pre-selected) ──
   const handleAddPlotToBlock = (blockId) => {
+    if (isViewer) {
+      toast('Viewer role cannot add plots.', 'error');
+      return;
+    }
     navigate(`/trials?addNew=true&projectId=${activeProjectId}&blockId=${blockId}`);
   };
 
   // ── Lock / Unlock ───────────────────────────────────────────────────────
   const handleLockToggle = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot lock/unlock projects.', 'error');
+      return;
+    }
     if (!activeProject) return;
     const newStatus = activeProject.Status === 'Locked' ? 'Draft' : 'Locked';
     const updated = (state.projects || []).map(p => String(p.ID) === String(activeProject.ID) ? { ...p, Status: newStatus } : p);
@@ -1868,6 +1884,10 @@ export default function Projects({ onMenuClick }) {
 
   // ── Save narrative ──────────────────────────────────────────────────────
   const handleSaveNarrative = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot save narratives.', 'error');
+      return;
+    }
     if (!narrative.trim()) { toast('Narrative is empty', 'error'); return; }
     setIsSavingNarrative(true);
     try {
@@ -1881,6 +1901,10 @@ export default function Projects({ onMenuClick }) {
 
   // ── Generate AI narrative ───────────────────────────────────────────────
   const handleGenerateNarrative = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot generate AI narratives.', 'error');
+      return;
+    }
     if (!analysisResults) { toast('Run analysis first', 'error'); return; }
     setIsGeneratingNarrative(true);
     try {
@@ -2121,6 +2145,10 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
 
   const applyRandomization = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isViewer) {
+      toast('Viewer role cannot randomize or modify layouts.', 'error');
+      return;
+    }
     
     let potRows = 9;
     let potCols = 4;
@@ -3007,6 +3035,10 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
   };
 
   const saveProtocolSettings = async () => {
+    if (isViewer) {
+      toast('Viewer role cannot modify protocol settings.', 'error');
+      return;
+    }
     if (!activeProject) return;
     const updated = projects.map(p => p.ID === activeProject.ID ? { ...p, ...protocolForm } : p);
     updateState({ projects: updated });
@@ -3190,6 +3222,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
   // ── Create project ──────────────────────────────────────────────────────
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      toast('Viewer role cannot create projects.', 'error');
+      return;
+    }
     const payload = {
       ...formData,
       Category: activeCategory,
@@ -3211,6 +3247,10 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
+    if (isViewer) {
+      toast('Viewer role cannot delete projects.', 'error');
+      return;
+    }
     const proj = (state.projects || []).find(p => String(p.ID) === String(id));
     const projectName = proj ? proj.Name : 'this project';
     if (!window.confirm(`Are you sure you want to delete "${projectName}"? This will permanently delete the project and all its associated blocks and plots/trials. This cannot be undone.`)) return;

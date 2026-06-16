@@ -5,8 +5,8 @@ import { safeJsonParse } from '../utils/helpers.js';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Loader2, Activity, ArrowLeft, CheckCircle, X, Download, FileText, Table, LineChart, Cpu, DollarSign, Cloud, Compass } from 'lucide-react';
 import { exportComparisonCsv, exportComparisonHtml, exportComparisonPdf } from '../services/compareReports.js';
-import { getCategoryConfig, getPrimaryObservationField } from '../utils/categoryConfig.js';
 import { generateTextWithAI } from '../services/multiProviderAI.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 const RESULT_BADGE = {
   Excellent: 'bg-emerald-100 text-emerald-700',
@@ -19,6 +19,7 @@ const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 export default function CompareTrials({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
+  const { isViewer, user } = useAuth();
   const navigate = useNavigate();
   const [aiSummary, setAiSummary] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,6 +35,7 @@ export default function CompareTrials({ onMenuClick }) {
 
   // Automatically fetch missing weather parameters dynamically when mounting
   useEffect(() => {
+    if (isViewer) return;
     selectedTrials.forEach(async (t) => {
       const weatherData = safeJsonParse(t.WeatherJSON, null);
       const hasAvgWeather = t.Temperature || t.Humidity || t.Windspeed || t.Rain || (weatherData && Object.keys(weatherData).length > 0);
@@ -283,6 +285,10 @@ export default function CompareTrials({ onMenuClick }) {
   }, [trialSeries, allDaa, primaryObsField, activeCategory]);
 
   const handleGenerateSummary = async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot generate AI reports.', type: 'error' } }));
+      return;
+    }
     if (selectedTrials.length < 2) return;
     setIsGenerating(true);
     setAiSummary(null);
@@ -386,9 +392,31 @@ ${contextData}`;
     }
   };
 
-  const handleExportCsv = () => exportComparisonCsv(trialSeries, allDaa, activeCategory);
-  const handleExportHtml = () => exportComparisonHtml(trialSeries, allDaa, aiSummary, activeCategory);
-  const handleExportPdf = () => exportComparisonPdf(trialSeries, allDaa, aiSummary, activeCategory);
+  const canDownload = user?.tabPermissions?.['Allow Downloads'] !== false;
+
+  const handleExportCsv = () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    exportComparisonCsv(trialSeries, allDaa, activeCategory);
+  };
+
+  const handleExportHtml = () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    exportComparisonHtml(trialSeries, allDaa, aiSummary, activeCategory);
+  };
+
+  const handleExportPdf = () => {
+    if (!canDownload) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Download permission is disabled for your account.', type: 'error' } }));
+      return;
+    }
+    exportComparisonPdf(trialSeries, allDaa, aiSummary, activeCategory);
+  };
 
   if (selectedTrials.length === 0) {
     return (

@@ -572,6 +572,10 @@ export default function Trials({ onMenuClick }) {
   }, []);
 
   const handleMoveToProject = async (trial) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot move trials.', type: 'error' } }));
+      return;
+    }
     const projectList = projects.map((p, i) => `${i + 1}. ${p.Name}`).join('\n');
     const choice = window.prompt(`Move trial to project:\n\n${projectList}\n\nEnter number:`);
     if (!choice) return;
@@ -587,6 +591,10 @@ export default function Trials({ onMenuClick }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot save or edit trials.', type: 'error' } }));
+      return;
+    }
     const formMatch = formulations.find(f => f.Name === formData.FormulationName);
     const isEdit = !!editingTrial;
 
@@ -626,6 +634,10 @@ export default function Trials({ onMenuClick }) {
 
   const handleDelete = async (id, e) => {
     e?.stopPropagation();
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete trials.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm('Delete this trial?')) return;
     updateState({ trials: trials.filter(t => t.ID !== id) });
     if (activeTrial?.ID === id) setActiveTrial(null);
@@ -638,6 +650,10 @@ export default function Trials({ onMenuClick }) {
   };
 
   const handleFinalize = async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot finalize trials.', type: 'error' } }));
+      return;
+    }
     if (!activeTrial || !window.confirm('Finalize this trial?')) return;
     const updated = { ...activeTrial, IsCompleted: true };
     updateState({ trials: trials.map(t => t.ID === updated.ID ? updated : t) });
@@ -651,6 +667,10 @@ export default function Trials({ onMenuClick }) {
   };
 
   const handleRestart = async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot reactivate trials.', type: 'error' } }));
+      return;
+    }
     if (!activeTrial || !window.confirm('Reactivate this trial?')) return;
     const updated = { ...activeTrial, IsCompleted: false };
     updateState({ trials: trials.map(t => t.ID === updated.ID ? updated : t) });
