@@ -1328,6 +1328,10 @@ export default function Trials({ onMenuClick }) {
   }, []);
 
   const calcStats = useCallback(async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot calculate statistics.', type: 'error' } }));
+      return;
+    }
     if (!detailTrial) return;
     const efficacy = validateEfficacyData(safeJsonParse(detailTrial.EfficacyDataJSON, []));
     if (efficacy.length < 2) {
@@ -2231,6 +2235,10 @@ export default function Trials({ onMenuClick }) {
     navigate('/compare');
   };
   const handleBulkDelete = async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete trials.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm(`Delete ${selectedForBulk.size} trial(s)?`)) return;
     const ids = Array.from(selectedForBulk);
     updateState({ trials: trials.filter(t => !ids.includes(t.ID)) });
@@ -2240,6 +2248,10 @@ export default function Trials({ onMenuClick }) {
   };
 
   const handleBulkFinalize = async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot finalize trials.', type: 'error' } }));
+      return;
+    }
     if (!window.confirm(`Finalize ${selectedForBulk.size} trial(s)?`)) return;
     const ids = Array.from(selectedForBulk);
     const today = new Date().toISOString();
@@ -2789,6 +2801,10 @@ export default function Trials({ onMenuClick }) {
 
   // ── AI SUMMARY GENERATOR ──────────────────────────────────────────
   const generateAiSummary = useCallback(async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot generate AI summaries.', type: 'error' } }));
+      return;
+    }
     if (!detailTrial) return;
     const geminiKeys = getAPIKeys('gemini');
     if (!geminiKeys.length) {
@@ -3104,6 +3120,10 @@ If none are present, write "None".`;
   }, [activeCategory]);
 
   const handleAiSingleGenerate = useCallback(async (trial) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot generate AI reports.', type: 'error' } }));
+      return;
+    }
     const geminiKeys = getAPIKeys('gemini');
     if (!geminiKeys.length) { window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Add a Gemini API key in Settings first', type: 'error' } })); return; }
     const efficacy = validateEfficacyData(safeJsonParse(trial.EfficacyDataJSON, []));
@@ -3661,6 +3681,10 @@ If none are present, write "None".`;
             <div className="flex justify-end gap-3 pt-2 border-t">
               <button onClick={() => setIsBulkEditOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancel</button>
               <button onClick={async () => {
+                if (isViewer) {
+                  window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot modify or bulk edit trials.', type: 'error' } }));
+                  return;
+                }
                 const updates = {};
                 if (bulkEditForm.InvestigatorName.trim()) updates.InvestigatorName = bulkEditForm.InvestigatorName.trim();
                 if (bulkEditForm.Location.trim()) updates.Location = bulkEditForm.Location.trim();

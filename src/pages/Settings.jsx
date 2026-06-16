@@ -93,7 +93,10 @@ export default function Settings({ onMenuClick }) {
   });
 
   const saveAiKey = (provider, key) => {
-    if (isViewer) return;
+    if (isViewer) {
+      toast("Viewer role cannot modify API settings", "error");
+      return;
+    }
     const newKeys = { ...aiKeys, [provider]: key };
     setAiKeys(newKeys);
     localStorage.setItem(`AI_KEY_${provider.toUpperCase()}`, key);
@@ -397,6 +400,10 @@ export default function Settings({ onMenuClick }) {
 
   const fbCfg = s.firebaseConfig || {};
   const updateFbConfig = (key, val) => {
+    if (isViewer) {
+      toast("Viewer role cannot update Firebase config", "error");
+      return;
+    }
     updateSettings({ firebaseConfig: { ...fbCfg, [key]: val } });
   };
 

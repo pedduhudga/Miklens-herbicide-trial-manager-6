@@ -636,6 +636,10 @@ export default function DataManagement({ onMenuClick }) {
 
 
   const handleOneClickRepairAll = async () => {
+    if (isViewer) {
+      toast("Viewers cannot perform data repairs", "error");
+      return;
+    }
     if (!window.confirm(`⚠️ This will run a complete sequential data repair on ALL trials in your database. It will sync Dates, DAAs, ${targetLabel}, Primary Metrics, Efficacy, Grid Covers, and Ratings in one go.\n\nWould you like to proceed?`)) return;
 
     const trials = [...(state.trials || [])];
@@ -1448,51 +1452,84 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           <p className="text-gray-600 mb-4 text-sm">Fix common issues that block {activeCategory} insights: string DAA values, missing details/primary metric, and missing {targetLabel} field.</p>
           <div className="flex flex-wrap gap-3 items-center">
             <button onClick={handleScanTrials}
-              className="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-slate-700 text-white hover:bg-slate-800"
+              }`}>
               Scan Trials
             </button>
             <button onClick={handleAutoFixWeedLinking}
-              className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }`}>
               Auto-Fix {targetLabel} Linking
             </button>
             <button onClick={handleRepairSpeciesTracking}
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-700 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-purple-600 text-white hover:bg-purple-700"
+              }`}>
               Repair {targetLabel} Tracking
             </button>
             <button onClick={handleForceFullRerepair}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-red-600 text-white hover:bg-red-700"
+              }`}>
               Force Full Re-repair
             </button>
             {activeCategory === 'herbicide' && (
               <>
                 <button onClick={handleRecalcGridCovers}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
+                  disabled={isViewer}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                    isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}>
                   Recalculate Grid Covers
                 </button>
                 <button onClick={handleRebuildCoverAll}
-                  className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 transition">
+                  disabled={isViewer}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                    isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-amber-600 text-white hover:bg-amber-700"
+                  }`}>
                   Rebuild %Cover (All Trials)
                 </button>
               </>
             )}
             <button onClick={handleRecalculateWceAll}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}>
               Recalculate Efficacy ({catConfig.primaryMetric?.key || 'Efficacy'}%)
             </button>
             <button onClick={handleSyncObsDatesWithPhotos}
-              className="bg-sky-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-sky-700 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-sky-600 text-white hover:bg-sky-700"
+              }`}>
               Sync Dates with Photos
             </button>
             <button onClick={handleRecalculateAllDaa}
-              className="bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-800 transition">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-amber-700 text-white hover:bg-amber-800"
+              }`}>
               Recalculate DAA (All Trials)
             </button>
             <button onClick={handleOneClickRepairAll}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:from-violet-700 hover:to-indigo-700 transition shadow-md">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition shadow-md ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
+              }`}>
               One-Click Legacy Repair (Fix Everything)
             </button>
             <button onClick={handleForceAiReanalysisAll}
-              className="bg-gradient-to-r from-rose-500 to-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:from-rose-600 hover:to-red-700 transition shadow-md">
+              disabled={isViewer}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition shadow-md ${
+                isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-gradient-to-r from-rose-500 to-red-600 text-white hover:from-rose-600 hover:to-red-700"
+              }`}>
               Force AI Re-analysis of Photos
             </button>
           </div>
@@ -1541,7 +1578,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           <div className="flex items-center gap-3 flex-wrap mb-4">
             {!bulkAnalysisState.isRunning && (
               <button onClick={startBulkAnalysis}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition flex items-center gap-2">
+                disabled={isViewer}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+                  isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-indigo-600 text-white hover:bg-indigo-700"
+                }`}>
                 <Bot className="w-4 h-4" /> Start Analysis
               </button>
             )}
@@ -1645,7 +1685,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           </h2>
           <p className="text-gray-600 mb-4 text-sm">Upload a previously exported JSON file to restore your data. <strong className="text-red-600">This will overwrite all current data.</strong></p>
           <button onClick={() => importRef.current?.click()}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2">
+            disabled={isViewer}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+              isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-blue-600 text-white hover:bg-blue-700"
+            }`}>
             <Upload className="w-4 h-4" /> Select JSON File to Import
           </button>
 
@@ -1690,8 +1733,18 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
             }} />
             <div className="flex flex-wrap gap-2">
               {dataSummary.map(({ key, label }) => (
-                <button key={key} onClick={() => { setCsvImportEntity(key); csvImportRef.current?.click(); }}
-                  className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 border border-blue-200 transition">
+                <button key={key} onClick={() => { 
+                  if (isViewer) {
+                    toast("Viewers cannot import data", "error");
+                    return;
+                  }
+                  setCsvImportEntity(key); 
+                  csvImportRef.current?.click(); 
+                }}
+                  disabled={isViewer}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${
+                    isViewer ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60" : "bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+                  }`}>
                   Import {label}
                 </button>
               ))}
@@ -1739,8 +1792,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           </p>
           <button
             onClick={handleRecalculateAllRatings}
-            disabled={isRecalculating}
-            className="px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-2"
+            disabled={isRecalculating || isViewer}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-2 ${
+              isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
           >
             {isRecalculating ? (
               <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Recalculating...</>
@@ -1757,7 +1812,10 @@ Provide a 2-sentence summary of expected efficacy based on typical performance p
           </h2>
           <p className="text-gray-600 mb-4 text-sm">Permanently delete all your local data. <strong className="text-red-600">This action cannot be undone.</strong></p>
           <button onClick={handleClearAllData}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition flex items-center gap-2">
+            disabled={isViewer}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+              isViewer ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-60" : "bg-red-600 text-white hover:bg-red-700"
+            }`}>
             <Trash2 className="w-4 h-4" /> Clear All Data
           </button>
         </div>

@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
+import { useAuth } from '../hooks/useAuth.js';
 import { generateAllAlerts, getAlertCounts, ALERT_TYPES, ALERT_SEVERITY } from '../services/alertsService.js';
 import { 
   AlertTriangle, AlertCircle, CheckCircle, Info,
@@ -60,10 +61,16 @@ export default function SmartAlerts({ onViewTrial, compact = false }) {
     return filtered;
   }, [alerts, filter, dismissed]);
 
+  const { isViewer } = useAuth();
+
   // Dismiss alert
   const handleDismiss = useCallback((alertId) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot dismiss smart alerts.', type: 'error' } }));
+      return;
+    }
     setDismissed(prev => new Set([...prev, alertId]));
-  }, []);
+  }, [isViewer]);
 
   // Get alert icon
   const getAlertIcon = (type, severity) => {

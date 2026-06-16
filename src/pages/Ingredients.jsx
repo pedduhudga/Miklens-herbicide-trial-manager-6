@@ -87,6 +87,10 @@ export default function Ingredients({ onMenuClick }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot modify or save ingredients.', type: 'error' } }));
+      return;
+    }
     const payload = {
       ...formData,
       ID: editingIngredient ? editingIngredient.ID : Date.now().toString()

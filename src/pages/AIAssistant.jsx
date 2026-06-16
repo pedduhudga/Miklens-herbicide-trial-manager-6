@@ -208,6 +208,10 @@ export default function AIAssistant({ onMenuClick }) {
   const sendMessage = useCallback(async (text) => {
     const userMsg = text.trim();
     if (!userMsg || isLoading) return;
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot send messages to AI Assistant.', type: 'error' } }));
+      return;
+    }
     setInput('');
     const img = attachedImage;
     setAttachedImage(null);
@@ -423,6 +427,10 @@ RIGOROUS SCIENTIFIC ANSWERING PROTOCOL:
   };
 
   const handleClear = async () => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot clear chat sessions.', type: 'error' } }));
+      return;
+    }
     if (window.confirm('Clear all chat sessions?')) {
       const sessionsToDelete = [...sessions];
       updateState({ aiChatSessions: [], currentAiChatSessionId: null });
@@ -439,6 +447,10 @@ RIGOROUS SCIENTIFIC ANSWERING PROTOCOL:
   };
 
   const handleDeleteMessage = (idx) => {
+    if (isViewer) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Viewer role cannot delete messages.', type: 'error' } }));
+      return;
+    }
     if (window.confirm('Delete this message?')) {
       const newHistory = [...history];
       newHistory.splice(idx, 1);

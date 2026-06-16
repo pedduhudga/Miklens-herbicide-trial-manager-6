@@ -145,8 +145,12 @@ const TrialCard = memo(function TrialCard({
   }, [latestObs, categoryId]);
 
   const handleCardClick = useCallback(() => {
+    if (isViewer) {
+      onViewDetails(trial);
+      return;
+    }
     onToggleBulk(trial.ID);
-  }, [onToggleBulk, trial.ID]);
+  }, [onToggleBulk, trial, isViewer, onViewDetails]);
 
   const handleMenuClick = useCallback((e) => {
     e.stopPropagation();
