@@ -59,6 +59,7 @@ const TrialCard = memo(function TrialCard({
   onExportCsv,
   onExportJson,
   onShare,
+  onAppSharing,
   onAiGenerate,
   onDelete,
   onActivateToggle,
@@ -72,7 +73,8 @@ const TrialCard = memo(function TrialCard({
   const ownUid = user?.uid || user?.ID || user?.id;
   const isOwnData = isAdmin || !trial.CreatedBy || trial.CreatedBy === ownUid;
   const isShared = !!(trial.CreatedBy && trial.CreatedBy !== ownUid);
-  const isEditable = !isViewer && isOwnData;
+  const isSharedEdit = Array.isArray(trial.SharedWithEdit) && trial.SharedWithEdit.includes(ownUid);
+  const isEditable = !isViewer && (isOwnData || isSharedEdit);
   const canDownloadTrial = !isViewer && isOwnData && user?.tabPermissions?.['Allow Downloads'] !== false;
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const photos = useMemo(() => safeJsonParse(trial.PhotoURLs, []), [trial.PhotoURLs]);
@@ -222,6 +224,11 @@ const TrialCard = memo(function TrialCard({
     onToggleMenu(null);
   }, [onShare, trial, onToggleMenu]);
 
+  const handleAppSharing = useCallback(() => {
+    onAppSharing(trial);
+    onToggleMenu(null);
+  }, [onAppSharing, trial, onToggleMenu]);
+
   const handleAiGenerate = useCallback(() => {
     onAiGenerate(trial);
     onToggleMenu(null);
@@ -286,7 +293,7 @@ const TrialCard = memo(function TrialCard({
       {/* Shared Badge */}
       {isShared && (
         <div className="absolute top-3 left-3 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-          <Share2 className="w-3 h-3" /> Shared by {trial.InvestigatorName || 'Scientist'}
+          <Share2 className="w-3 h-3" /> Shared by {trial.InvestigatorName || 'Scientist'}{isSharedEdit ? ' (Edit Access)' : ''}
         </div>
       )}
 
@@ -388,11 +395,16 @@ const TrialCard = memo(function TrialCard({
                   <button onClick={handleShare} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
                     <Share2 className="w-3.5 h-3.5 text-sky-500" /> Share / Copy
                   </button>
+                  {isAdmin && (
+                    <button onClick={handleAppSharing} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
+                      <Share2 className="w-3.5 h-3.5 text-indigo-500" /> App Sharing (In-App)
+                    </button>
+                  )}
                   <hr className="my-1 border-slate-100" />
                   <button onClick={handleAiGenerate} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-violet-50">
                     <BrainCircuit className="w-3.5 h-3.5 text-violet-500" /> Generate AI Report
                   </button>
-                  {isEditable && (
+                  {!isViewer && isOwnData && (
                     <>
                       <hr className="my-1 border-slate-100" />
                       <button onClick={handleDelete} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">

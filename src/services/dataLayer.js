@@ -65,7 +65,26 @@ function getAllowedUids(getAppState) {
   return allowed;
 }
 
-function checkOwnership(collectionType, recordId, getAppState) {
+function getSharedWithUid(getAppState) {
+  const state = getAppState ? getAppState() : {};
+  const user = state.auth?.user;
+  if (!user) return null;
+
+  const role = String(user.Role || user.role || '').toLowerCase();
+  if (role === 'admin') {
+    return null; // Admin sees all data already
+  }
+
+  if (role === 'developer') {
+    // developer can see shared data ONLY if allowDataAccess is true
+    const allowData = !!user.allowDataAccess || !!user.AllowDataAccess;
+    return allowData ? (state.auth?.uid || user.ID || user.uid) : null;
+  }
+
+  return state.auth?.uid || user.ID || user.uid || null;
+}
+
+function checkOwnership(collectionType, recordId, getAppState, action = 'edit') {
   const state = getAppState ? getAppState() : {};
   const user = state.auth?.user;
   if (!user) return false;
@@ -80,7 +99,17 @@ function checkOwnership(collectionType, recordId, getAppState) {
   const record = list.find(r => r.ID === recordId || r.id === recordId);
   if (!record) return true; // new record or not in state
 
-  return !record.CreatedBy || record.CreatedBy === ownUid;
+  const isOwner = !record.CreatedBy || record.CreatedBy === ownUid;
+  if (isOwner) return true;
+
+  if (action === 'edit') {
+    // Allow editing if the user is in the SharedWithEdit array
+    const sharedWithEdit = record.SharedWithEdit || [];
+    return Array.isArray(sharedWithEdit) && sharedWithEdit.includes(ownUid);
+  }
+
+  // Deletions are strictly restricted to the creator
+  return false;
 }
 
 function mirror(action, payload, getAppState) {
@@ -94,8 +123,9 @@ export async function getAllData(payload, getAppState) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const allowedUids = getAllowedUids(getAppState);
+    const sharedWithUid = getSharedWithUid(getAppState);
     const category = getCategory(getAppState);
-    return fbDB.fbGetAllData(allowedUids, category);
+    return fbDB.fbGetAllData(allowedUids, category, sharedWithUid);
   }
   return sheetDB.getAllData(payload, getAppState);
 }
@@ -106,8 +136,9 @@ export async function getTrials(payload, getAppState) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const allowedUids = getAllowedUids(getAppState);
+    const sharedWithUid = getSharedWithUid(getAppState);
     const category = getCategory(getAppState);
-    return fbDB.fbCatGetTrials(category, allowedUids);
+    return fbDB.fbCatGetTrials(category, allowedUids, sharedWithUid);
   }
   return sheetDB.getTrials(payload, getAppState);
 }
@@ -141,7 +172,7 @@ export async function updateTrial(payload, getAppState) {
 export async function deleteTrial(payload, getAppState, showOverlay = true) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
-    if (!checkOwnership('trials', payload.id || payload.ID, getAppState)) {
+    if (!checkOwnership('trials', payload.id || payload.ID, getAppState, 'delete')) {
       throw new Error("Permission Denied: You cannot delete another user's trial.");
     }
     const category = getCategory(getAppState);
@@ -199,8 +230,9 @@ export async function getFormulations(payload, getAppState) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const allowedUids = getAllowedUids(getAppState);
+    const sharedWithUid = getSharedWithUid(getAppState);
     const category = getCategory(getAppState);
-    return fbDB.fbCatGetFormulations(category, allowedUids);
+    return fbDB.fbCatGetFormulations(category, allowedUids, sharedWithUid);
   }
   return sheetDB.getFormulations(payload, getAppState);
 }
@@ -233,7 +265,7 @@ export async function updateFormulation(payload, getAppState) {
 export async function deleteFormulation(payload, getAppState) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
-    if (!checkOwnership('formulations', payload.id || payload.ID, getAppState)) {
+    if (!checkOwnership('formulations', payload.id || payload.ID, getAppState, 'delete')) {
       throw new Error("Permission Denied: You cannot delete another user's formulation.");
     }
     const category = getCategory(getAppState);
@@ -285,8 +317,9 @@ export async function getProjects(payload, getAppState) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
     const allowedUids = getAllowedUids(getAppState);
+    const sharedWithUid = getSharedWithUid(getAppState);
     const category = getCategory(getAppState);
-    return fbDB.fbCatGetProjects(category, allowedUids);
+    return fbDB.fbCatGetProjects(category, allowedUids, sharedWithUid);
   }
   return sheetDB.getProjects(payload, getAppState);
 }
@@ -320,7 +353,7 @@ export async function updateProject(payload, getAppState) {
 export async function deleteProject(payload, getAppState) {
   const { useFirebase } = getConfig(getAppState);
   if (useFirebase) {
-    if (!checkOwnership('projects', payload.id || payload.ID, getAppState)) {
+    if (!checkOwnership('projects', payload.id || payload.ID, getAppState, 'delete')) {
       throw new Error("Permission Denied: You cannot delete another user's project.");
     }
     const category = getCategory(getAppState);

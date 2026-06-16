@@ -22,6 +22,7 @@ import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
 import { Info } from 'lucide-react';
 import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js';
 import { generateTextWithAI } from '../services/multiProviderAI.js';
+import AppSharingModal from '../components/AppSharingModal.jsx';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 export function getThemeClasses(accentColor = 'emerald') {
@@ -498,6 +499,35 @@ export default function Projects({ onMenuClick }) {
 
   // list view state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [sharingProject, setSharingProject] = useState(null);
+
+  const handleOpenShareModal = useCallback((e, project) => {
+    e.stopPropagation();
+    setSharingProject(project);
+    setIsShareModalOpen(true);
+  }, []);
+
+  const handleSaveSharing = useCallback(async (sharedWith, sharedWithEdit) => {
+    if (!sharingProject) return;
+    setIsShareModalOpen(false);
+    
+    const updatedProject = {
+      ...sharingProject,
+      SharedWith: sharedWith,
+      SharedWithEdit: sharedWithEdit
+    };
+    const newProjects = state.projects.map(p => p.ID === sharingProject.ID ? updatedProject : p);
+    updateState({ projects: newProjects });
+
+    try {
+      await updateProject(updatedProject, getAppState);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Sharing permissions updated successfully', type: 'success' } }));
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to update sharing permissions', type: 'error' } }));
+      updateState({ projects: state.projects });
+    }
+  }, [sharingProject, state.projects, updateState, getAppState]);
   const [formData, setFormData] = useState({ 
     Name: '', 
     Metric: config.primaryMetric.label, 
@@ -4645,11 +4675,18 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
                       )}
                     </div>
                   </div>
-                  {isOwnData(p) && (
-                    <button onClick={(e) => handleDelete(e, p.ID)} className="text-slate-300 hover:text-red-500 transition p-1 shrink-0 ml-2">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                    {isAdmin && (
+                      <button onClick={(e) => handleOpenShareModal(e, p)} className="text-slate-300 hover:text-indigo-600 transition p-1" title="Share Project">
+                        <Share2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    {isOwnData(p) && (
+                      <button onClick={(e) => handleDelete(e, p.ID)} className="text-slate-300 hover:text-red-500 transition p-1" title="Delete Project">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2 mb-4 text-sm text-slate-500">
@@ -5509,6 +5546,14 @@ ${narrative ? `<h2>Agronomist Narrative</h2><p style="font-size:13px;line-height
           </div>
         </div>
       </Modal>
+
+      <AppSharingModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        initialSharedWith={sharingProject?.SharedWith || []}
+        initialSharedWithEdit={sharingProject?.SharedWithEdit || []}
+        onSave={handleSaveSharing}
+      />
       </>
     );
   }

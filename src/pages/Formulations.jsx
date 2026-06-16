@@ -7,6 +7,7 @@ import { addFormulation, deleteFormulation, updateFormulation } from '../service
 import { safeJsonParse } from '../utils/helpers.js';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { Plus, X, Share2 } from 'lucide-react';
+import AppSharingModal from '../components/AppSharingModal.jsx';
 
 export default function Formulations({ onMenuClick }) {
   const { state, updateState, getAppState } = useAppState();
@@ -18,6 +19,35 @@ export default function Formulations({ onMenuClick }) {
     return !record.CreatedBy || record.CreatedBy === ownUid;
   };
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [sharingFormulation, setSharingFormulation] = useState(null);
+
+  const handleOpenShareModal = (e, formulation) => {
+    e.stopPropagation();
+    setSharingFormulation(formulation);
+    setIsShareModalOpen(true);
+  };
+
+  const handleSaveSharing = async (sharedWith, sharedWithEdit) => {
+    if (!sharingFormulation) return;
+    setIsShareModalOpen(false);
+
+    const updatedForm = {
+      ...sharingFormulation,
+      SharedWith: sharedWith,
+      SharedWithEdit: sharedWithEdit
+    };
+    const newForms = state.formulations.map(f => f.ID === sharingFormulation.ID ? updatedForm : f);
+    updateState({ formulations: newForms });
+
+    try {
+      await updateFormulation(updatedForm, getAppState);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Sharing permissions updated successfully', type: 'success' } }));
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to update sharing permissions', type: 'error' } }));
+      updateState({ formulations: state.formulations });
+    }
+  };
   const [editingForm, setEditingForm] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -255,14 +285,23 @@ export default function Formulations({ onMenuClick }) {
               const avgLabel = avgScore !== null ? (avgScore >= 3.5 ? 'Excellent' : avgScore >= 2.5 ? 'Good' : avgScore >= 1.5 ? 'Fair' : 'Poor') : null;
               const avgLabelColor = { Excellent: 'bg-emerald-100 text-emerald-700', Good: 'bg-blue-100 text-blue-700', Fair: 'bg-amber-100 text-amber-700', Poor: 'bg-red-100 text-red-700' };
               const ownUid = user?.uid || user?.ID || user?.id;
+              const isOwn = isOwnData(form);
               const isShared = !!(form.CreatedBy && form.CreatedBy !== ownUid);
+              const isSharedEdit = Array.isArray(form.SharedWithEdit) && form.SharedWithEdit.includes(ownUid);
               return (
                 <div key={form.ID} className="bg-white p-6 rounded-xl shadow-lg relative transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border border-transparent hover:border-emerald-500/50">
-                  {!isViewer && isOwnData(form) && (
-                    <div className="absolute top-4 right-4 flex gap-2">
-                      <button onClick={() => handleOpenModal(form, true)} className="bg-slate-200 text-slate-700 px-3 py-1 rounded-md text-sm hover:bg-slate-300">Duplicate</button>
+                  {!isViewer && (isOwn || isSharedEdit) && (
+                    <div className="absolute top-4 right-4 flex gap-2 items-center">
+                      {isAdmin && (
+                        <button onClick={(e) => handleOpenShareModal(e, form)} className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-md text-sm hover:bg-indigo-200" title="Share Formulation">Share</button>
+                      )}
+                      {isOwn && (
+                        <button onClick={() => handleOpenModal(form, true)} className="bg-slate-200 text-slate-700 px-3 py-1 rounded-md text-sm hover:bg-slate-300">Duplicate</button>
+                      )}
                       <button onClick={() => handleOpenModal(form)} className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-md text-sm hover:bg-emerald-200">Edit</button>
-                      <button onClick={() => handleDelete(form.ID)} className="text-red-500 hover:text-red-700 font-bold text-xl leading-none">&times;</button>
+                      {isOwn && (
+                        <button onClick={() => handleDelete(form.ID)} className="text-red-500 hover:text-red-700 font-bold text-xl leading-none">&times;</button>
+                      )}
                     </div>
                   )}
 
@@ -270,7 +309,7 @@ export default function Formulations({ onMenuClick }) {
                     <h3 className="font-bold text-lg text-slate-800">{form.Name}</h3>
                     {isShared && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-0.5">
-                        <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared
+                        <Share2 className="w-2.5 h-2.5 animate-pulse" /> Shared{isSharedEdit ? ' (Edit Access)' : ''}
                       </span>
                     )}
                   </div>
@@ -470,6 +509,14 @@ export default function Formulations({ onMenuClick }) {
           </div>
         </form>
       </Modal>
+
+      <AppSharingModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        initialSharedWith={sharingFormulation?.SharedWith || []}
+        initialSharedWithEdit={sharingFormulation?.SharedWithEdit || []}
+        onSave={handleSaveSharing}
+      />
     </div>
   );
 }

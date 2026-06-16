@@ -43,7 +43,7 @@ function snapsToArray(snapshot) {
 
 // ─── generic CRUD ───────────────────────────────────────────────────────────
 
-export async function fbGetAll(collectionName, userId = null) {
+export async function fbGetAll(collectionName, userId = null, sharedWithUid = null) {
   const db = getFirebaseDB();
   const baseCol = collection(db, collectionName);
 
@@ -65,6 +65,14 @@ export async function fbGetAll(collectionName, userId = null) {
     const snap = await getDocs(q);
     return snapsToArray(snap);
   });
+
+  if (sharedWithUid) {
+    const qShared = query(baseCol, where("SharedWith", "array-contains", sharedWithUid));
+    promises.push((async () => {
+      const snap = await getDocs(qShared);
+      return snapsToArray(snap);
+    })());
+  }
 
   const results = await Promise.all(promises);
   // Flatten and deduplicate by ID
@@ -290,7 +298,7 @@ export async function fbAddAnalysisLog(data, userId) {
 
 // ─── Spray Logs ──────────────────────────────────────────────────────────────
 
-export async function fbGetSprayLogs(userId, projectId = null, trialId = null) {
+export async function fbGetSprayLogs(userId, projectId = null, trialId = null, sharedWithUid = null) {
   const db = getFirebaseDB();
   const baseCol = collection(db, COLLECTIONS.sprayLogs);
   let conditions = [];
@@ -314,6 +322,14 @@ export async function fbGetSprayLogs(userId, projectId = null, trialId = null) {
     const snap = await getDocs(q);
     return snapsToArray(snap);
   });
+
+  if (sharedWithUid) {
+    const qShared = query(baseCol, ...conditions, where("SharedWith", "array-contains", sharedWithUid));
+    promises.push((async () => {
+      const snap = await getDocs(qShared);
+      return snapsToArray(snap);
+    })());
+  }
 
   const results = await Promise.all(promises);
   const merged = [];
@@ -375,7 +391,7 @@ export async function fbImportAll(dataMap, userId) {
 
 // ─── Category-aware data loading ─────────────────────────────────────────────
 
-export async function fbGetAllData(allowedUids, category = 'herbicide') {
+export async function fbGetAllData(allowedUids, category = 'herbicide', sharedWithUid = null) {
   const trialsCol = getCategoryCollection(category, 'trials');
   const formulationsCol = getCategoryCollection(category, 'formulations');
   const ingredientsCol = getCategoryCollection(category, 'ingredients');
@@ -393,20 +409,20 @@ export async function fbGetAllData(allowedUids, category = 'herbicide') {
 
   const [trials, formulations, ingredients, organisations, projects, blocks] =
     await Promise.all([
-      wrapPromise(trialsCol, fbGetAll(trialsCol, allowedUids)),
-      wrapPromise(formulationsCol, fbGetAll(formulationsCol, allowedUids)),
-      wrapPromise(ingredientsCol, fbGetAll(ingredientsCol, allowedUids)),
+      wrapPromise(trialsCol, fbGetAll(trialsCol, allowedUids, sharedWithUid)),
+      wrapPromise(formulationsCol, fbGetAll(formulationsCol, allowedUids, sharedWithUid)),
+      wrapPromise(ingredientsCol, fbGetAll(ingredientsCol, allowedUids, sharedWithUid)),
       wrapPromise('organisations', fbGetOrganisations(allowedUids)),
-      wrapPromise(projectsCol, fbGetAll(projectsCol, allowedUids)),
-      wrapPromise(blocksCol, fbGetAll(blocksCol, allowedUids))
+      wrapPromise(projectsCol, fbGetAll(projectsCol, allowedUids, sharedWithUid)),
+      wrapPromise(blocksCol, fbGetAll(blocksCol, allowedUids, sharedWithUid))
     ]);
   return { trials, formulations, ingredients, organisations, projects, blocks };
 }
 
 // ─── Category-aware CRUD helpers ─────────────────────────────────────────────
 
-export async function fbCatGetTrials(category, userId) {
-  return fbGetAll(getCategoryCollection(category, 'trials'), userId);
+export async function fbCatGetTrials(category, userId, sharedWithUid = null) {
+  return fbGetAll(getCategoryCollection(category, 'trials'), userId, sharedWithUid);
 }
 export async function fbCatAddTrial(category, data, userId) {
   return fbAdd(getCategoryCollection(category, 'trials'), data, userId);
@@ -418,8 +434,8 @@ export async function fbCatDeleteTrial(category, id) {
   return fbDelete(getCategoryCollection(category, 'trials'), id);
 }
 
-export async function fbCatGetFormulations(category, userId) {
-  return fbGetAll(getCategoryCollection(category, 'formulations'), userId);
+export async function fbCatGetFormulations(category, userId, sharedWithUid = null) {
+  return fbGetAll(getCategoryCollection(category, 'formulations'), userId, sharedWithUid);
 }
 export async function fbCatAddFormulation(category, data, userId) {
   return fbAdd(getCategoryCollection(category, 'formulations'), data, userId);
@@ -438,8 +454,8 @@ export async function fbCatAddIngredient(category, data, userId) {
   return fbAdd(getCategoryCollection(category, 'ingredients'), data, userId);
 }
 
-export async function fbCatGetProjects(category, userId) {
-  return fbGetAll(getCategoryCollection(category, 'projects'), userId);
+export async function fbCatGetProjects(category, userId, sharedWithUid = null) {
+  return fbGetAll(getCategoryCollection(category, 'projects'), userId, sharedWithUid);
 }
 export async function fbCatAddProject(category, data, userId) {
   return fbAdd(getCategoryCollection(category, 'projects'), data, userId);

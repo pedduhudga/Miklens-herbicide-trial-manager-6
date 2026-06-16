@@ -43,6 +43,7 @@ import { AdvancedReportGenerator } from '../services/advancedReportGenerator.js'
 import { fetchWeather } from '../services/weather.js';
 import { EPPO_CODES, BBCH_STAGES, lookupEPPO } from '../utils/eppoBBCHData.js';
 import { exportToARM, importARMCSV } from '../services/armExporter.js';
+import AppSharingModal from '../components/AppSharingModal.jsx';
 import SprayCalculatorModal from '../components/SprayCalculatorModal.jsx';
 import TrialDesignGuideModal from '../components/TrialDesignGuideModal.jsx';
 
@@ -147,6 +148,34 @@ export default function Trials({ onMenuClick }) {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDesignGuideOpen, setIsDesignGuideOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [sharingTrial, setSharingTrial] = useState(null);
+
+  const handleOpenShareModal = useCallback((trial) => {
+    setSharingTrial(trial);
+    setIsShareModalOpen(true);
+  }, []);
+
+  const handleSaveSharing = useCallback(async (sharedWith, sharedWithEdit) => {
+    if (!sharingTrial) return;
+    setIsShareModalOpen(false);
+    
+    const updatedTrial = {
+      ...sharingTrial,
+      SharedWith: sharedWith,
+      SharedWithEdit: sharedWithEdit
+    };
+    const newTrials = state.trials.map(t => t.ID === sharingTrial.ID ? updatedTrial : t);
+    updateState({ trials: newTrials });
+
+    try {
+      await updateTrial(updatedTrial, getAppState);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Sharing permissions updated successfully', type: 'success' } }));
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to update sharing permissions', type: 'error' } }));
+      updateState({ trials: state.trials });
+    }
+  }, [sharingTrial, state.trials, updateState, getAppState]);
   const [customiseReportModalOpen, setCustomiseReportModalOpen] = useState(false);
   const [reportFieldSelection, setReportFieldSelection] = useState({});
   const [pendingReportExport, setPendingReportExport] = useState(null);
@@ -3562,6 +3591,7 @@ If none are present, write "None".`;
                                 onExportCsv={exportCsv}
                                 onExportJson={exportJson}
                                 onShare={shareTrial}
+                                onAppSharing={handleOpenShareModal}
                                 onAiGenerate={handleAiSingleGenerate}
                                 onDelete={handleDelete}
                                 onActivateToggle={handleActivateToggle}
@@ -3634,6 +3664,7 @@ If none are present, write "None".`;
                                 onExportCsv={exportCsv}
                                 onExportJson={exportJson}
                                 onShare={shareTrial}
+                                onAppSharing={handleOpenShareModal}
                                 onAiGenerate={handleAiSingleGenerate}
                                 onDelete={handleDelete}
                                 onActivateToggle={handleActivateToggle}
@@ -3674,6 +3705,7 @@ If none are present, write "None".`;
                     onExportCsv={exportCsv}
                     onExportJson={exportJson}
                     onShare={shareTrial}
+                    onAppSharing={handleOpenShareModal}
                     onAiGenerate={handleAiSingleGenerate}
                     onDelete={handleDelete}
                     onActivateToggle={handleActivateToggle}
@@ -6393,6 +6425,14 @@ If none are present, write "None".`;
         loading={photoAnalyzerLoading}
         results={photoAnalyzerResults}
         onApplyValue={(val) => setObsForm(prev => ({ ...prev, weedCover: val }))}
+      />
+
+      <AppSharingModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        initialSharedWith={sharingTrial?.SharedWith || []}
+        initialSharedWithEdit={sharingTrial?.SharedWithEdit || []}
+        onSave={handleSaveSharing}
       />
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
