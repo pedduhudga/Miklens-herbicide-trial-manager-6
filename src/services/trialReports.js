@@ -460,6 +460,23 @@ async function addPhotoGrid(doc, photos, y, ph, maxSize = 50, showDates = true) 
   return y + maxSize + 16;
 }
 function anovaTable(doc, stats, y, ph) {
+  if (stats?.anovaResults?.isDescriptiveOnly) {
+    const desc = stats.anovaResults;
+    autoTable(doc, {
+      startY: y,
+      head: [['Descriptive Statistic', 'Value']],
+      body: [
+        ['Observations (N)', String(desc.n || 0)],
+        ['Mean Efficacy', `${desc.mean ?? 0}%`],
+        ['Std Deviation (SD)', String(desc.stdDev ?? 0)],
+        ['Coefficient of Variation (CV)', `${desc.cv ?? 0}%`],
+        ['Minimum Efficacy', `${desc.min ?? 0}%`],
+        ['Maximum Efficacy', `${desc.max ?? 0}%`]
+      ],
+      headStyles: { fillColor: DARK }, theme: 'striped', styles: { fontSize: 9 }
+    });
+    return (doc.lastAutoTable?.finalY ?? y) + 10;
+  }
   const anova = stats?.anovaResults?.anovaTable;
   if (anova) {
     const nf = (v, d = 2) => Number.isFinite(v) ? Number(v).toFixed(d) : '—';

@@ -1573,20 +1573,26 @@ export default function Trials({ onMenuClick }) {
         ]
       };
     } else {
-      // Fallback simple 1-treatment ANOVA on WCE values
+      // Fallback descriptive statistics for single-replicate / trend observations
       const wces = wceRows.map(r => r.wce).filter(v => v !== null);
       const meanWce = wces.length ? wces.reduce((s, v) => s + v, 0) / wces.length : 0;
-      const ssTreat = wces.reduce((s, v) => s + Math.pow(v - meanWce, 2), 0);
-      const df = wces.length - 1;
-      const ms = df > 0 ? ssTreat / df : 0;
+      const nVal = wces.length;
+      let stdDev = 0;
+      let cv = 0;
+      if (nVal > 1) {
+        const squaredDiffs = wces.map(v => Math.pow(v - meanWce, 2));
+        const variance = squaredDiffs.reduce((s, v) => s + v, 0) / (nVal - 1);
+        stdDev = Math.sqrt(variance);
+        cv = meanWce > 0 ? (stdDev / meanWce) * 100 : 0;
+      }
       anovaResults = {
-        anovaTable: {
-          treatment: { source: 'Treatment', df, ss: parseFloat(ssTreat.toFixed(2)), ms: parseFloat(ms.toFixed(2)), f: null, p: null, sig: 'N/A' }
-        },
-        diagnostics: {
-          cv: df > 0 ? parseFloat((100 * Math.sqrt(ms) / (meanWce || 1)).toFixed(2)) : 0,
-          r_squared: df > 0 ? parseFloat((ssTreat / (ssTreat + 0.001)).toFixed(4)) : 0
-        }
+        isDescriptiveOnly: true,
+        n: nVal,
+        mean: parseFloat(meanWce.toFixed(2)),
+        stdDev: parseFloat(stdDev.toFixed(2)),
+        cv: parseFloat(cv.toFixed(2)),
+        min: wces.length ? parseFloat(Math.min(...wces).toFixed(2)) : 0,
+        max: wces.length ? parseFloat(Math.max(...wces).toFixed(2)) : 0,
       };
     }
 
@@ -3483,7 +3489,7 @@ If none are present, write "None".`;
 
           {/* Tabs */}
           <div className="flex gap-1 overflow-x-auto pb-0.5">
-            {[['all','All'],['standard','Standard'],['rcbd','RCBD'],['control','Control'],['finalized','Finalized']].map(([k,label]) => (
+            {[['all','All'],['standard','Standard'],['rcbd','Project-Grouped'],['control','Control'],['finalized','Finalized']].map(([k,label]) => (
               <button key={k} onClick={() => setActiveTab(k)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition
                   ${activeTab === k ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
@@ -4775,6 +4781,15 @@ If none are present, write "None".`;
                                 </div>
                               )}
                               {obs.notes && <p className="mt-2 text-xs text-slate-500 italic">"{obs.notes}"</p>}
+                              {obs.validationNotes && (
+                                <div className="mt-2 bg-amber-50 border border-amber-100 rounded-lg p-2 flex items-start gap-1.5 text-xs text-amber-800">
+                                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[10px] font-bold text-amber-700 uppercase mb-0.5">Data Integrity & Reconciliation Log</p>
+                                    <p>{obs.validationNotes}</p>
+                                  </div>
+                                </div>
+                              )}
                               {obs.aiEfficacyAssessment && (
                                 <div className="mt-2 bg-purple-50 border border-purple-100 rounded-lg p-2">
                                   <p className="text-[10px] font-bold text-purple-700 uppercase mb-0.5">AI Efficacy Assessment</p>
@@ -5105,7 +5120,36 @@ If none are present, write "None".`;
                           </div>
                         </div>
                       )}
-                      {statsData.stats?.anovaResults?.anovaTable && (
+                      {statsData.stats?.anovaResults?.isDescriptiveOnly ? (
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">Descriptive Statistics <span className="text-[10px] font-normal text-slate-400">Computed: {formatDateTime(statsData.stats.calculatedAt)}</span></h4>
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                            <div className="bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                              <span className="font-semibold text-slate-500 block mb-0.5">Observations (N)</span>
+                              <span className="text-sm font-bold text-slate-700">{statsData.stats.anovaResults.n}</span>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                              <span className="font-semibold text-slate-500 block mb-0.5">Mean Efficacy</span>
+                              <span className="text-sm font-bold text-slate-700">{statsData.stats.anovaResults.mean}%</span>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                              <span className="font-semibold text-slate-500 block mb-0.5">Std Deviation (SD)</span>
+                              <span className="text-sm font-bold text-slate-700">{statsData.stats.anovaResults.stdDev}</span>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                              <span className="font-semibold text-slate-500 block mb-0.5">Coeff of Var (CV)</span>
+                              <span className="text-sm font-bold text-slate-700">{statsData.stats.anovaResults.cv}%</span>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                              <span className="font-semibold text-slate-500 block mb-0.5">Range (Min - Max)</span>
+                              <span className="text-sm font-bold text-slate-700">{statsData.stats.anovaResults.min}% - {statsData.stats.anovaResults.max}%</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 p-3 bg-blue-50 text-blue-800 rounded-xl text-xs border border-blue-100">
+                            ℹ️ This is a single-replicate trial. Descriptive statistics summarize trends over time (DAA timepoints). Replicated ANOVA/Tukey significance testing is only scientifically valid when grouping multiple trials at the Project level.
+                          </div>
+                        </div>
+                      ) : statsData.stats?.anovaResults?.anovaTable && (
                         <div>
                           <h4 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">ANOVA Results <span className="text-[10px] font-normal text-slate-400">Computed: {formatDateTime(statsData.stats.calculatedAt)}</span></h4>
                           <div className="overflow-x-auto rounded-xl border">
