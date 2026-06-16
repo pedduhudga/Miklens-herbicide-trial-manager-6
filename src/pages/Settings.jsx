@@ -109,6 +109,61 @@ export default function Settings({ onMenuClick }) {
     );
   };
 
+  const loadGroqKeys = () => {
+    const keys = [];
+    const mainKey = localStorage.getItem("AI_KEY_GROQ");
+    if (mainKey) keys.push({ id: "main", key: mainKey });
+    for (let i = 1; i <= 5; i++) {
+      const val = localStorage.getItem(`AI_KEY_GROQ_${i}`);
+      if (val) keys.push({ id: `slot_${i}`, key: val });
+    }
+    return keys;
+  };
+  const [groqKeysList, setGroqKeysList] = useState(loadGroqKeys());
+  const [newGroqKey, setNewGroqKey] = useState("");
+
+  const handleAddGroqKey = () => {
+    if (isViewer) return;
+    const cleanKey = newGroqKey.trim();
+    if (!cleanKey) return;
+
+    let targetSlot = "";
+    if (!localStorage.getItem("AI_KEY_GROQ")) {
+      targetSlot = "AI_KEY_GROQ";
+    } else {
+      for (let i = 1; i <= 5; i++) {
+        if (!localStorage.getItem(`AI_KEY_GROQ_${i}`)) {
+          targetSlot = `AI_KEY_GROQ_${i}`;
+          break;
+        }
+      }
+    }
+
+    if (!targetSlot) {
+      toast("Maximum of 6 Groq API keys reached.", "error");
+      return;
+    }
+
+    localStorage.setItem(targetSlot, cleanKey);
+    setNewGroqKey("");
+    setGroqKeysList(loadGroqKeys());
+    toast("Groq API Key added");
+  };
+
+  const handleRemoveGroqKey = (id, keyVal) => {
+    if (isViewer) return;
+    if (!window.confirm("Remove this Groq API key?")) return;
+    
+    if (id === "main") {
+      localStorage.removeItem("AI_KEY_GROQ");
+    } else {
+      const slotNum = id.split("_")[1];
+      localStorage.removeItem(`AI_KEY_GROQ_${slotNum}`);
+    }
+    setGroqKeysList(loadGroqKeys());
+    toast("Groq API Key removed");
+  };
+
   const toast = (msg, type = "success") =>
     window.dispatchEvent(
       new CustomEvent("app:toast", { detail: { msg, type } }),
@@ -694,26 +749,64 @@ export default function Settings({ onMenuClick }) {
             </p>
           </div>
 
-          {/* Groq API Key */}
-          <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-              Groq API Key (Llama 3.2 Vision)
+          {/* Groq API Keys List */}
+          <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+            <label className="block text-sm font-medium text-gray-700 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                Groq API Keys (Llama 3.2 Vision)
+              </span>
               <span className="text-xs text-gray-500">
-                · 1000 calls/day free
+                · 1000 calls/day free per key
               </span>
             </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={aiKeys.groq}
-                onChange={(e) => saveAiKey("groq", e.target.value)}
-                placeholder="gsk_..."
-                className="flex-1 px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-orange-400"
-              />
+
+            {/* Existing Keys */}
+            <div className="space-y-2">
+              {groqKeysList.length === 0 && (
+                <p className="text-xs text-orange-600 bg-orange-50 p-2.5 rounded-lg border border-orange-100">
+                  No Groq API keys configured. Groq provider will be disabled.
+                </p>
+              )}
+              {groqKeysList.map((item) => (
+                <div key={item.id} className="flex gap-2 items-center">
+                  <input
+                    type="password"
+                    value={item.key}
+                    readOnly
+                    className="flex-1 px-3 py-1.5 text-sm border bg-slate-100 text-slate-500 rounded-lg outline-none pr-8"
+                  />
+                  <button
+                    onClick={() => handleRemoveGroqKey(item.id, item.key)}
+                    className="p-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Get free key at{" "}
+
+            {/* Add New Key */}
+            {groqKeysList.length < 6 && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newGroqKey}
+                  onChange={(e) => setNewGroqKey(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddGroqKey()}
+                  placeholder="Paste new Groq API key (gsk_...)"
+                  className="flex-1 px-3 py-1.5 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-orange-400"
+                />
+                <button
+                  onClick={handleAddGroqKey}
+                  className="px-4 py-1.5 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" /> Add
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              Get free keys at{" "}
               <a
                 href="https://console.groq.com"
                 target="_blank"
