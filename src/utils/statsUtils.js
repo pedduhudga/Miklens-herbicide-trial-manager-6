@@ -25,11 +25,12 @@ export function calculateStats(values) {
  * Returns complete ANOVA table and significance test
  */
 export function performANOVA(trials, options = {}) {
-  const { metric = 'controlPct', daa = null, species = null } = options;
+  const { metric = 'controlPct', daa = null, species = null, design = 'RCBD' } = options;
   
   // Group trials by treatment
   const treatments = {};
   const blocks = new Set();
+  const trtRepCounts = {};
   
   trials.forEach(trial => {
     const trt = trial.FormulationName || 'Unknown';
@@ -63,8 +64,6 @@ export function performANOVA(trials, options = {}) {
   });
 
   // Outlier detection and winsorization/trimming step:
-  // To ensure the agricultural statistical results are mathematically robust and accurate,
-  // we filter out data points that lie > 2.5 standard deviations from the treatment mean.
   Object.keys(treatments).forEach(trt => {
     Object.keys(treatments[trt]).forEach(blockId => {
       const vals = treatments[trt][blockId];
@@ -85,6 +84,11 @@ export function performANOVA(trials, options = {}) {
   if (treatmentNames.length < 2) {
     return { error: 'Need at least 2 treatments for ANOVA', fStatistic: null, pValue: null };
   }
+
+  // Count active observations per treatment
+  treatmentNames.forEach(trt => {
+    trtRepCounts[trt] = Object.values(treatments[trt]).flat().length;
+  });
 
   // Check for design balance (all treatment-block combinations should have the same number of observations)
   let isBalanced = true;
@@ -146,43 +150,45 @@ export function performANOVA(trials, options = {}) {
     ssTreatments += nTrt * Math.pow(treatmentMeans[trt] - grandMean, 2);
   });
   
-  // SSBlocks
-  blockIds.forEach(block => {
-    const blockValues = blockMeans[block] || [];
-    if (blockValues.length > 0) {
-      const blockMean = blockValues.reduce((a, b) => a + b, 0) / blockValues.length;
-      ssBlocks += t * Math.pow(blockMean - grandMean, 2);
-    }
-  });
+  // SSBlocks (only if RCBD)
+  if (design !== 'CRD') {
+    blockIds.forEach(block => {
+      const blockValues = blockMeans[block] || [];
+      if (blockValues.length > 0) {
+        const blockMean = blockValues.reduce((a, b) => a + b, 0) / blockValues.length;
+        ssBlocks += t * Math.pow(blockMean - grandMean, 2);
+      }
+    });
+  }
   
-  // SSError = SSTotal - SSTreatments - SSBlocks
-  const ssError = ssTotal - ssTreatments - ssBlocks;
+  // SSError
+  const ssError = Math.max(0, ssTotal - ssTreatments - ssBlocks);
   
   // Degrees of freedom
   const dfTreatments = t - 1;
-  const dfBlocks = b - 1;
-  const dfError = (t - 1) * (b - 1);
+  const dfBlocks = design === 'CRD' ? 0 : b - 1;
+  const dfError = design === 'CRD' ? N - t : (t - 1) * (b - 1);
   const dfTotal = N - 1;
   
   // Mean Squares
   const msTreatments = ssTreatments / dfTreatments;
-  const msBlocks = ssBlocks / dfBlocks;
+  const msBlocks = dfBlocks > 0 ? ssBlocks / dfBlocks : 0;
   const msError = ssError / dfError;
   
   // F-statistic
-  const fStatistic = msTreatments / msError;
+  const fStatistic = msError > 0 ? msTreatments / msError : 0;
   
   // Approximate p-value using F-distribution
   const pValue = approximatePValue(fStatistic, dfTreatments, dfError);
   
   return {
     anovaTable: {
-      source: ['Treatments', 'Blocks', 'Error', 'Total'],
-      ss: [ssTreatments, ssBlocks, ssError, ssTotal],
-      df: [dfTreatments, dfBlocks, dfError, dfTotal],
-      ms: [msTreatments, msBlocks, msError, null],
-      f: [fStatistic, null, null, null],
-      p: [pValue, null, null, null]
+      source: design === 'CRD' ? ['Treatments', 'Error', 'Total'] : ['Treatments', 'Blocks', 'Error', 'Total'],
+      ss: design === 'CRD' ? [ssTreatments, ssError, ssTotal] : [ssTreatments, ssBlocks, ssError, ssTotal],
+      df: design === 'CRD' ? [dfTreatments, dfError, dfTotal] : [dfTreatments, dfBlocks, dfError, dfTotal],
+      ms: design === 'CRD' ? [msTreatments, msError, null] : [msTreatments, msBlocks, msError, null],
+      f: design === 'CRD' ? [fStatistic, null, null] : [fStatistic, null, null, null],
+      p: design === 'CRD' ? [pValue, null, null] : [pValue, null, null, null]
     },
     fStatistic,
     pValue,
@@ -190,14 +196,16 @@ export function performANOVA(trials, options = {}) {
     treatmentMeans,
     grandMean,
     treatments: treatmentNames,
-    blocks: blockIds,
-    balanceWarning
+    blocks: design === 'CRD' ? [] : blockIds,
+    trtRepCounts,
+    balanceWarning,
+    design
   };
 }
 
 /**
  * Tukey's HSD (Honestly Significant Difference) Test
- * For pairwise comparisons after significant ANOVA
+ * For pairwise comparisons after significant ANOVA (with Tukey-Kramer adjustment for unequal replications)
  */
 export function performTukeyHSD(trials, options = {}) {
   const { metric = 'controlPct', alpha = 0.05 } = options;
@@ -205,21 +213,23 @@ export function performTukeyHSD(trials, options = {}) {
   const anova = performANOVA(trials, options);
   if (anova.error) return anova;
   
-  const { treatmentMeans, anovaTable, treatments } = anova;
-  const msError = anovaTable.ms[2]; // Error MS
-  const dfError = anovaTable.df[2];
+  const { treatmentMeans, anovaTable, trtRepCounts } = anova;
+  const msError = anovaTable.source.includes('Blocks') ? anovaTable.ms[2] : anovaTable.ms[1]; // Error MS
+  const dfError = anovaTable.source.includes('Blocks') ? anovaTable.df[2] : anovaTable.df[1];
   const n = anovaTable.df[0] + 1; // Number of treatments
-  const r = Math.round(anovaTable.df[1] + 1); // Number of replications
   
   // Get critical q value from Studentized Range Distribution
   const qCritical = getStudentizedRangeCritical(alpha, n, dfError);
   
-  // Calculate HSD
-  const hsd = qCritical * Math.sqrt(msError / r);
-  
-  // Pairwise comparisons
+  // Pairwise comparisons using Tukey-Kramer adjustment
   const comparisons = [];
   const trtNames = Object.keys(treatmentMeans);
+  
+  // Calculate harmonic mean of replication sizes for a representative single HSD value
+  const rValues = Object.values(trtRepCounts);
+  const sumInvR = rValues.reduce((sum, rVal) => sum + 1 / (rVal || 1), 0);
+  const rHarmonic = rValues.length / (sumInvR || 1);
+  const globalHsd = qCritical * Math.sqrt(msError / rHarmonic);
   
   for (let i = 0; i < trtNames.length; i++) {
     for (let j = i + 1; j < trtNames.length; j++) {
@@ -229,14 +239,19 @@ export function performTukeyHSD(trials, options = {}) {
       const meanB = treatmentMeans[trtB];
       const diff = Math.abs(meanA - meanB);
       
+      const rA = trtRepCounts[trtA] || 1;
+      const rB = trtRepCounts[trtB] || 1;
+      // Tukey-Kramer adjustment for unequal replications
+      const pairHsd = qCritical * Math.sqrt((msError / 2) * (1 / rA + 1 / rB));
+      
       comparisons.push({
         treatmentA: trtA,
         treatmentB: trtB,
         meanA,
         meanB,
         difference: diff,
-        significant: diff > hsd,
-        hsd
+        significant: diff > pairHsd,
+        hsd: pairHsd
       });
     }
   }
@@ -246,7 +261,7 @@ export function performTukeyHSD(trials, options = {}) {
   
   return {
     ...anova,
-    hsd,
+    hsd: globalHsd,
     qCritical,
     comparisons,
     groups,
@@ -256,7 +271,7 @@ export function performTukeyHSD(trials, options = {}) {
 }
 
 /**
- * Dunnett's Test - Compare all treatments vs control
+ * Dunnett's Test - Compare all treatments vs control (adjusted for unequal sample sizes)
  */
 export function performDunnettTest(trials, controlName, options = {}) {
   const { metric = 'controlPct', alpha = 0.05 } = options;
@@ -264,23 +279,33 @@ export function performDunnettTest(trials, controlName, options = {}) {
   const anova = performANOVA(trials, options);
   if (anova.error) return anova;
   
-  const { treatmentMeans, anovaTable } = anova;
-  const msError = anovaTable.ms[2];
-  const dfError = anovaTable.df[2];
-  const r = Math.round(anovaTable.df[1] + 1);
+  const { treatmentMeans, anovaTable, trtRepCounts } = anova;
+  const msError = anovaTable.source.includes('Blocks') ? anovaTable.ms[2] : anovaTable.ms[1];
+  const dfError = anovaTable.source.includes('Blocks') ? anovaTable.df[2] : anovaTable.df[1];
   
   const k = Object.keys(treatmentMeans).length - 1; // Number of treatments excluding control
   const dCritical = getDunnettCritical(alpha, k, dfError);
-  const dsd = dCritical * Math.sqrt(2 * msError / r); // Dunnett's significant difference
+  
+  // Calculate Dunnett's difference using harmonic mean for general display
+  const rValues = Object.values(trtRepCounts);
+  const sumInvR = rValues.reduce((sum, rVal) => sum + 1 / (rVal || 1), 0);
+  const rHarmonic = rValues.length / (sumInvR || 1);
+  const globalDsd = dCritical * Math.sqrt(2 * msError / rHarmonic);
   
   const comparisons = [];
   const controlMean = treatmentMeans[controlName];
+  const rCtrl = trtRepCounts[controlName] || 1;
   
   Object.keys(treatmentMeans).forEach(trt => {
     if (trt !== controlName) {
       const trtMean = treatmentMeans[trt];
       const diff = trtMean - controlMean;
-      const tStatistic = diff / Math.sqrt(2 * msError / r);
+      const rTrt = trtRepCounts[trt] || 1;
+      
+      // Dunnett's test statistic and critical difference adjusted for unequal sample sizes
+      const pairStdError = Math.sqrt(msError * (1 / rTrt + 1 / rCtrl));
+      const tStatistic = diff / (pairStdError || 1);
+      const pairDsd = dCritical * pairStdError;
       
       comparisons.push({
         treatment: trt,
@@ -290,8 +315,8 @@ export function performDunnettTest(trials, controlName, options = {}) {
         difference: diff,
         tStatistic,
         significant: Math.abs(tStatistic) > dCritical,
-        dsd,
-        percentChange: ((diff / controlMean) * 100).toFixed(1)
+        dsd: pairDsd,
+        percentChange: controlMean > 0 ? ((diff / controlMean) * 100).toFixed(1) : '0'
       });
     }
   });
@@ -301,7 +326,7 @@ export function performDunnettTest(trials, controlName, options = {}) {
     controlName,
     controlMean,
     dCritical,
-    dsd,
+    dsd: globalDsd,
     comparisons,
     test: "Dunnett's Test",
     alpha
@@ -574,21 +599,22 @@ function approximatePValue(f, df1, df2) {
   return isNaN(pVal) ? 1.0 : Math.max(0, Math.min(1, pVal));
 }
 
-/**
- * Duncan's Multiple Range Test (MRT)
- * For step-wise pairwise comparisons based on ranked distance
- */
 export function performDuncanMRT(trials, options = {}) {
   const { metric = 'controlPct', alpha = 0.05 } = options;
   
   const anova = performANOVA(trials, options);
   if (anova.error) return anova;
   
-  const { treatmentMeans, anovaTable } = anova;
-  const msError = anovaTable.ms[2];
-  const dfError = anovaTable.df[2];
-  const n = anovaTable.df[0] + 1;
-  const r = Math.round(anovaTable.df[1] + 1);
+  const { treatmentMeans, anovaTable, trtRepCounts } = anova;
+  const isCrd = anovaTable.source.includes('Error') && !anovaTable.source.includes('Blocks');
+  const errorIdx = isCrd ? 1 : 2;
+  const msError = anovaTable.ms[errorIdx];
+  const dfError = anovaTable.df[errorIdx];
+  
+  // Calculate harmonic mean of replication sizes for critical ranges
+  const rValues = Object.values(trtRepCounts);
+  const sumInvR = rValues.reduce((sum, rVal) => sum + 1 / (rVal || 1), 0);
+  const rHarmonic = rValues.length / (sumInvR || 1);
   
   const sortedTrts = Object.keys(treatmentMeans).sort((a, b) => treatmentMeans[b] - treatmentMeans[a]);
   const k = sortedTrts.length;
@@ -597,7 +623,7 @@ export function performDuncanMRT(trials, options = {}) {
   const criticalRanges = {};
   for (let p = 2; p <= Math.min(k, 10); p++) {
     const qCrit = getDuncanCriticalRange(alpha, p, dfError);
-    criticalRanges[p] = qCrit * Math.sqrt(msError / r);
+    criticalRanges[p] = qCrit * Math.sqrt(msError / rHarmonic);
   }
 
   // Duncan's test logic: Treatments are compared step-wise

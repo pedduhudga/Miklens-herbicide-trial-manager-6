@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppState } from '../hooks/useAppState.jsx';
-import { performANOVA, performTukeyHSD, performDunnettTest, performDuncanMRT, performANCOVA, performMetaAnalysis } from '../utils/statsUtils.js';
+import { performANOVA, performTukeyHSD, performDunnettTest, performDuncanMRT, performANCOVA, performMetaAnalysis, performTypeIIIANOVA } from '../utils/statsUtils.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { 
   BarChart3, Calculator, ChevronDown, Download, 
@@ -21,7 +21,7 @@ export default function Statistics() {
   const [selectedMetaProjects, setSelectedMetaProjects] = useState([]);
   const [metric, setMetric] = useState('controlPct');
   const [covariateMetric, setCovariateMetric] = useState('Temperature');
-  const [test, setTest] = useState('anova'); // anova, tukey, dunnett, ancova, meta
+  const [test, setTest] = useState('anova'); // anova, typeIII, tukey, dunnett, ancova, meta
   const [alpha, setAlpha] = useState(0.05);
   const [daa, setDaa] = useState('');
   const [results, setResults] = useState(null);
@@ -88,11 +88,15 @@ export default function Statistics() {
       const options = { 
         metric, 
         alpha,
-        daa: daa ? parseInt(daa) : null 
+        daa: daa ? parseInt(daa) : null,
+        design: activeProject?.Design || 'RCBD'
       };
       
       let result;
       switch (test) {
+        case 'typeIII':
+          result = performTypeIIIANOVA(projectTrials, options);
+          break;
         case 'tukey':
           result = performTukeyHSD(projectTrials, options);
           break;
@@ -118,7 +122,7 @@ export default function Statistics() {
       setResults(result);
       setLoading(false);
     }, 100);
-  }, [projectTrials, metric, alpha, test, daa, controlTreatment, covariateMetric, selectedMetaProjects, projects, trials]);
+  }, [projectTrials, metric, alpha, test, daa, controlTreatment, covariateMetric, selectedMetaProjects, projects, trials, activeProject]);
 
   // Export results as CSV
   const exportResults = useCallback(() => {
@@ -232,6 +236,7 @@ export default function Statistics() {
               className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
             >
               <option value="anova">ANOVA (F-test)</option>
+              <option value="typeIII">Type III ANOVA (Unbalanced)</option>
               <option value="tukey">Tukey HSD (All Pairs)</option>
               <option value="duncan">Duncan's MRT (Step-wise Ranked)</option>
               <option value="dunnett">Dunnett's Test (vs Control)</option>
@@ -373,6 +378,21 @@ export default function Statistics() {
       {/* Results Display */}
       {results && (
         <div className="space-y-6">
+          {results.balanceWarning && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold">Unbalanced Design Alert:</span>
+                <p className="text-sm mt-1">{results.balanceWarning}</p>
+                {test !== 'typeIII' && (
+                  <p className="text-xs text-amber-700 mt-2 font-medium">
+                    Recommendation: Switch the statistical test to <strong>Type III ANOVA (Unbalanced)</strong> to resolve statistical bias and control type I error rates.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className={`p-4 rounded-xl border-2 ${results.significant ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
