@@ -2076,15 +2076,35 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
             });
           };
 
-          // 1. Sanitize style tags of oklch declarations to prevent stylesheet parsing crashes
-          const styleElements = clonedDoc.querySelectorAll('style');
-          styleElements.forEach(styleEl => {
-            try {
-              styleEl.innerHTML = convertOklchColor(styleEl.innerHTML);
-            } catch (err) {
-              console.warn('Failed to sanitize oklch styles:', err);
-            }
-          });
+          // 1. Build and sanitize combined CSS from parent document's stylesheets
+          let combinedCSS = '';
+          try {
+            Array.from(document.styleSheets).forEach(sheet => {
+              try {
+                const rules = sheet.cssRules || sheet.rules;
+                if (rules) {
+                  for (let i = 0; i < rules.length; i++) {
+                    combinedCSS += rules[i].cssText + '\n';
+                  }
+                }
+              } catch (e) {
+                // Ignore CORS errors reading stylesheet rules
+              }
+            });
+          } catch (e) {
+            console.warn('Failed to read parent styleSheets:', e);
+          }
+
+          // Sanitize oklch colors in the combined CSS
+          const sanitizedCSS = convertOklchColor(combinedCSS);
+
+          // Remove all existing style and link stylesheet tags from cloned document
+          clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(el => el.remove());
+
+          // Inject the sanitized CSS block into the cloned document
+          const styleEl = clonedDoc.createElement('style');
+          styleEl.innerHTML = sanitizedCSS;
+          clonedDoc.head.appendChild(styleEl);
 
           // 2. Override computed styles that resolve to oklch across ALL elements in the cloned document tree
           const targets = [
