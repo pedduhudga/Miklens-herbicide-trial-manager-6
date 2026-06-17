@@ -71,7 +71,15 @@ export default function CropperModal({ isOpen, onClose, imageSrc, onCropComplete
       imgRef.current = img;
       setImageLoaded(true);
     };
-    img.src = imageSrc;
+    
+    let resolvedSrc = imageSrc;
+    if (typeof resolvedSrc === 'string' && resolvedSrc.includes('drive.google.com')) {
+      const driveMatch = resolvedSrc.match(/(?:[?&]id=|\/d\/)([a-zA-Z0-9_-]{10,})/);
+      if (driveMatch) {
+        resolvedSrc = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w2000`;
+      }
+    }
+    img.src = resolvedSrc;
   }, [isOpen, imageSrc]);
 
   useEffect(() => {

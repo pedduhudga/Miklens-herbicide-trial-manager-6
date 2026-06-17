@@ -214,12 +214,13 @@ RULES FOR SCIENTIFIC ASSESSMENT (CRITICAL - AVOID HALLUCINATION):
 3. LABORATORY/CHEMICAL TISSUE LIMITATION: Laboratory chemical test metrics (such as tissue Nitrogen, tissue Phosphorus, tissue Potassium, tissue Magnesium, tissue Calcium, tissue Sulfur, tissue Micronutrients, or similar laboratory tissue levels like 'tissueN', 'tissueP', 'tissueK', 'tissueMg', 'tissueCa', 'tissueS', 'tissueMicros') CANNOT be determined from a photo. You MUST output exactly 0 for these biochemical lab-test metrics. Do NOT guess or hallucinate these values under any circumstances.
 4. If a symptom is ambiguous or invisible, set its estimated metric value to 0 or leave it out of targets.
 5. Do NOT include recommendations, monitoring advice, next steps, or treatment plans. Keep the assessment strictly factual and observation-based.
+6. CATEGORY STATUS LABELS: You MUST ONLY use plant-health/crop-health status values for targets status: "Sufficient", "Deficient", "Marginal", "Healthy", "Symptomatic", "Stressed", or "Vigorous". You are strictly PROHIBITED from using herbicide-specific status terms like "Unaffected", "Controlled", "Burndown", "Slight/Moderate/Severe Injury", or "Dead/Desiccated".
 
 OUTPUT FORMAT - JSON ONLY (no extra text, no markdown wrapper around the JSON):
 {
   "metrics": ${JSON.stringify(metricsPlaceholder, null, 2)},
   "targets": [
-    {"name": "Common name (Scientific name or chemical symptom)", "value": 0, "status": "Healthy/Controlled/Symptomatic/etc.", "notes": "Brief observation details"}
+    {"name": "Common name (Scientific name or chemical symptom)", "value": 0, "status": "Sufficient/Deficient/Marginal/Healthy/Symptomatic/Stressed/Vigorous", "notes": "Brief observation details"}
   ],
   "overallAssessment": "Factual scientific assessment of the plot",
   "confidence": "HIGH/MEDIUM/LOW",

@@ -185,6 +185,7 @@ export default function Trials({ onMenuClick }) {
   // --- Detail modal ---
   const [activeTrial, setActiveTrial] = useState(null);
   const [detailTab, setDetailTab] = useState('info');
+  const [selectedPhotoForDetails, setSelectedPhotoForDetails] = useState(null);
 
   // --- Observation modal ---
   const [isObsModalOpen, setIsObsModalOpen] = useState(false);
@@ -1825,6 +1826,7 @@ export default function Trials({ onMenuClick }) {
         );
       }
 
+      await updatePhotoAiStatus(targetTrial.ID, driveUrl || dataUrl, 'processing');
       const result = await analyzePhoto(dataUrl, {
         treatment: targetTrial.FormulationName,
         daa,
@@ -1837,7 +1839,8 @@ export default function Trials({ onMenuClick }) {
 
       if (result.success) {
         await createObservationFromAI(targetTrial, daa, result.data, photoDate, driveUrl || dataUrl);
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Logged ${result.data.weeds?.length || 0} weed species at DAA ${daa}`, type: 'success' } }));
+        await updatePhotoAiStatus(targetTrial.ID, driveUrl || dataUrl, 'completed', '', result.data);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Logged ${result.data.weeds?.length || result.data.targets?.length || 0} targets at DAA ${daa}`, type: 'success' } }));
         // Auto-run cover detection in background
         detectWeedCoverAI(dataUrl).then(coverResult => {
           if (coverResult?.cover != null) {
@@ -1845,10 +1848,12 @@ export default function Trials({ onMenuClick }) {
           }
         }).catch(() => {});
       } else {
+        await updatePhotoAiStatus(targetTrial.ID, driveUrl || dataUrl, 'failed', result.error || 'AI analysis skipped');
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis skipped: ' + result.error, type: 'warning' } }));
       }
     } catch (e) {
-      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to save photo', type: 'error' } }));
+      await updatePhotoAiStatus(targetTrial.ID, driveUrl || dataUrl, 'failed', e.message);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to save photo: ' + e.message, type: 'error' } }));
     } finally {
       setAiGenRunning(false);
       updateState({ syncQueue: getAppState().syncQueue.filter(item => item.id !== `sync_${tempId}`) });
@@ -2237,14 +2242,18 @@ export default function Trials({ onMenuClick }) {
     setTimeout(() => setAiBatchProgress({ current: 0, total: 0, message: '' }), 5000);
   };
 
-  const updatePhotoAiStatus = useCallback(async (trialId, photoSrc, status, errorMsg = '') => {
+  const updatePhotoAiStatus = useCallback(async (trialId, photoSrc, status, errorMsg = '', aiData = null) => {
     const trial = trials.find(t => t.ID === trialId);
     if (!trial) return;
     const photos = safeJsonParse(trial.PhotoURLs, []);
     const updatedPhotos = photos.map(p => {
       const src = p.fileData || p.url;
       if (src === photoSrc || p.tempId === photoSrc) {
-        return { ...p, aiStatus: status, aiError: errorMsg };
+        const updated = { ...p, aiStatus: status, aiError: errorMsg };
+        if (aiData) {
+          updated.aiData = aiData;
+        }
+        return updated;
       }
       return p;
     });
@@ -2276,8 +2285,8 @@ export default function Trials({ onMenuClick }) {
 
       if (result.success) {
         await createObservationFromAI(activeTrial, daa, result.data, photoDate, photoSrc);
-        await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'completed');
-        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Detected ${result.data.weeds?.length || 0} weed species at DAA ${daa}. Observation saved.`, type: 'success' } }));
+        await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'completed', '', result.data);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `AI complete! Detected ${result.data.weeds?.length || result.data.targets?.length || 0} targets at DAA ${daa}. Observation saved.`, type: 'success' } }));
       } else {
         await updatePhotoAiStatus(activeTrial.ID, photoSrc, 'failed', result.error || 'AI analysis skipped');
         window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'AI analysis failed: ' + (result.error || 'Unknown error'), type: 'error' } }));
@@ -2955,7 +2964,26 @@ export default function Trials({ onMenuClick }) {
   }, [detailEfficacy, activeCategory]);
 
   // Status class mapping for observations
-  const STATUS_CLS = useMemo(() => ({ Controlled: 'bg-emerald-100 text-emerald-800', Eliminated: 'bg-emerald-200 text-emerald-900', Suppressed: 'bg-blue-100 text-blue-800', 'Top-kill': 'bg-teal-100 text-teal-800', Burndown: 'bg-orange-100 text-orange-800', Regrowth: 'bg-red-100 text-red-800', 'Re-emerged': 'bg-red-200 text-red-800', Resistant: 'bg-rose-200 text-rose-900', Unaffected: 'bg-slate-200 text-slate-700', Emerged: 'bg-amber-100 text-amber-800', 'Not detected': 'bg-slate-100 text-slate-500' }), []);
+  const STATUS_CLS = useMemo(() => ({
+    Controlled: 'bg-emerald-100 text-emerald-800',
+    Eliminated: 'bg-emerald-200 text-emerald-900',
+    Suppressed: 'bg-blue-100 text-blue-800',
+    'Top-kill': 'bg-teal-100 text-teal-800',
+    Burndown: 'bg-orange-100 text-orange-800',
+    Regrowth: 'bg-red-100 text-red-800',
+    'Re-emerged': 'bg-red-200 text-red-800',
+    Resistant: 'bg-rose-200 text-rose-900',
+    Unaffected: 'bg-slate-200 text-slate-700',
+    Emerged: 'bg-amber-100 text-amber-800',
+    'Not detected': 'bg-slate-100 text-slate-500',
+    Sufficient: 'bg-emerald-100 text-emerald-800',
+    Deficient: 'bg-rose-100 text-rose-800',
+    Marginal: 'bg-amber-100 text-amber-800',
+    Vigorous: 'bg-emerald-200 text-emerald-900',
+    Stressed: 'bg-orange-100 text-orange-800',
+    Healthy: 'bg-emerald-100 text-emerald-800',
+    Symptomatic: 'bg-yellow-100 text-yellow-800'
+  }), []);
 
   // Pre-compute observations sorting and values
   const obsData = useMemo(() => {
@@ -4382,7 +4410,7 @@ If none are present, write "None".`;
 
       {/* ── DETAIL PANEL ── */}
       {detailTrial && (
-        <div className="fixed inset-0 z-40 flex">
+        <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-black/40" onClick={() => setActiveTrial(null)} />
           <div className="w-full max-w-2xl bg-white flex flex-col shadow-2xl overflow-hidden">
             {/* Header */}
@@ -4473,7 +4501,7 @@ If none are present, write "None".`;
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-5 pb-24">
               {/* Applications Log Tab */}
               {detailTab === 'applications' && (
                 <div className="space-y-4">
@@ -5007,7 +5035,13 @@ If none are present, write "None".`;
                               </div>
                               {photo.date && <p className="text-[10px] text-slate-400">{formatPhotoDate(photo.date)}</p>}
                             </div>
-                            <div className="px-2 pb-2 flex gap-1 flex-wrap">
+                             <div className="px-2 pb-2 flex gap-1 flex-wrap">
+                              {photo.aiData && (
+                                <button onClick={() => setSelectedPhotoForDetails(photo)} title="View Detailed AI Diagnostics"
+                                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 border border-purple-200">
+                                  <Sparkles className="w-3 h-3" />View AI
+                                </button>
+                              )}
                               <button onClick={() => identifyWeedFromPhoto(src, false, idx)} title="AI Weed ID"
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100">
                                 <Leaf className="w-3 h-3" />Weed ID
@@ -5964,6 +5998,148 @@ If none are present, write "None".`;
             </button>
           </div>
         </form>
+      </Modal>
+      {/* ── PHOTO AI DATA DETAILS DIAGNOSTICS MODAL ── */}
+      <Modal
+        isOpen={!!selectedPhotoForDetails}
+        onClose={() => setSelectedPhotoForDetails(null)}
+        title="Photo AI Diagnostics"
+        maxWidth="max-w-3xl"
+      >
+        {selectedPhotoForDetails && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Photo Image Card */}
+              <div className="w-full md:w-1/3">
+                <img
+                  src={
+                    (selectedPhotoForDetails.fileData || selectedPhotoForDetails.url || '').includes('drive.google.com') &&
+                    (selectedPhotoForDetails.fileData || selectedPhotoForDetails.url || '').match(/(?:[?&]id=|\/d\/)([a-zA-Z0-9_-]{10,})/)
+                      ? `https://drive.google.com/thumbnail?id=${(selectedPhotoForDetails.fileData || selectedPhotoForDetails.url || '').match(/(?:[?&]id=|\/d\/)([a-zA-Z0-9_-]{10,})/)[1]}&sz=w600`
+                      : (selectedPhotoForDetails.fileData || selectedPhotoForDetails.url || '')
+                  }
+                  alt={selectedPhotoForDetails.label || 'AI Diagnostics'}
+                  className="w-full aspect-square object-cover rounded-xl border border-slate-200 bg-slate-100 shadow-sm"
+                  onError={e => { e.target.onerror = null; e.target.src = selectedPhotoForDetails.fileData || selectedPhotoForDetails.url; }}
+                />
+                <div className="mt-3 space-y-1 text-xs text-slate-500">
+                  <p><span className="font-semibold text-slate-600">Label:</span> {selectedPhotoForDetails.label || 'N/A'}</p>
+                  <p><span className="font-semibold text-slate-600">Date Taken:</span> {formatPhotoDate(selectedPhotoForDetails.date)}</p>
+                  {selectedPhotoForDetails.tag && (
+                    <p><span className="font-semibold text-slate-600">View Tag:</span> <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-extrabold uppercase">{selectedPhotoForDetails.tag}</span></p>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Analysis Details */}
+              <div className="flex-grow space-y-4">
+                {/* Confidence Badge */}
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="text-base font-bold text-slate-800">AI Assessment</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500">Confidence:</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-extrabold shadow-sm ${
+                      (selectedPhotoForDetails.aiData?.confidence || '').toUpperCase() === 'HIGH' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                      (selectedPhotoForDetails.aiData?.confidence || '').toUpperCase() === 'MEDIUM' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                      'bg-rose-100 text-rose-800 border border-rose-200'
+                    }`}>
+                      {selectedPhotoForDetails.aiData?.confidence || 'MEDIUM'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Overall Assessment */}
+                {selectedPhotoForDetails.aiData?.overallAssessment && (
+                  <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-3.5 text-slate-700 text-sm italic">
+                    {selectedPhotoForDetails.aiData.overallAssessment}
+                  </div>
+                )}
+
+                {/* Estimated Metrics Checklist */}
+                {selectedPhotoForDetails.aiData?.metrics && Object.keys(selectedPhotoForDetails.aiData.metrics).length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estimated Field Parameters</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(selectedPhotoForDetails.aiData.metrics).map(([key, value]) => {
+                        const fieldDef = catConfig.observationFields?.find(f => f.key === key);
+                        const label = fieldDef?.label || key;
+                        return (
+                          <div key={key} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-xs text-slate-600 font-medium">{label}</span>
+                            <span className="text-xs font-bold text-slate-800 bg-white px-2 py-0.5 rounded shadow-sm border">{value}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Detected Targets Table */}
+                {(() => {
+                  const targets = selectedPhotoForDetails.aiData?.targets || selectedPhotoForDetails.aiData?.weeds || [];
+                  if (targets.length === 0) return null;
+                  return (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        {activeCategory === 'herbicide' ? 'Detected Weed Species' : `Detected ${catConfig.targetLabel || 'Parameters'}`}
+                      </h4>
+                      <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                        <table className="min-w-full divide-y divide-slate-100 text-xs">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-slate-500">Name / Parameter</th>
+                              <th className="px-3 py-2 text-left font-semibold text-slate-500">Value / Pct</th>
+                              <th className="px-3 py-2 text-left font-semibold text-slate-500">Status</th>
+                              <th className="px-3 py-2 text-left font-semibold text-slate-500">Observation Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-100">
+                            {targets.map((t, tIdx) => {
+                              const name = t.name || t.species || 'Unknown';
+                              const value = t.value != null ? t.value : (t.cover != null ? t.cover : '-');
+                              const status = t.status || 'Healthy';
+                              const notes = t.notes || '';
+                              return (
+                                <tr key={tIdx}>
+                                  <td className="px-3 py-2 font-medium text-slate-800">{name}</td>
+                                  <td className="px-3 py-2 text-slate-600 font-bold">{value}</td>
+                                  <td className="px-3 py-2">
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_CLS[status] || 'bg-slate-100 text-slate-600 border'}`}>
+                                      {status}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-slate-500">{notes}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Additional Notes */}
+                {selectedPhotoForDetails.aiData?.notes && (
+                  <div className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <span className="font-bold text-slate-600 uppercase block mb-1">Observation Notes:</span>
+                    {selectedPhotoForDetails.aiData.notes}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="pt-4 flex justify-end gap-3 border-t">
+              <button
+                type="button"
+                onClick={() => setSelectedPhotoForDetails(null)}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition"
+              >
+                Close Diagnostics
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ── OBSERVATION MODAL ── */}
