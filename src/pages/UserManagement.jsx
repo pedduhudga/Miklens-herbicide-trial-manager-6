@@ -97,7 +97,10 @@ export default function UserManagement({ onMenuClick }) {
   const openModal = (u = null) => {
     setEditingUser(u);
     setForm(u ? {
-      username: u.username, password: '', role: u.role || 'user', disabled: !!u.disabled,
+      username: u.username,
+      password: (u.password && u.password !== '••••••') ? u.password : '',
+      role: u.role || 'user',
+      disabled: !!u.disabled,
       categoryAccess: u.categoryAccess || { ...DEFAULT_CATEGORY_ACCESS },
       tabPermissions: u.tabPermissions || {},
       viewableUsers: u.viewableUsers || [],
@@ -184,8 +187,8 @@ export default function UserManagement({ onMenuClick }) {
 
         if (editingUser) {
           const newPass = form.password.trim();
-          if (newPass) {
-            const currentPass = editingUser.password;
+          const currentPass = editingUser.password;
+          if (newPass && newPass !== currentPass) {
             if (currentPass && currentPass !== '••••••') {
               const { fbAdminUpdateUserPassword } = await import('../services/firebaseAuth.js');
               const authRes = await fbAdminUpdateUserPassword(form.username.trim(), currentPass, newPass);
