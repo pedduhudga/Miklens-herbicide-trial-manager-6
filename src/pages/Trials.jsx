@@ -10,7 +10,7 @@ import {
   Plus, Trash2, Edit, Copy, ChevronRight, Activity, MapPin, Calendar,
   CheckCircle, Camera, Grid, Info, Sparkles, Search, Filter, X,
   FileText, Printer, BarChart3, Eye, CloudRain, Wind, Thermometer,
-  Droplets, Image, FolderPlus, FlaskConical, User, Hash, SlidersHorizontal,
+  Droplets, Image as ImageIcon, FolderPlus, FlaskConical, User, Hash, SlidersHorizontal,
   QrCode, BrainCircuit, TrendingDown, Download, RefreshCw, Leaf,
   Navigation, FolderOpen, Lock, Unlock,
   FileDown, Share2, MoreVertical, FileSpreadsheet,
@@ -5105,7 +5105,7 @@ If none are present, write "None".`;
                     {!isViewer && (
                       <div className="flex gap-2 flex-wrap">
                         <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
-                          <Image className="w-3.5 h-3.5" />Upload
+                          <ImageIcon className="w-3.5 h-3.5" />Upload
                         </button>
                         <button onClick={() => { setCameraMode('weed'); setIsCameraOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600">
                           <ScanLine className="w-3.5 h-3.5" />Weed Cam
@@ -5972,7 +5972,7 @@ If none are present, write "None".`;
                             }}
                             className="px-2.5 py-1.5 border rounded-lg text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 flex items-center gap-1"
                           >
-                            <Image className="w-3.5 h-3.5" /> Upload File
+                            <ImageIcon className="w-3.5 h-3.5" /> Upload File
                           </button>
                           <button
                             type="button"
