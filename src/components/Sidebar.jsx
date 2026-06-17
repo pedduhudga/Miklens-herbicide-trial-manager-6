@@ -5,7 +5,7 @@ import {
   ListChecks, FileBox, ShoppingBag, Sparkles, BarChartBig,
   MapPin, Search, Database, Settings, Users, LogOut, Calculator, Bell,
   TrendingDown, ShieldAlert, Flame, Compass, ChevronDown,
-  Leaf, Shield, Bug, Beaker, Sprout, Grid3x3
+  Leaf, Shield, Bug, Beaker, Sprout, Grid3x3, Key, Lock, Eye, EyeOff, X, CheckCircle
 } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState.jsx';
 import { useAuth } from '../hooks/useAuth.js';
@@ -67,6 +67,69 @@ export default function Sidebar({ isOpen, onClose }) {
   const CatIcon = ICON_MAP[catConfig.icon] || FlaskConical;
 
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
+
+  // Change Password Modal state
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changeLoading, setChangeLoading] = useState(false);
+  const [changeError, setChangeError] = useState('');
+  const [changeSuccess, setChangeSuccess] = useState('');
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setChangeError('');
+    setChangeSuccess('');
+
+    if (newPassword.length < 6) {
+      setChangeError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangeError('New passwords do not match.');
+      return;
+    }
+
+    setChangeLoading(true);
+    try {
+      const { getFirebaseAuth } = await import('../services/firebase.js');
+      const { signInWithEmailAndPassword, updatePassword } = await import('firebase/auth');
+      const { fbUpdateUserProfile } = await import('../services/firebaseAuth.js');
+
+      const auth = getFirebaseAuth();
+      const userEmail = auth.currentUser?.email;
+      if (!userEmail) throw new Error('No user is currently logged in.');
+
+      // 1. Re-authenticate
+      const cred = await signInWithEmailAndPassword(auth, userEmail, currentPassword);
+      
+      // 2. Update Auth password
+      await updatePassword(cred.user, newPassword);
+
+      // 3. Update Firestore profile
+      await fbUpdateUserProfile(cred.user.uid, { Password: newPassword });
+
+      setChangeSuccess('Password successfully updated!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Password updated successfully!', type: 'success' } }));
+      setTimeout(() => setShowChangePasswordModal(false), 1500);
+    } catch (err) {
+      const map = {
+        'auth/wrong-password': 'Incorrect current password.',
+        'auth/weak-password': 'New password is too weak.',
+      };
+      setChangeError(map[err.code] || err.message);
+    } finally {
+      setChangeLoading(false);
+    }
+  };
 
   const handleCategorySwitch = (catId) => {
     dispatch({ type: 'SET_CATEGORY', payload: catId });
@@ -259,6 +322,21 @@ export default function Sidebar({ isOpen, onClose }) {
                 <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">{user.role || user.Role}</span>
               </div>
             </div>
+            
+            {firebaseEnabled && (
+              <button
+                onClick={() => {
+                  setChangeError('');
+                  setChangeSuccess('');
+                  setShowChangePasswordModal(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-50 transition-all duration-200 font-medium mb-1"
+              >
+                <Key className="w-5 h-5" />
+                <span>Change Password</span>
+              </button>
+            )}
+
             <button
               onClick={logout}
               className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-red-600 hover:bg-red-50 transition-all duration-200 font-medium"
@@ -269,6 +347,123 @@ export default function Sidebar({ isOpen, onClose }) {
           </div>
         )}
       </aside>
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 z-[21000] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
+            <button
+              onClick={() => setShowChangePasswordModal(false)}
+              className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center pb-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mb-3">
+                <Key className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-800">Change Password</h3>
+              <p className="text-xs text-slate-500 mt-1">Update your Firebase account password. Your new password will be synced to the database.</p>
+            </div>
+
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+              {changeError && (
+                <div className="flex items-center gap-2.5 p-3 bg-red-50 border border-red-100 rounded-xl">
+                  <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
+                  <p className="text-xs text-red-600 font-medium">{changeError}</p>
+                </div>
+              )}
+              {changeSuccess && (
+                <div className="flex items-center gap-2.5 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                  <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <p className="text-xs text-emerald-600 font-medium">{changeSuccess}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Current Password</label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPassword ? "text" : "password"}
+                    required
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 text-sm pr-10"
+                    placeholder="Enter current password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">New Password (min 6 chars)</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    required
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 text-sm pr-10"
+                    placeholder="Enter new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Confirm New Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 text-sm pr-10"
+                    placeholder="Confirm new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePasswordModal(false)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={changeLoading}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition"
+                >
+                  {changeLoading ? 'Updating...' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

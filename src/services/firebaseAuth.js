@@ -42,6 +42,7 @@ async function createUserProfile(uid, profileData) {
   const record = {
     ID: uid,
     Username: profileData.email,
+    Password: profileData.password || '',
     Name: profileData.name || profileData.displayName || profileData.email,
     Role: profileData.role || (autoAdmin ? 'Admin' : 'User'),
     IsActive: true,
@@ -101,7 +102,7 @@ export async function fbRegisterUser(email, password, profileData = {}) {
     const tempAuth = getFirebaseAuthInstance(tempApp);
 
     const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
-    const profile = await createUserProfile(cred.user.uid, { email, ...profileData });
+    const profile = await createUserProfile(cred.user.uid, { email, password, ...profileData });
     
     try {
       await tempApp.delete();
@@ -169,8 +170,7 @@ export async function fbGetAllUsers() {
   const snap = await getDocs(collection(db, COLLECTIONS.users));
   return snap.docs.map(d => {
     const data = d.data();
-    const { Password, ...safe } = data;
-    return { uid: d.id, ...safe };
+    return { uid: d.id, ...data };
   });
 }
 

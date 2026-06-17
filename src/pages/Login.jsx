@@ -1,16 +1,26 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAppState } from '../hooks/useAppState.jsx';
-import { Lock, User, Key, Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Lock, User, Key, Eye, EyeOff, AlertCircle, ShieldCheck, Mail, X } from 'lucide-react';
+import { fbResetPassword } from '../services/firebaseAuth.js';
 
 export default function Login() {
   const { login } = useAuth();
-  const { updateSettings } = useAppState();
+  const { state, updateSettings } = useAppState();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Forgot Password modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+
+  const firebaseEnabled = !!state.settings?.firebaseEnabled;
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -23,19 +33,38 @@ export default function Login() {
       setError(result.message || 'Login failed. Please check your credentials.');
       setIsLoading(false);
     }
-    // If successful, the App layout will automatically unmount this component based on auth state
   };
 
   const handleResetSettings = () => {
     if (window.confirm('Reset server connection settings? This will log you out.')) {
-       updateSettings({
-         scriptUrl: '',
-         sheetId: '',
-         folderId: '',
-         firebaseEnabled: false,
-         firebaseConfig: { apiKey: '', projectId: '', appId: '', measurementId: '' }
-       });
-     }
+      localStorage.removeItem('appSettings');
+      window.location.reload();
+    }
+  };
+
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      setForgotError('Please enter your email address.');
+      return;
+    }
+    setForgotError('');
+    setForgotSuccess('');
+    setForgotLoading(true);
+
+    try {
+      const res = await fbResetPassword(forgotEmail.trim());
+      if (res.success) {
+        setForgotSuccess('Password reset link sent! Please check your email inbox.');
+        setForgotEmail('');
+      } else {
+        setForgotError(res.message || 'Failed to send reset email.');
+      }
+    } catch (err) {
+      setForgotError(err.message || 'An error occurred.');
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   return (
@@ -75,7 +104,22 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Password</label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-semibold text-slate-700">Password</label>
+              {firebaseEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotError('');
+                    setForgotSuccess('');
+                    setShowForgotModal(true);
+                  }}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold focus:outline-none"
+                >
+                  Forgot Password?
+                </button>
+              )}
+            </div>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
                 <Key className="w-5 h-5" />
@@ -122,6 +166,72 @@ export default function Login() {
           </p>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-[21000] flex items-center justify-center bg-black/60 p-4 animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
+            <button
+              onClick={() => setShowForgotModal(false)}
+              className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="text-center pb-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mb-3">
+                <Mail className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-800">Forgot Password</h3>
+              <p className="text-xs text-slate-500 mt-1">Enter your registered email address below, and we'll send you a password reset link.</p>
+            </div>
+
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+              {forgotError && (
+                <div className="flex items-center gap-2.5 p-3 bg-red-50 border border-red-100 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                  <p className="text-xs text-red-600 font-medium">{forgotError}</p>
+                </div>
+              )}
+              {forgotSuccess && (
+                <div className="flex items-center gap-2.5 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <p className="text-xs text-emerald-600 font-medium">{forgotSuccess}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 text-sm"
+                  placeholder="e.g. user@example.com"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition"
+                >
+                  {forgotLoading ? 'Sending...' : 'Send Reset Link'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

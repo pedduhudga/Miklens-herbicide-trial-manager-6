@@ -58,6 +58,7 @@ export default function UserManagement({ onMenuClick }) {
       const mapped = list.map(u => ({
         id: u.uid || u.ID,
         username: u.Username || u.username,
+        password: u.Password || u.password || '••••••',
         role: String(u.Role || u.role || 'user').toLowerCase(),
         disabled: u.IsActive === false || u.disabled === true,
         categoryAccess: u.categoryAccess || { ...DEFAULT_CATEGORY_ACCESS },
@@ -189,7 +190,8 @@ export default function UserManagement({ onMenuClick }) {
             categoryAccess: profileData.categoryAccess,
             tabPermissions: profileData.tabPermissions,
             viewableUsers: form.viewableUsers || [],
-            allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false
+            allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false,
+            ...(form.password.trim() ? { Password: form.password.trim() } : {})
           });
           if (res.success) {
             toast('User updated');
@@ -366,7 +368,7 @@ export default function UserManagement({ onMenuClick }) {
             <thead className="bg-slate-50 border-b">
               <tr>
                 <th className="px-6 py-4 font-semibold text-slate-700">User</th>
-                {!firebaseEnabled && <th className="px-6 py-4 font-semibold text-slate-700">Password</th>}
+                <th className="px-6 py-4 font-semibold text-slate-700">Password</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Role</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                 <th className="px-6 py-4 font-semibold text-slate-700 text-right">Actions</th>
@@ -386,11 +388,9 @@ export default function UserManagement({ onMenuClick }) {
                       </div>
                     </div>
                   </td>
-                  {!firebaseEnabled && (
-                    <td className="px-6 py-4 font-mono text-xs text-slate-600">
-                      {u.password || '••••••'}
-                    </td>
-                  )}
+                  <td className="px-6 py-4 font-mono text-xs text-slate-600">
+                    {u.password || '••••••'}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${
                       u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
@@ -426,7 +426,7 @@ export default function UserManagement({ onMenuClick }) {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={firebaseEnabled ? 4 : 5} className="text-center py-10 text-slate-400">
+                  <td colSpan={5} className="text-center py-10 text-slate-400">
                     <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p className="text-sm">{search ? 'No users match your search' : 'No users found'}</p>
                   </td>

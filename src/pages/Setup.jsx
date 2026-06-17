@@ -27,6 +27,22 @@ export default function Setup({ onComplete }) {
   const [sdkPaste, setSdkPaste] = useState('');
   const [pasteSuccess, setPasteSuccess] = useState(false);
 
+  const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+  const hasDefaults = !!(envApiKey && envProjectId);
+
+  const handleRestoreDefaults = () => {
+    setFbApiKey(envApiKey || '');
+    setFbAuthDomain(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (envProjectId ? `${envProjectId}.firebaseapp.com` : ''));
+    setFbProjectId(envProjectId || '');
+    setFbStorageBucket(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (envProjectId ? `${envProjectId}.appspot.com` : ''));
+    setFbMessagingSenderId(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '');
+    setFbAppId(import.meta.env.VITE_FIREBASE_APP_ID || '');
+    setFolderId('14UTh_QWhCRoaQ0JvfKeg7LZvOGZRF_rT');
+    setMode('firebase');
+    setPasteSuccess(false);
+  };
+
   const handleSdkPaste = (text) => {
     setSdkPaste(text);
     setPasteSuccess(false);
@@ -209,6 +225,16 @@ export default function Setup({ onComplete }) {
           </div>
 
           {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}
+
+          {hasDefaults && (
+            <button
+              type="button"
+              onClick={handleRestoreDefaults}
+              className="w-full py-2.5 rounded-xl border-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-bold text-sm transition"
+            >
+              Restore Default Settings
+            </button>
+          )}
 
           <button type="submit"
             className={`w-full py-3 rounded-xl text-white font-semibold text-sm shadow-lg transition ${mode === 'firebase' ? 'bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700' : 'bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800'}`}>
