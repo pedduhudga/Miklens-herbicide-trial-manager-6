@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import QRCodeLib from 'qrcode';
-import { jStat } from 'jstat';
+import jStat from 'jstat';
 import { useAppState } from '../hooks/useAppState.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import TopBar from '../components/TopBar.jsx';

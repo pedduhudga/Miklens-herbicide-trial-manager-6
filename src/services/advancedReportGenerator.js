@@ -5,7 +5,7 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import Chart from 'chart.js/auto';
-import { jStat } from 'jstat';
+import jStat from 'jstat';
 import { getCategoryConfig } from '../utils/categoryConfig.js';
 import { getAPIKeys, generateTextWithAI } from './multiProviderAI.js';
 
