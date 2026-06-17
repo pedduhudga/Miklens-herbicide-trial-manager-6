@@ -6,7 +6,7 @@ import { fbResetPassword } from '../services/firebaseAuth.js';
 
 export default function Login() {
   const { login } = useAuth();
-  const { state, updateSettings } = useAppState();
+  const { state, dispatch } = useAppState();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -37,8 +37,7 @@ export default function Login() {
 
   const handleResetSettings = () => {
     if (window.confirm('Reset server connection settings? This will log you out.')) {
-      localStorage.removeItem('appSettings');
-      window.location.reload();
+      dispatch({ type: 'RESET_SETTINGS' });
     }
   };
 

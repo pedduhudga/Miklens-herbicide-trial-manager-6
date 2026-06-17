@@ -99,6 +99,36 @@ function appReducer(state, action) {
       localStorage.setItem('appSettings', JSON.stringify(newSettings));
       return { ...state, settings: newSettings };
     }
+    case 'RESET_SETTINGS': {
+      localStorage.removeItem('appSettings');
+      localStorage.removeItem('appAuth');
+      const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+      const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+      let defaultSettings = { ...initialState.settings };
+      if (envApiKey && envProjectId) {
+        defaultSettings = {
+          ...initialState.settings,
+          firebaseEnabled: true,
+          firebaseConfig: {
+            apiKey: envApiKey,
+            authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || `${envProjectId}.firebaseapp.com`,
+            projectId: envProjectId,
+            storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || `${envProjectId}.appspot.com`,
+            messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+            appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+          },
+          folderId: '14UTh_QWhCRoaQ0JvfKeg7LZvOGZRF_rT',
+          sheetMirrorEnabled: true
+        };
+        localStorage.setItem('appSettings', JSON.stringify(defaultSettings));
+      }
+      return {
+        ...state,
+        settings: defaultSettings,
+        auth: { user: null, token: null },
+        hasLoadedInitialData: false
+      };
+    }
     case 'SET_AUTH': {
       const authState = { ...state.auth, ...action.payload };
       localStorage.setItem('appAuth', JSON.stringify(authState));
