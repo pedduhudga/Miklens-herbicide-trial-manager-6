@@ -2072,44 +2072,54 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
             }
           });
 
-          // 2. Override computed styles that resolve to oklch on cloned elements
-          const container = clonedDoc.getElementById('greenhouse-layout-container');
-          if (container) {
-            const allElements = container.getElementsByTagName('*');
-            for (let i = 0; i < allElements.length; i++) {
-              const el = allElements[i];
-              // Traverse inline styles or computed styles
-              ['backgroundColor', 'borderColor', 'color'].forEach(prop => {
+          // 2. Override computed styles that resolve to oklch across ALL elements in the cloned document tree
+          const targets = [
+            clonedDoc.documentElement,
+            clonedDoc.body,
+            ...Array.from(clonedDoc.querySelectorAll('*'))
+          ];
+          
+          targets.forEach(el => {
+            if (!el) return;
+            // Scan all possible styling properties that might have oklch
+            ['backgroundColor', 'borderColor', 'color', 'outlineColor', 'stroke', 'fill'].forEach(prop => {
+              try {
+                // Get the computed style or inline style value
                 const val = el.style[prop] || window.getComputedStyle(el)[prop];
                 if (val && val.includes('oklch')) {
-                  // Fallback values mapping standard tailwind green/sky/amber colors
+                  const classNameStr = String(el.className || '');
+                  // Fallback values mapping standard colors
                   if (prop === 'backgroundColor') {
-                    if (el.className.includes('bg-emerald')) el.style.backgroundColor = 'rgb(209, 250, 229)';
-                    else if (el.className.includes('bg-sky')) el.style.backgroundColor = 'rgb(224, 242, 254)';
-                    else if (el.className.includes('bg-amber')) el.style.backgroundColor = 'rgb(254, 243, 199)';
-                    else if (el.className.includes('bg-purple')) el.style.backgroundColor = 'rgb(243, 232, 255)';
-                    else if (el.className.includes('bg-slate')) el.style.backgroundColor = 'rgb(241, 245, 249)';
-                    else if (el.className.includes('bg-red-50')) el.style.backgroundColor = 'rgb(254, 242, 242)';
-                    else el.style.backgroundColor = 'rgba(255, 255, 255, 1)';
+                    if (classNameStr.includes('bg-emerald')) el.style.backgroundColor = 'rgb(209, 250, 229)';
+                    else if (classNameStr.includes('bg-sky')) el.style.backgroundColor = 'rgb(224, 242, 254)';
+                    else if (classNameStr.includes('bg-amber')) el.style.backgroundColor = 'rgb(254, 243, 199)';
+                    else if (classNameStr.includes('bg-purple')) el.style.backgroundColor = 'rgb(243, 232, 255)';
+                    else if (classNameStr.includes('bg-slate')) el.style.backgroundColor = 'rgb(241, 245, 249)';
+                    else if (classNameStr.includes('bg-red-50')) el.style.backgroundColor = 'rgb(254, 242, 242)';
+                    else el.style.backgroundColor = 'rgba(255, 255, 255, 0)'; // default transparent/white
                   } else if (prop === 'borderColor') {
-                    if (el.className.includes('border-emerald')) el.style.borderColor = 'rgb(110, 231, 183)';
-                    else if (el.className.includes('border-sky')) el.style.borderColor = 'rgb(125, 211, 252)';
-                    else if (el.className.includes('border-amber')) el.style.borderColor = 'rgb(252, 211, 77)';
-                    else if (el.className.includes('border-purple')) el.style.borderColor = 'rgb(216, 180, 254)';
-                    else if (el.className.includes('border-red-100')) el.style.borderColor = 'rgb(254, 226, 226)';
+                    if (classNameStr.includes('border-emerald')) el.style.borderColor = 'rgb(110, 231, 183)';
+                    else if (classNameStr.includes('border-sky')) el.style.borderColor = 'rgb(125, 211, 252)';
+                    else if (classNameStr.includes('border-amber')) el.style.borderColor = 'rgb(252, 211, 77)';
+                    else if (classNameStr.includes('border-purple')) el.style.borderColor = 'rgb(216, 180, 254)';
+                    else if (classNameStr.includes('border-red-100')) el.style.borderColor = 'rgb(254, 226, 226)';
                     else el.style.borderColor = 'rgb(226, 232, 240)';
                   } else if (prop === 'color') {
-                    if (el.className.includes('text-emerald')) el.style.color = 'rgb(4, 120, 87)';
-                    else if (el.className.includes('text-sky')) el.style.color = 'rgb(3, 105, 161)';
-                    else if (el.className.includes('text-amber')) el.style.color = 'rgb(180, 83, 9)';
-                    else if (el.className.includes('text-purple')) el.style.color = 'rgb(109, 40, 217)';
-                    else if (el.className.includes('text-red')) el.style.color = 'rgb(220, 38, 38)';
+                    if (classNameStr.includes('text-emerald')) el.style.color = 'rgb(4, 120, 87)';
+                    else if (classNameStr.includes('text-sky')) el.style.color = 'rgb(3, 105, 161)';
+                    else if (classNameStr.includes('text-amber')) el.style.color = 'rgb(180, 83, 9)';
+                    else if (classNameStr.includes('text-purple')) el.style.color = 'rgb(109, 40, 217)';
+                    else if (classNameStr.includes('text-red')) el.style.color = 'rgb(220, 38, 38)';
                     else el.style.color = 'rgb(51, 65, 85)';
+                  } else {
+                    el.style[prop] = 'rgba(0,0,0,0)';
                   }
                 }
-              });
-            }
-          }
+              } catch (e) {
+                // Ignore any issues reading properties
+              }
+            });
+          });
         }
       });
 
