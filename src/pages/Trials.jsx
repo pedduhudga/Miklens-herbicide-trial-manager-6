@@ -4863,7 +4863,11 @@ If none are present, write "None".`;
                                         <span className="text-slate-600 truncate flex-1">{wd.species || 'Unknown'}</span>
                                         <div className="flex gap-1 shrink-0">
                                           {wd.growthStage && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">{wd.growthStage}</span>}
-                                          {wd.status && <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_CLS[wd.status] || 'bg-slate-100 text-slate-600'}`}>{wd.status}</span>}
+                                          {wd.status && (
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_CLS[wd.status === 'Unaffected' && activeCategory !== 'herbicide' ? 'Healthy' : wd.status] || 'bg-slate-100 text-slate-600'}`}>
+                                              {wd.status === 'Unaffected' && activeCategory !== 'herbicide' ? 'Healthy' : wd.status}
+                                            </span>
+                                          )}
                                         </div>
                                         <span className="font-bold text-slate-800 shrink-0">{wd.cover}%</span>
                                       </div>
@@ -5009,7 +5013,7 @@ If none are present, write "None".`;
                                 )}
                               </div>
                               {!isViewer && (
-                                <div className="absolute top-1 right-1 flex gap-1">
+                                <div className="absolute top-1 right-1 z-20 flex gap-1">
                                   <button
                                     onClick={() => handleAnalyzeSinglePhoto(src, photo.date)}
                                     disabled={!!aiGenRunning}
@@ -6097,7 +6101,8 @@ If none are present, write "None".`;
                             {targets.map((t, tIdx) => {
                               const name = t.name || t.species || 'Unknown';
                               const value = t.value != null ? t.value : (t.cover != null ? t.cover : '-');
-                              const status = t.status || 'Healthy';
+                              const rawStatus = t.status || 'Healthy';
+                              const status = rawStatus === 'Unaffected' && activeCategory !== 'herbicide' ? 'Healthy' : rawStatus;
                               const notes = t.notes || '';
                               return (
                                 <tr key={tIdx}>
