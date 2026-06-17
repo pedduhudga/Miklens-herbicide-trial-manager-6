@@ -4,3 +4,6 @@
 ## 2024-06-12 - Optimizing Trials List Search Performance
 **Learning:** Similar to the global search page, applying `useDeferredValue` to text inputs that filter large datasets prevents main thread blockage and ensures smooth user typing experience.
 **Action:** Used `useDeferredValue` on the `search` input in `Trials.jsx`.
+## 2024-06-17 - Optimizing Date Formatting Loops
+**Learning:** `Date.prototype.toLocaleString()` is extremely slow because it instantiates a new `Intl.DateTimeFormat` object under the hood on every call. When iterating over large arrays (e.g., thousands of trials) inside `useMemo` hooks, calling `toLocaleString()` on each item significantly blocks the main thread.
+**Action:** Always instantiate `new Intl.DateTimeFormat()` once outside the loop and reuse its `.format(date)` method, or use simple string manipulation (e.g., slicing ISO strings) for formatting timestamps when localization is not strictly required.

@@ -102,6 +102,7 @@ export default function Dashboard({ onMenuClick }) {
     trials.forEach(t => {
       const raw = t.Date || t.CreatedAt;
       if (!raw) return;
+
       const d = new Date(raw);
       if (isNaN(d)) return;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

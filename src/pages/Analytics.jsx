@@ -44,15 +44,18 @@ export default function Analytics({ onMenuClick }) {
   const trialsByMonth = useMemo(() => {
     const months = {};
     const now = new Date();
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'short', year: '2-digit' });
+
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+      const key = formatter.format(d);
       months[key] = 0;
     }
     trials.forEach(t => {
       if (!t.Date) return;
       const d = new Date(t.Date);
-      const key = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+      if (isNaN(d)) return;
+      const key = formatter.format(d);
       if (key in months) months[key]++;
     });
     return months;
