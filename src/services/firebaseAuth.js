@@ -11,7 +11,7 @@ import {
   sendPasswordResetEmail,
   getAuth as getFirebaseAuthInstance,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, getDocs, query, where } from 'firebase/firestore';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirebaseAuth, getFirebaseDB, COLLECTIONS } from './firebase.js';
 import { DEFAULT_CATEGORY_ACCESS } from '../utils/categoryConfig.js';
@@ -129,11 +129,34 @@ export async function fbLogout() {
 
 export async function fbResetPassword(email) {
   try {
+    const db = getFirebaseDB();
+    const emailLower = email.toLowerCase().trim();
+    let exists = false;
+    try {
+      const q = query(collection(db, COLLECTIONS.users), where("Username", "==", emailLower));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        exists = true;
+      }
+    } catch (fsErr) {
+      console.warn('[Firebase] Firestore check failed (likely security rules):', fsErr);
+      // Fallback: assume user exists and let Firebase Auth attempt sending reset link
+      exists = true;
+    }
+
+    if (!exists) {
+      return { success: false, message: 'No account found with that email address.' };
+    }
+
     const auth = getFirebaseAuth();
-    await sendPasswordResetEmail(auth, email);
+    await sendPasswordResetEmail(auth, emailLower);
     return { success: true };
   } catch (err) {
-    return { success: false, message: err.message };
+    const map = {
+      'auth/user-not-found': 'No account found with that email address.',
+      'auth/invalid-email': 'Invalid email address.',
+    };
+    return { success: false, message: map[err.code] || err.message };
   }
 }
 
