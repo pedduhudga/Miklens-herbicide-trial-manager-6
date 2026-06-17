@@ -144,6 +144,34 @@ export function AppStateProvider({ children }) {
             console.error('[Firebase] Auto-init failed:', fbErr.message);
           }
         }
+      } else {
+        // NO LOCAL SETTINGS: Auto-initialize using environment variables if present
+        const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+        const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+        if (envApiKey && envProjectId) {
+          const defaultSettings = {
+            ...initialState.settings,
+            firebaseEnabled: true,
+            firebaseConfig: {
+              apiKey: envApiKey,
+              authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || `${envProjectId}.firebaseapp.com`,
+              projectId: envProjectId,
+              storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || `${envProjectId}.appspot.com`,
+              messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+              appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+            },
+            folderId: '14UTh_QWhCRoaQ0JvfKeg7LZvOGZRF_rT',
+            sheetMirrorEnabled: true
+          };
+          localStorage.setItem('appSettings', JSON.stringify(defaultSettings));
+          dispatch({ type: 'SET_STATE', payload: { settings: defaultSettings } });
+          try {
+            initFirebase(defaultSettings.firebaseConfig);
+            console.log('[Firebase] Auto-initialized from Environment Variables.');
+          } catch (fbErr) {
+            console.error('[Firebase] Auto-init from Env failed:', fbErr.message);
+          }
+        }
       }
 
       const savedSyncQueue = localStorage.getItem('syncQueue');
