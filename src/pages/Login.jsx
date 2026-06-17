@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAppState } from '../hooks/useAppState.jsx';
-import { Lock, User, Key, Eye, EyeOff, AlertCircle, ShieldCheck, Mail, X, Sprout } from 'lucide-react';
+import { Lock, User, Key, Eye, EyeOff, AlertCircle, ShieldCheck, Mail, X, Sprout, ArrowRight, HelpCircle } from 'lucide-react';
 import { fbResetPassword } from '../services/firebaseAuth.js';
 
 export default function Login() {
@@ -67,122 +67,217 @@ export default function Login() {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950 flex items-center justify-center z-[20000] overflow-hidden">
-      {/* Decorative background glow blobs */}
-      <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/15 rounded-full blur-[80px] animate-pulse pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-96 h-96 bg-teal-500/10 rounded-full blur-[100px] animate-pulse pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-600/5 rounded-full blur-[120px] pointer-events-none" />
+    <div className="fixed inset-0 bg-[#020617] flex z-[20000] overflow-hidden text-slate-100 font-sans">
+      
+      {/* Top right "Need Help" badge */}
+      <div className="absolute top-6 right-6 z-30">
+        <a 
+          href="mailto:support@miklens.com" 
+          className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition text-xs font-semibold text-slate-300"
+        >
+          <HelpCircle className="w-4 h-4 text-emerald-400" />
+          <span>Need help?</span>
+        </a>
+      </div>
 
-      {/* Main glassmorphism card */}
-      <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-3xl shadow-2xl p-8 w-full max-w-md mx-4 relative z-10 animate-[modalPopIn_0.4s_cubic-bezier(0.16,1,0.3,1)]">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 mb-4 shadow-lg shadow-emerald-500/20">
-            <Sprout className="w-9 h-9 animate-[bounce_3s_infinite]" />
+      {/* Left Section - Graphic & Highlights (Hidden on Mobile) */}
+      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-16">
+        {/* Background Image */}
+        <img
+          src="/farm-bg.jpg"
+          alt="Herbicide Trial Field"
+          className="absolute inset-0 w-full h-full object-cover opacity-25"
+        />
+
+        {/* Ambient Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/90 to-transparent"></div>
+
+        {/* Top Branding Logo */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+            <Sprout className="w-5 h-5 text-emerald-400" />
           </div>
-          <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-300">
-            Welcome Back
-          </h2>
-          <p className="text-slate-400 text-sm mt-2 font-medium">
-            to <span className="text-emerald-400 font-semibold">Miklens Trial Manager</span>
-          </p>
+          <div>
+            <h2 className="font-bold text-lg leading-tight tracking-wide">Miklens</h2>
+            <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">Bio Pvt. Ltd.</p>
+          </div>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
-          {error && (
-            <div className="flex items-center gap-3 p-4 bg-red-950/40 border border-red-800/50 rounded-2xl mb-6">
-              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-300 font-medium">{error}</p>
-            </div>
-          )}
+        {/* Main Title & Features */}
+        <div className="relative z-10 my-auto max-w-lg">
+          <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+            Advancing Agricultural Research
+          </span>
+          <h1 className="text-5xl font-extrabold leading-tight text-white mt-6">
+            Miklens Herbicide <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
+              Trial Manager
+            </span>
+          </h1>
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Username</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
-                <User className="w-5 h-5" />
-              </span>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-100 placeholder-slate-600 sm:text-sm transition-all outline-none focus:bg-slate-950"
-                placeholder="Type your username"
-              />
+          <p className="mt-4 text-slate-400 text-lg leading-relaxed">
+            Smart Trial Management. Accurate Results. Better Tomorrow.
+          </p>
+
+          <div className="mt-10 space-y-6">
+            <FeatureItem 
+              title="Field Trial Management" 
+              description="Plan, execute and monitor trials seamlessly" 
+            />
+            <FeatureItem 
+              title="Real-time Analytics" 
+              description="Get real-time insights and advanced reports" 
+            />
+            <FeatureItem 
+              title="Secure & Reliable" 
+              description="Enterprise-grade security for your data" 
+            />
+          </div>
+        </div>
+
+        {/* Bottom Banner */}
+        <div className="relative z-10 flex items-center gap-2 text-xs text-slate-500 bg-white/5 border border-white/5 px-4 py-2.5 rounded-xl w-fit">
+          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          <span>Trusted by Researchers. Powered by Innovation.</span>
+        </div>
+      </div>
+
+      {/* Right Section - Login Card Container */}
+      <div className="flex-1 flex flex-col justify-between items-center p-6 lg:p-12 relative overflow-hidden">
+        
+        {/* Background Ambient Glows */}
+        <div className="absolute top-20 left-20 w-96 h-96 bg-emerald-500/10 blur-[150px] rounded-full pointer-events-none"></div>
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-cyan-500/10 blur-[150px] rounded-full pointer-events-none"></div>
+
+        {/* Empty spacer for alignment */}
+        <div className="hidden lg:block h-6"></div>
+
+        {/* Main Login Card */}
+        <div className="w-full max-w-lg backdrop-blur-xl bg-white/[0.03] border border-white/10 rounded-[32px] shadow-[0_0_50px_rgba(16,185,129,0.08)] p-8 lg:p-10 relative z-10 my-auto">
+          
+          {/* Circular Icon Header */}
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 animate-float">
+              <Sprout className="w-10 h-10 text-[#020617]" />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Password</label>
-              {firebaseEnabled && (
+          <h2 className="text-center text-white text-4xl font-bold tracking-tight">
+            Welcome Back
+          </h2>
+
+          <p className="text-center text-slate-400 mt-2 text-sm">
+            Sign in to manage your herbicide trials
+          </p>
+
+          <form onSubmit={handleLogin} className="mt-8 space-y-5">
+            {error && (
+              <div className="flex items-center gap-3 p-4 bg-red-950/40 border border-red-800/50 rounded-2xl">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                <p className="text-sm text-red-300 font-medium">{error}</p>
+              </div>
+            )}
+
+            {/* Email/Username field */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">
+                  <User className="w-5 h-5" />
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  className="w-full h-14 pl-12 pr-5 rounded-2xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
+                  placeholder="pavanbdvt13@gmail.com"
+                />
+              </div>
+            </div>
+
+            {/* Password field */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center px-1">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Password</label>
+                {firebaseEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotError('');
+                      setForgotSuccess('');
+                      setShowForgotModal(true);
+                    }}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold focus:outline-none transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">
+                  <Lock className="w-5 h-5" />
+                </span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full h-14 pl-12 pr-12 rounded-2xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
+                  placeholder="••••••••"
+                />
                 <button
                   type="button"
-                  onClick={() => {
-                    setForgotError('');
-                    setForgotSuccess('');
-                    setShowForgotModal(true);
-                  }}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold focus:outline-none transition-colors"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+                  tabIndex="-1"
                 >
-                  Forgot Password?
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
-              )}
+              </div>
             </div>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
-                <Key className="w-5 h-5" />
-              </span>
-              <input
-                type={showPassword ? "text" : "password"}
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="block w-full pl-11 pr-12 py-3 bg-slate-950/50 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-100 placeholder-slate-600 sm:text-sm transition-all outline-none focus:bg-slate-950"
-                placeholder="••••••••"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
-                tabIndex="-1"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
+
+            {/* Login button */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full h-14 mt-2 rounded-2xl text-base font-semibold text-[#020617] bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span>{isLoading ? 'Signing In...' : 'Sign In'}</span>
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </form>
+
+          {/* Reset Server connection settings button */}
+          <div className="mt-6 pt-5 border-t border-white/5 flex flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={handleResetSettings}
+              className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition-colors"
+            >
+              Reset Server Connection Settings
+            </button>
+            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500/60" />
+              <span>Secure Multi-User Authentication Active</span>
             </div>
           </div>
+        </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-2xl shadow-lg shadow-emerald-950/40 text-base font-bold text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100 cursor-pointer"
-          >
-            {isLoading ? 'Signing In...' : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="mt-8 pt-6 border-t border-slate-800/80 text-center space-y-3">
-          <button
-            type="button"
-            onClick={handleResetSettings}
-            className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition-colors"
-          >
-            Reset Server Connection Settings
-          </button>
-          <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-            <ShieldCheck className="w-4 h-4 text-emerald-500/80" />
-            <span>Secure Multi-User Authentication Active</span>
-          </div>
+        {/* Bottom copyright footer */}
+        <div className="text-center text-xs text-slate-500 mt-6 relative z-10 w-full flex flex-col sm:flex-row justify-between items-center gap-2 px-6">
+          <span>Version 3.0.0</span>
+          <span>© 2026 Miklens Bio Pvt. Ltd. All rights reserved.</span>
         </div>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-[21000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
+          <div className="bg-[#0b1329] border border-white/10 rounded-[32px] shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
             <button
               onClick={() => setShowForgotModal(false)}
-              className="absolute right-4 top-4 p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-200 transition-colors"
+              className="absolute right-4 top-4 p-1.5 hover:bg-white/5 rounded-xl text-slate-400 hover:text-slate-200 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -210,13 +305,13 @@ export default function Login() {
               )}
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Email Address</label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
                 <input
                   type="email"
                   required
                   value={forgotEmail}
                   onChange={e => setForgotEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950/50 border border-slate-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-100 placeholder-slate-600 text-sm transition-all focus:bg-slate-950"
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-100 placeholder:text-slate-600 text-sm transition-all focus:bg-slate-950"
                   placeholder="e.g. user@example.com"
                 />
               </div>
@@ -232,7 +327,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={forgotLoading}
-                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-bold rounded-2xl text-sm disabled:opacity-50 transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-[#020617] font-bold rounded-xl text-sm disabled:opacity-50 transition-all cursor-pointer"
                 >
                   {forgotLoading ? 'Sending...' : 'Send Reset Link'}
                 </button>
@@ -244,4 +339,20 @@ export default function Login() {
     </div>
   );
 }
+
+// Subcomponents
+function FeatureItem({ title, description }) {
+  return (
+    <div className="flex items-start gap-4">
+      <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+        <Sprout className="w-5 h-5 text-emerald-400" />
+      </div>
+      <div>
+        <h3 className="font-semibold text-white text-base leading-snug">{title}</h3>
+        <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+      </div>
+    </div>
+  );
+}
+
 
