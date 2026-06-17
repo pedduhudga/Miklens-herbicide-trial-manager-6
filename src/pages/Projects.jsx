@@ -1779,7 +1779,7 @@ export default function Projects({ onMenuClick }) {
     }
 
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+      <div id="greenhouse-layout-container" className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
         {/* Heatmap Mode Controller */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -1831,9 +1831,20 @@ export default function Projects({ onMenuClick }) {
             <h3 className="font-bold text-slate-800 text-sm">Greenhouse Layout Visualization</h3>
             <p className="text-xs text-slate-400">Interactive 2D pot matrix. Click any pot to enter observation records.</p>
           </div>
-          <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Greenhouse: {potRows} Rows × {potCols} Columns
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadGreenhousePDF}
+              data-pdf-download-btn
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              title="Download full Greenhouse layout visualization as PDF"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PDF</span>
+            </button>
+            <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Greenhouse: {potRows} Rows × {potCols} Columns
+            </div>
           </div>
         </div>
 
@@ -2007,6 +2018,70 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
     } catch (err) {
       console.error(err);
       toast('Failed to save recalculated DAA to database.', 'error');
+    }
+  };
+
+  const handleDownloadGreenhousePDF = async () => {
+    try {
+      const element = document.getElementById('greenhouse-layout-container');
+      if (!element) {
+        toast('Greenhouse layout container not found.', 'error');
+        return;
+      }
+
+      toast('Generating Greenhouse Layout PDF...', 'info');
+
+      // Dynamic imports to prevent bundle bloat and ensure dependency is resolved
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+
+      // Target the scrollable pot matrix container to expand it
+      const scrollContainer = element.querySelector('.overflow-y-auto');
+      const originalMaxHeight = scrollContainer ? scrollContainer.style.maxHeight : '';
+      const originalOverflowY = scrollContainer ? scrollContainer.style.overflowY : '';
+
+      // Temporarily remove max-height and overflow to capture all rows
+      if (scrollContainer) {
+        scrollContainer.style.maxHeight = 'none';
+        scrollContainer.style.overflowY = 'visible';
+      }
+
+      // Render the entire container with html2canvas
+      const canvas = await html2canvas(element, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Hide the Download PDF button in the exported canvas/PDF
+          const downloadBtn = clonedDoc.querySelector('[data-pdf-download-btn]');
+          if (downloadBtn) {
+            downloadBtn.style.display = 'none';
+          }
+        }
+      });
+
+      // Restore original styles
+      if (scrollContainer) {
+        scrollContainer.style.maxHeight = originalMaxHeight;
+        scrollContainer.style.overflowY = originalOverflowY;
+      }
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [canvas.width / 2, canvas.height / 2]
+      });
+
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+      
+      const fileName = `${activeProject?.Name || 'Project'}-greenhouse-layout.pdf`;
+      pdf.save(fileName);
+      toast('Greenhouse layout PDF downloaded successfully!', 'success');
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      toast('Failed to generate PDF. Please try again.', 'error');
     }
   };
 
