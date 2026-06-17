@@ -292,6 +292,7 @@ export default function Trials({ onMenuClick }) {
   const [gridCoverPct, setGridCoverPct] = useState(0);
   const [cameraMode, setCameraMode] = useState('general');
   const fileInputRef = useRef(null);
+  const harvestFileRef = useRef(null);
 
   // --- Cropper ---
   const [cropperOpen, setCropperOpen] = useState(false);
@@ -335,6 +336,30 @@ export default function Trials({ onMenuClick }) {
     state.settings?.cardSize === 'A4' ? 'a4' : state.settings?.cardSize === 'A6' ? 'a6' : 'id-card'
   );
   const bulkQrRef = useRef(null);
+
+  // --- Harvest & Yield ---
+  const [harvestForm, setHarvestForm] = useState({
+    actualFruitCount: '',
+    actualMarketableWeight: '',
+    actualUnmarketableWeight: '',
+    harvestDate: '',
+    notes: '',
+    photos: []
+  });
+
+  useEffect(() => {
+    if (detailTrial) {
+      const data = safeJsonParse(detailTrial.HarvestDataJSON, {});
+      setHarvestForm({
+        actualFruitCount: data.actualFruitCount ?? '',
+        actualMarketableWeight: data.actualMarketableWeight ?? '',
+        actualUnmarketableWeight: data.actualUnmarketableWeight ?? '',
+        harvestDate: data.harvestDate ?? '',
+        notes: data.notes ?? '',
+        photos: data.photos ?? []
+      });
+    }
+  }, [detailTrial]);
 
   // --- Sprayer Calculator & Standardized Autocomplete ---
   const [isSprayCalcOpen, setIsSprayCalcOpen] = useState(false);
@@ -1869,7 +1894,41 @@ export default function Trials({ onMenuClick }) {
     if (!targetTrial) return;
     quickActionTrialRef.current = null;
     setIsCameraOpen(false);
-    openCropperFor(dataUrl, (url) => promptPhotoDate(url, targetTrial));
+    if (cameraMode === 'harvest') {
+      openCropperFor(dataUrl, async (url) => {
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Adding harvest photo...', type: 'info' } }));
+        let finalUrl = url;
+        if (navigator.onLine && getAppState().isOnline !== false) {
+          try {
+            const userName = user?.displayName || user?.email || 'User';
+            const folderPath = [activeCategory, userName, 'Harvest', targetTrial.FormulationName || 'Trial'];
+            const fileName = `harvest_${targetTrial.ID}_${Date.now()}.jpg`;
+            const uploadResult = await uploadPhoto({
+              trialId: targetTrial.ID,
+              fileData: url,
+              mimeType: 'image/jpeg',
+              fileName,
+              isWeed: false,
+              label: 'Harvest Photo',
+              date: new Date().toISOString().split('T')[0],
+              folderPath
+            }, getAppState);
+            if (uploadResult && !uploadResult._errType) {
+              finalUrl = uploadResult.url || uploadResult.fileUrl || url;
+            }
+          } catch (err) {
+            console.warn('Harvest photo upload failed, using local URL:', err.message);
+          }
+        }
+        setHarvestForm(prev => ({
+          ...prev,
+          photos: [...(prev.photos || []), finalUrl]
+        }));
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Harvest photo added successfully!', type: 'success' } }));
+      });
+    } else {
+      openCropperFor(dataUrl, (url) => promptPhotoDate(url, targetTrial));
+    }
   };
 
   const handleFileUpload = async (e) => {
@@ -1880,7 +1939,41 @@ export default function Trials({ onMenuClick }) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       e.target.value = '';
-      openCropperFor(ev.target.result, (url) => promptPhotoDate(url, targetTrial));
+      if (cameraMode === 'harvest') {
+        openCropperFor(ev.target.result, async (url) => {
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Adding harvest photo...', type: 'info' } }));
+          let finalUrl = url;
+          if (navigator.onLine && getAppState().isOnline !== false) {
+            try {
+              const userName = user?.displayName || user?.email || 'User';
+              const folderPath = [activeCategory, userName, 'Harvest', targetTrial.FormulationName || 'Trial'];
+              const fileName = `harvest_${targetTrial.ID}_${Date.now()}.jpg`;
+              const uploadResult = await uploadPhoto({
+                trialId: targetTrial.ID,
+                fileData: url,
+                mimeType: 'image/jpeg',
+                fileName,
+                isWeed: false,
+                label: 'Harvest Photo',
+                date: new Date().toISOString().split('T')[0],
+                folderPath
+              }, getAppState);
+              if (uploadResult && !uploadResult._errType) {
+                finalUrl = uploadResult.url || uploadResult.fileUrl || url;
+              }
+            } catch (err) {
+              console.warn('Harvest photo upload failed, using local URL:', err.message);
+            }
+          }
+          setHarvestForm(prev => ({
+            ...prev,
+            photos: [...(prev.photos || []), finalUrl]
+          }));
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Harvest photo added successfully!', type: 'success' } }));
+        });
+      } else {
+        openCropperFor(ev.target.result, (url) => promptPhotoDate(url, targetTrial));
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -1953,6 +2046,30 @@ export default function Trials({ onMenuClick }) {
     const catConfig = getCategoryConfig(trialCat);
     const efficacyData = validateEfficacyData(safeJsonParse(latestTrial.EfficacyDataJSON, []));
 
+    const getNormalizedTargetName = (name) => {
+      if (!name) return 'Unknown';
+      const clean = name.trim().toLowerCase();
+      if (clean.includes('leafminer') || clean.includes('leaf miner') || clean.includes('leaf mining')) {
+        return 'Leafminer Damage';
+      }
+      if (clean.includes('plant vigor') || clean.includes('general vigor') || clean.includes('visual vigor')) {
+        return 'General Plant Vigor';
+      }
+      if (clean.includes('plant health') || clean.includes('general plant health')) {
+        return 'General Plant Health';
+      }
+      if (clean.includes('leaf health') || clean.includes('general leaf health')) {
+        return 'General Leaf Health';
+      }
+      if (clean.includes('foliage') || clean.includes('general foliage')) {
+        return 'General Foliage';
+      }
+      if (clean.includes('vegetative development') || clean.includes('vegetative growth')) {
+        return 'General Vegetative Development';
+      }
+      return name.replace(/\b\w/g, c => c.toUpperCase());
+    };
+
     // Normalize target details list
     const isHerbicide = trialCat === 'herbicide';
     const aiTargetsList = isHerbicide ? (aiData.weeds || []) : (aiData.targets || []);
@@ -1962,8 +2079,10 @@ export default function Trials({ onMenuClick }) {
       if (!isHerbicide && (rawStatus === 'Unaffected' || !rawStatus)) {
         rawStatus = 'Healthy';
       }
+      const rawSpecies = w.species || w.name || 'Unknown';
+      const cleanSpecies = isHerbicide ? rawSpecies : getNormalizedTargetName(rawSpecies);
       return {
-        species: w.species || w.name || 'Unknown',
+        species: cleanSpecies,
         cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
         status: rawStatus,
         growthStage: String(w.growthStage || '').trim(),
@@ -4504,18 +4623,22 @@ If none are present, write "None".`;
 
             {/* Tabs */}
             <div className="flex border-b bg-white overflow-x-auto">
-              {[['info','Info'],['applications','Applications'],['observations','Observations'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']]
+              {[['info','Info'],['applications','Applications'],['observations','Observations'],['harvest','Harvest & Yield'],['photos','Photos'],['weather','Weather'],['chart','Chart'],['statistics','Statistics'],['qr','QR Code'],['ai','AI Summary'],['export','Export']]
                 .filter(([k]) => k !== 'export' || canDownload)
-                .map(([k, label]) => (
-                <button key={k} onClick={() => setDetailTab(k)}
-                  className={`px-4 py-3 text-sm font-semibold border-b-2 transition
-                    ${detailTab === k ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                  {label}
-                  {k === 'applications' && safeJsonParse(detailTrial.ApplicationLogJSON, []).length > 0 && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 rounded-full">{safeJsonParse(detailTrial.ApplicationLogJSON, []).length}</span>}
-                  {k === 'observations' && detailEfficacy.length > 0 && <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-1.5 rounded-full">{detailEfficacy.length}</span>}
-                  {k === 'photos' && detailPhotos.length > 0 && <span className="ml-1 text-xs bg-blue-100 text-blue-700 px-1.5 rounded-full">{detailPhotos.length}</span>}
-                </button>
-              ))}
+                .map(([k, label]) => {
+                  const harvestPhotos = safeJsonParse(detailTrial.HarvestDataJSON, {}).photos || [];
+                  return (
+                    <button key={k} onClick={() => setDetailTab(k)}
+                      className={`px-4 py-3 text-sm font-semibold border-b-2 transition
+                        ${detailTab === k ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                      {label}
+                      {k === 'applications' && safeJsonParse(detailTrial.ApplicationLogJSON, []).length > 0 && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 rounded-full">{safeJsonParse(detailTrial.ApplicationLogJSON, []).length}</span>}
+                      {k === 'observations' && detailEfficacy.length > 0 && <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-1.5 rounded-full">{detailEfficacy.length}</span>}
+                      {k === 'harvest' && harvestPhotos.length > 0 && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 rounded-full">{harvestPhotos.length}</span>}
+                      {k === 'photos' && detailPhotos.length > 0 && <span className="ml-1 text-xs bg-blue-100 text-blue-700 px-1.5 rounded-full">{detailPhotos.length}</span>}
+                    </button>
+                  );
+                })}
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 pb-24">
@@ -5719,6 +5842,212 @@ If none are present, write "None".`;
                 </div>
               )}
 
+              {/* Harvest & Yield Tab */}
+              {detailTab === 'harvest' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">Harvest & Final Yield Log</h4>
+                      <p className="text-xs text-slate-500">Record final physical harvest yields, weights, and photos.</p>
+                    </div>
+                    {detailTrial.EfficacyDataJSON && safeJsonParse(detailTrial.EfficacyDataJSON, []).some(o => o.fruitCount || o.marketableYield || o.unmarketableYield) && (
+                      <button
+                        onClick={() => {
+                          const obs = safeJsonParse(detailTrial.EfficacyDataJSON, []);
+                          const validCounts = obs.map(o => o.fruitCount).filter(v => typeof v === 'number' && v > 0);
+                          const validMark = obs.map(o => o.marketableYield).filter(v => typeof v === 'number' && v > 0);
+                          const validUnmark = obs.map(o => o.unmarketableYield).filter(v => typeof v === 'number' && v > 0);
+                          
+                          const avgCount = validCounts.length ? Math.round(validCounts.reduce((s,v)=>s+v, 0)/validCounts.length) : '';
+                          const avgMark = validMark.length ? Math.round(validMark.reduce((s,v)=>s+v, 0)/validMark.length) : '';
+                          const avgUnmark = validUnmark.length ? Math.round(validUnmark.reduce((s,v)=>s+v, 0)/validUnmark.length) : '';
+                          
+                          setHarvestForm(prev => ({
+                            ...prev,
+                            actualFruitCount: avgCount,
+                            actualMarketableWeight: avgMark,
+                            actualUnmarketableWeight: avgUnmark,
+                          }));
+                          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Prefilled from AI observation averages!', type: 'success' } }));
+                        }}
+                        className="flex items-center gap-1 text-xs bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg font-bold transition shadow-sm"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Suggest from AI Obs
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Calculations card */}
+                  {(() => {
+                    const totalWeight = (parseFloat(harvestForm.actualMarketableWeight || 0) + parseFloat(harvestForm.actualUnmarketableWeight || 0));
+                    const avgFruitWeight = harvestForm.actualFruitCount > 0 ? (totalWeight / harvestForm.actualFruitCount).toFixed(1) : '—';
+                    const marketableRatio = totalWeight > 0 ? ((parseFloat(harvestForm.actualMarketableWeight || 0) / totalWeight) * 100).toFixed(1) : '—';
+                    return (
+                      <div className="grid grid-cols-3 gap-4 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase">Total Yield</p>
+                          <p className="text-lg font-black text-emerald-700">{totalWeight ? `${totalWeight} g` : '—'}</p>
+                        </div>
+                        <div className="text-center border-x border-slate-200">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase">Avg Fruit Size</p>
+                          <p className="text-lg font-black text-emerald-700">{avgFruitWeight !== '—' ? `${avgFruitWeight} g` : '—'}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase">Marketable %</p>
+                          <p className="text-lg font-black text-emerald-700">{marketableRatio !== '—' ? `${marketableRatio}%` : '—'}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Harvest Date</label>
+                      <input
+                        type="date"
+                        value={harvestForm.harvestDate || ''}
+                        onChange={e => setHarvestForm(prev => ({ ...prev, harvestDate: e.target.value }))}
+                        disabled={isViewer || detailIsCompleted}
+                        className="w-full border rounded-xl px-3.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Fruit Count per Plant</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 45"
+                        value={harvestForm.actualFruitCount || ''}
+                        onChange={e => setHarvestForm(prev => ({ ...prev, actualFruitCount: e.target.value }))}
+                        disabled={isViewer || detailIsCompleted}
+                        className="w-full border rounded-xl px-3.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Marketable Yield (g/plant)</label>
+                      <input
+                        type="number"
+                        placeholder="Pristine fruits > 20g"
+                        value={harvestForm.actualMarketableWeight || ''}
+                        onChange={e => setHarvestForm(prev => ({ ...prev, actualMarketableWeight: e.target.value }))}
+                        disabled={isViewer || detailIsCompleted}
+                        className="w-full border rounded-xl px-3.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Unmarketable Yield (g/plant)</label>
+                      <input
+                        type="number"
+                        placeholder="Cracked/sunburnt/damaged"
+                        value={harvestForm.actualUnmarketableWeight || ''}
+                        onChange={e => setHarvestForm(prev => ({ ...prev, actualUnmarketableWeight: e.target.value }))}
+                        disabled={isViewer || detailIsCompleted}
+                        className="w-full border rounded-xl px-3.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Harvest Notes / Remarks</label>
+                    <textarea
+                      rows="3"
+                      placeholder="Enter fruit grades, damage observations, or yield summaries..."
+                      value={harvestForm.notes || ''}
+                      onChange={e => setHarvestForm(prev => ({ ...prev, notes: e.target.value }))}
+                      disabled={isViewer || detailIsCompleted}
+                      className="w-full border rounded-xl px-3.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    ></textarea>
+                  </div>
+
+                  {/* Harvest Photo Gallery */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Harvest Photos ({(harvestForm.photos || []).length})</label>
+                      {!isViewer && !detailIsCompleted && (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCameraMode('harvest');
+                              harvestFileRef.current?.click();
+                            }}
+                            className="px-2.5 py-1.5 border rounded-lg text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 flex items-center gap-1"
+                          >
+                            <Image className="w-3.5 h-3.5" /> Upload File
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCameraMode('harvest');
+                              setIsCameraOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 border rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-1"
+                          >
+                            <Camera className="w-3.5 h-3.5" /> Camera
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {(harvestForm.photos || []).length > 0 ? (
+                      <div className="grid grid-cols-3 gap-3">
+                        {(harvestForm.photos || []).map((photo, pIdx) => {
+                          const rawSrc = photo.fileData || photo.url || (typeof photo === 'string' ? photo : null);
+                          const driveMatch = typeof rawSrc === 'string' && rawSrc.includes('drive.google.com') && rawSrc.match(/(?:[?&]id=|\/d\/)([a-zA-Z0-9_-]{10,})/);
+                          const thumbnailSrc = driveMatch ? `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w200` : rawSrc;
+                          return (
+                            <div key={pIdx} className="relative group rounded-xl overflow-hidden border bg-slate-50 aspect-video flex items-center justify-center">
+                              <img src={thumbnailSrc} alt={`Harvest photo ${pIdx + 1}`} className="object-cover w-full h-full" />
+                              {!isViewer && !detailIsCompleted && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if(window.confirm('Remove this harvest photo?')) {
+                                      setHarvestForm(prev => ({
+                                        ...prev,
+                                        photos: prev.photos.filter((_, idx) => idx !== pIdx)
+                                      }));
+                                    }
+                                  }}
+                                  className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition shadow"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic py-2">No harvest/yield photos attached yet.</p>
+                    )}
+                  </div>
+
+                  {/* Save button */}
+                  {!isViewer && !detailIsCompleted && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const updated = {
+                          ...detailTrial,
+                          HarvestDataJSON: JSON.stringify(harvestForm)
+                        };
+                        updateState({ trials: trials.map(t => t.ID === updated.ID ? updated : t) });
+                        setActiveTrial(updated);
+                        try {
+                          await updateTrial({ ID: updated.ID, HarvestDataJSON: updated.HarvestDataJSON }, getAppState);
+                          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Harvest & Yield data saved successfully!', type: 'success' } }));
+                        } catch (e) {
+                          window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to save harvest data', type: 'error' } }));
+                        }
+                      }}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                    >
+                      Save Harvest Data
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Weather Tab */}
               {detailTab === 'weather' && (() => {
                 const risks = getClimateRisks(detailTrial.Temperature, detailTrial.Windspeed, detailTrial.Rain);
@@ -6865,6 +7194,7 @@ If none are present, write "None".`;
       />
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+      <input ref={harvestFileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
     </div>
   );
 }

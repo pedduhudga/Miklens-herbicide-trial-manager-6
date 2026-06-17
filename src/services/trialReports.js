@@ -696,6 +696,43 @@ export async function generateComprehensivePdf(trial, options = {}) {
     y = await addPhotoGrid(doc, photos, y, ph, 50, showPhotoDates);
   }
 
+  // Harvest & Yield Report Section
+  const harvest = safeJsonParse(trial.HarvestDataJSON, null);
+  if (harvest && (harvest.actualFruitCount || harvest.actualMarketableWeight || harvest.actualUnmarketableWeight || harvest.notes)) {
+    y = secHeading(doc, '6. Harvest & Yield Report', y, ph);
+    const totalW = (parseFloat(harvest.actualMarketableWeight || 0) + parseFloat(harvest.actualUnmarketableWeight || 0));
+    const avgW = harvest.actualFruitCount > 0 ? (totalW / harvest.actualFruitCount).toFixed(1) : '—';
+    const markPct = totalW > 0 ? ((parseFloat(harvest.actualMarketableWeight || 0) / totalW) * 100).toFixed(1) : '—';
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Metric Parameter', 'Recorded Value']],
+      body: [
+        ['Harvest Date', harvest.harvestDate || '—'],
+        ['Fruit Count per Plant', harvest.actualFruitCount ? String(harvest.actualFruitCount) : '—'],
+        ['Marketable Yield (g/plant)', harvest.actualMarketableWeight ? `${harvest.actualMarketableWeight} g` : '—'],
+        ['Unmarketable Yield (g/plant)', harvest.actualUnmarketableWeight ? `${harvest.actualUnmarketableWeight} g` : '—'],
+        ['Total Yield Weight (g/plant)', totalW ? `${totalW} g` : '—'],
+        ['Average Fruit Weight (g)', avgW !== '—' ? `${avgW} g` : '—'],
+        ['Marketable Percentage (%)', markPct !== '—' ? `${markPct}%` : '—'],
+        ['Remarks / Harvest Notes', harvest.notes || '—']
+      ],
+      headStyles: { fillColor: primaryColor },
+      theme: 'striped',
+      styles: { fontSize: 9 }
+    });
+    y = (doc.lastAutoTable?.finalY ?? y) + 10;
+
+    // Render Harvest Photos if any
+    const harvestPhotos = harvest.photos || [];
+    if (harvestPhotos.length > 0) {
+      if (y + 40 > ph - 20) { doc.addPage(); y = 20; }
+      doc.setFont(undefined, 'bold'); doc.setFontSize(10);
+      doc.text('Harvest Photo Gallery:', 14, y); y += 6;
+      y = await addPhotoGrid(doc, harvestPhotos, y, ph, 40, false);
+    }
+  }
+
   // Target Identification Record Section
   if (withWeeds) y = await addWeedIdSection(doc, weedPhotos, trial, y, ph);
 
@@ -870,6 +907,43 @@ export async function generateScientificReport(trial, options = {}) {
   if (photos.length) {
     y = secHeading(doc, '5. Field Photo Log', y, ph);
     y = await addPhotoGrid(doc, photos, y, ph, 50, showPhotoDates);
+  }
+
+  // Harvest & Yield Report Section
+  const harvest = safeJsonParse(trial.HarvestDataJSON, null);
+  if (harvest && (harvest.actualFruitCount || harvest.actualMarketableWeight || harvest.actualUnmarketableWeight || harvest.notes)) {
+    y = secHeading(doc, '6. Harvest & Yield Report', y, ph);
+    const totalW = (parseFloat(harvest.actualMarketableWeight || 0) + parseFloat(harvest.actualUnmarketableWeight || 0));
+    const avgW = harvest.actualFruitCount > 0 ? (totalW / harvest.actualFruitCount).toFixed(1) : '—';
+    const markPct = totalW > 0 ? ((parseFloat(harvest.actualMarketableWeight || 0) / totalW) * 100).toFixed(1) : '—';
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Metric Parameter', 'Recorded Value']],
+      body: [
+        ['Harvest Date', harvest.harvestDate || '—'],
+        ['Fruit Count per Plant', harvest.actualFruitCount ? String(harvest.actualFruitCount) : '—'],
+        ['Marketable Yield (g/plant)', harvest.actualMarketableWeight ? `${harvest.actualMarketableWeight} g` : '—'],
+        ['Unmarketable Yield (g/plant)', harvest.actualUnmarketableWeight ? `${harvest.actualUnmarketableWeight} g` : '—'],
+        ['Total Yield Weight (g/plant)', totalW ? `${totalW} g` : '—'],
+        ['Average Fruit Weight (g)', avgW !== '—' ? `${avgW} g` : '—'],
+        ['Marketable Percentage (%)', markPct !== '—' ? `${markPct}%` : '—'],
+        ['Remarks / Harvest Notes', harvest.notes || '—']
+      ],
+      headStyles: { fillColor: primaryColor },
+      theme: 'striped',
+      styles: { fontSize: 9 }
+    });
+    y = (doc.lastAutoTable?.finalY ?? y) + 10;
+
+    // Render Harvest Photos if any
+    const harvestPhotos = harvest.photos || [];
+    if (harvestPhotos.length > 0) {
+      if (y + 40 > ph - 20) { doc.addPage(); y = 20; }
+      doc.setFont(undefined, 'bold'); doc.setFontSize(10);
+      doc.text('Harvest Photo Gallery:', 14, y); y += 6;
+      y = await addPhotoGrid(doc, harvestPhotos, y, ph, 40, false);
+    }
   }
 
   // Target Identification Record Section
