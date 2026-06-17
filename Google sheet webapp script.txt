@@ -515,7 +515,9 @@ function updateRecord(ss, sheetName, payload, auth) {
     const sheet = getSheet(ss, sheetName);
     const id = payload.ID || payload.id;
     const rowIndex = findRowById(sheet, id);
-    if (rowIndex === -1) throw new Error(`Record with ID ${id} not found in ${sheetName}`);
+    if (rowIndex === -1) {
+        return addRecord(ss, sheetName, payload, auth);
+    }
     const headers = getHeaders(sheet);
     const range = sheet.getRange(rowIndex, 1, 1, headers.length);
     const minValues = range.getValues()[0];
