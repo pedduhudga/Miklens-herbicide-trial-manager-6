@@ -10,5 +10,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-  }
+  },
+  optimizeDeps: {
+    include: [
+      'jstat',
+      'qrcode',
+      'jspdf',
+      'jspdf-autotable',
+      'pptxgenjs',
+      'exceljs',
+      'file-saver',
+    ],
+  },
 })
