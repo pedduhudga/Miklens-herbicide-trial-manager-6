@@ -564,7 +564,7 @@ export async function analyzePhotosBatch(items, onProgress, onResult) {
   const delay = ms => new Promise(res => setTimeout(res, ms));
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    if (onProgress) onProgress({ current: i + 1, total: items.length, trialId: item.trialId, message: `Analyzing photo ${i + 1}/${items.length}` });
+    if (onProgress) onProgress({ current: i + 1, total: items.length, trialId: item.trialId, imageData: item.imageData, message: `Analyzing photo ${i + 1}/${items.length}` });
 
     const result = await analyzePhoto(item.imageData, {
       treatment: item.treatment,
@@ -572,11 +572,13 @@ export async function analyzePhotosBatch(items, onProgress, onResult) {
       rep: item.rep,
       category: item.category,
     }, (msg) => {
-      if (onProgress) onProgress({ current: i + 1, total: items.length, trialId: item.trialId, message: msg });
+      if (onProgress) onProgress({ current: i + 1, total: items.length, trialId: item.trialId, imageData: item.imageData, message: msg });
     });
 
     if (result.success && result.data) {
-      if (onResult) await onResult({ trialId: item.trialId, daa: item.daa, data: result.data, photoDate: item.photoDate });
+      if (onResult) await onResult({ trialId: item.trialId, daa: item.daa, data: result.data, photoDate: item.photoDate, imageData: item.imageData, success: true });
+    } else {
+      if (onResult) await onResult({ trialId: item.trialId, daa: item.daa, data: null, photoDate: item.photoDate, imageData: item.imageData, success: false, error: result.error || 'AI analysis skipped' });
     }
 
     if (i < items.length - 1) await delay(4000);

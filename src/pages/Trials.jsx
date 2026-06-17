@@ -1957,13 +1957,19 @@ export default function Trials({ onMenuClick }) {
     const isHerbicide = trialCat === 'herbicide';
     const aiTargetsList = isHerbicide ? (aiData.weeds || []) : (aiData.targets || []);
     
-    const normalizedWeeds = aiTargetsList.map(w => ({
-      species: w.species || w.name || 'Unknown',
-      cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
-      status: String(w.status || '').trim(),
-      growthStage: String(w.growthStage || '').trim(),
-      notes: String(w.notes || '').trim()
-    }));
+    const normalizedWeeds = aiTargetsList.map(w => {
+      let rawStatus = String(w.status || '').trim();
+      if (!isHerbicide && (rawStatus === 'Unaffected' || !rawStatus)) {
+        rawStatus = 'Healthy';
+      }
+      return {
+        species: w.species || w.name || 'Unknown',
+        cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
+        status: rawStatus,
+        growthStage: String(w.growthStage || '').trim(),
+        notes: String(w.notes || '').trim()
+      };
+    });
 
     // Calculate primary values
     const primaryObsField = getPrimaryObservationField(trialCat);
@@ -2204,13 +2210,21 @@ export default function Trials({ onMenuClick }) {
 
     await analyzePhotosBatch(
       photosToAnalyze,
-      ({ current, total, trialId, message }) => {
+      ({ current, total, trialId, imageData, message }) => {
         setAiBatchProgress({ current, total, message });
+        if (trialId && imageData) {
+          updatePhotoAiStatus(trialId, imageData, 'processing');
+        }
       },
-      async ({ trialId, daa, data, photoDate }) => {
+      async ({ trialId, daa, data, photoDate, imageData, success, error }) => {
         const trial = getAppState().trials.find(t => t.ID === trialId);
         if (trial) {
-          await createObservationFromAI(trial, daa, data, photoDate);
+          if (success && data) {
+            await createObservationFromAI(trial, daa, data, photoDate, imageData);
+            await updatePhotoAiStatus(trialId, imageData, 'completed', '', data);
+          } else {
+            await updatePhotoAiStatus(trialId, imageData, 'failed', error || 'AI analysis skipped');
+          }
           if (!analyzedDAAs.has(trialId)) analyzedDAAs.set(trialId, new Set());
           analyzedDAAs.get(trialId).add(daa);
         }
@@ -2243,7 +2257,8 @@ export default function Trials({ onMenuClick }) {
   };
 
   const updatePhotoAiStatus = useCallback(async (trialId, photoSrc, status, errorMsg = '', aiData = null) => {
-    const trial = trials.find(t => t.ID === trialId);
+    const currentTrials = getAppState().trials || [];
+    const trial = currentTrials.find(t => t.ID === trialId);
     if (!trial) return;
     const photos = safeJsonParse(trial.PhotoURLs, []);
     const updatedPhotos = photos.map(p => {
@@ -2259,14 +2274,16 @@ export default function Trials({ onMenuClick }) {
     });
     const patch = { ID: trial.ID, PhotoURLs: JSON.stringify(updatedPhotos) };
     const updatedTrial = { ...trial, ...patch };
-    updateState({ trials: trials.map(t => t.ID === trialId ? updatedTrial : t) });
-    if (activeTrial?.ID === trialId) setActiveTrial(updatedTrial);
+    updateState({ trials: currentTrials.map(t => t.ID === trialId ? updatedTrial : t) });
+    if (getAppState().activeTrial?.ID === trialId || activeTrial?.ID === trialId) {
+      setActiveTrial(updatedTrial);
+    }
     try {
       await updateTrial(patch, getAppState);
     } catch (e) {
       console.error('Failed to update photo AI status:', e);
     }
-  }, [trials, activeTrial, getAppState, updateState]);
+  }, [getAppState, updateState, activeTrial]);
 
   const handleAnalyzeSinglePhoto = async (photoSrc, photoDate) => {
     if (!activeTrial || aiGenRunning) return;
@@ -5785,8 +5802,16 @@ If none are present, write "None".`;
             <div className="bg-slate-50 rounded-xl p-4 mb-4">
               <p className="text-sm text-slate-700 mb-2">This will analyze all photos using AI vision models:</p>
               <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                <li>Identify weed species and cover %</li>
-                <li>Track burndown vs unaffected weeds</li>
+                {activeCategory === 'herbicide' ? (
+                  <>
+                    <li>Identify weed species and cover %</li>
+                    <li>Track burndown vs unaffected weeds</li>
+                  </>
+                ) : (
+                  (catConfig.aiFeatures || []).map((feature, idx) => (
+                    <li key={idx}>{feature}</li>
+                  ))
+                )}
                 <li>Auto-create observation entries</li>
                 <li>Calculates DAA from photo timestamps</li>
               </ul>
@@ -6436,7 +6461,10 @@ If none are present, write "None".`;
                     <select value={wd.status} onChange={e => { const d=[...obsForm.weedDetails]; d[wi]={...d[wi],status:e.target.value}; setObsForm(p=>({...p,weedDetails:d})); }}
                       className="col-span-3 px-1 py-1.5 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400">
                       <option value="">Status</option>
-                      {['Controlled','Burndown','Re-emerged','Resistant','Unaffected','Emerged','Not detected','Suppressed','Top-kill','Regrowth','Eliminated','Healthy','Symptomatic','Deficient','Stressed','Vigorous','Recovered'].map(s=><option key={s} value={s}>{s}</option>)}
+                      {(activeCategory === 'herbicide' 
+                        ? ['Controlled','Burndown','Re-emerged','Resistant','Unaffected','Emerged','Not detected','Suppressed','Top-kill','Regrowth','Eliminated']
+                        : ['Healthy','Symptomatic','Deficient','Stressed','Vigorous','Recovered','Not detected']
+                      ).map(s=><option key={s} value={s}>{s}</option>)}
                     </select>
                     <button type="button" onClick={() => { const d=[...obsForm.weedDetails]; d.splice(wi,1); setObsForm(p=>({...p,weedDetails:d})); }}
                       className="col-span-2 flex justify-center text-slate-400 hover:text-red-500 p-1">

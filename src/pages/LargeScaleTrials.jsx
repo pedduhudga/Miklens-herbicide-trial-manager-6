@@ -688,13 +688,19 @@ export default function LargeScaleTrials({ onMenuClick }) {
     const isHerbicide = trialCat === 'herbicide';
     const aiTargetsList = isHerbicide ? (aiData.weeds || []) : (aiData.targets || []);
     
-    const normalizedWeeds = aiTargetsList.map(w => ({
-      species: w.species || w.name || 'Unknown',
-      cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
-      status: String(w.status || '').trim(),
-      growthStage: String(w.growthStage || '').trim(),
-      notes: String(w.notes || '').trim()
-    }));
+    const normalizedWeeds = aiTargetsList.map(w => {
+      let rawStatus = String(w.status || '').trim();
+      if (!isHerbicide && (rawStatus === 'Unaffected' || !rawStatus)) {
+        rawStatus = 'Healthy';
+      }
+      return {
+        species: w.species || w.name || 'Unknown',
+        cover: typeof w.cover === 'number' ? w.cover : parseFloat(w.cover || w.value || 0),
+        status: rawStatus,
+        growthStage: String(w.growthStage || '').trim(),
+        notes: String(w.notes || '').trim()
+      };
+    });
 
     // Calculate primary values
     const primaryObsField = getPrimaryObservationField(trialCat);
