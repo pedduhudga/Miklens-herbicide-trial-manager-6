@@ -123,7 +123,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
 
                             if (item.action === 'updateTrialRecord' && item.payload.ID) {
                                 console.log('[HighTechSync] Checking conflict for trial:', item.payload.ID);
-                                const cloudTrials = await apiCall('getTrials', { ID: item.payload.ID }, false);
+                                const cloudTrials = await apiCall('getTrials', { ID: item.payload.ID }, false, getAppState);
                                 const cloudRecord = Array.isArray(cloudTrials) ? cloudTrials.find(t => String(t.ID) === String(item.payload.ID)) : null;
                                 
                                 if (cloudRecord) {
@@ -146,7 +146,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                             }
 
                             console.log(`[HighTechSync] [INFO] Syncing Action: ${item.action}`);
-                            const result = await apiCall(item.action, item.payload, false);
+                            const result = await apiCall(item.action, item.payload, false, getAppState);
 
                             if (item.cancelRequested) {
                                 console.log(`[HighTechSync] ? Cancelled after request: ${item.action}`);
@@ -265,7 +265,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                                 label: item.photo.label,
                                 date: item.photo.date,
                                 folderPath: folderPath
-                            }, false);
+                            }, false, getAppState);
 
                             // Timeout after 45 seconds
                             result = await Promise.race([
@@ -329,7 +329,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                             await apiCall('updateTrialRecord', {
                                 ID: trial.ID,
                                 [isWeed ? 'WeedPhotosJSON' : 'PhotoURLs']: trial[isWeed ? 'WeedPhotosJSON' : 'PhotoURLs']
-                            }, false);
+                            }, false, getAppState);
 
                             const handshakeTime = ((Date.now() - handshakeStart) / 1000).toFixed(2);
                             console.log(`%c? Spreadsheet Handshake Complete (${handshakeTime}s)`, "color: #16a34a;");
@@ -351,7 +351,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                                                 wPhotos[pIdx].identifications = ids;
                                                 if (!wPhotos[pIdx].label || wPhotos[pIdx].label.includes('Synced')) wPhotos[pIdx].label = ids.map(i => i.name).join(', ');
                                                 t.WeedPhotosJSON = JSON.stringify(wPhotos);
-                                                await apiCall('updateTrialRecord', { ID: t.ID, WeedPhotosJSON: t.WeedPhotosJSON }, false);
+                                                await apiCall('updateTrialRecord', { ID: t.ID, WeedPhotosJSON: t.WeedPhotosJSON }, false, getAppState);
                                                 refreshRelevantUI(item.trialId, 'weed_upload');
                                                 console.log(`[AI Background] Weed ID finished in ${((Date.now() - aiStart) / 1000).toFixed(2)}s`);
                                             }
@@ -421,7 +421,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                                                 }
 
                                                 trial.EfficacyDataJSON = JSON.stringify(eData);
-                                                await apiCall('updateTrialRecord', { ID: trial.ID, EfficacyDataJSON: trial.EfficacyDataJSON }, false);
+                                                await apiCall('updateTrialRecord', { ID: trial.ID, EfficacyDataJSON: trial.EfficacyDataJSON }, false, getAppState);
                                                 refreshRelevantUI(item.trialId, 'general_upload');
                                                 console.log(`? WEED COVER SAVED: ${coverResult.cover}%`);
                                             }
@@ -472,7 +472,7 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                                                 eData.push(newObs);
                                                 t.EfficacyDataJSON = JSON.stringify(eData);
                                                 t.AISummariesJSON = '{}';
-                                                await apiCall('updateTrialRecord', { ID: t.ID, EfficacyDataJSON: t.EfficacyDataJSON, AISummariesJSON: '{}' }, false);
+                                                await apiCall('updateTrialRecord', { ID: t.ID, EfficacyDataJSON: t.EfficacyDataJSON, AISummariesJSON: '{}' }, false, getAppState);
                                                 refreshRelevantUI(item.trialId, 'general_upload');
                                                 console.log(`[AI Background] Full efficacy analysis finished in ${((Date.now() - aiStart) / 1000).toFixed(2)}s`);
 
@@ -537,14 +537,14 @@ export async function processSyncQueue(getAppState, updateAppState, showToast, r
                     showToast(`Sync finished with ${failedCount} error(s). Retrying in 30s...`, 'warning');
                     // Auto-retry failed items after 30 seconds
                     setTimeout(() => {
-                        if (navigator.onLine) processSyncQueue();
+                        if (navigator.onLine) processSyncQueue(getAppState, updateAppState, showToast, renderSyncStatus);
                     }, 30000);
                 } else if (blockedCount > 0) {
                     showToast(`Sync paused: ${blockedCount} item(s) need Drive permission fix in Apps Script settings.`, 'warning');
                 } else if (pendingCount > 0) {
                     console.log(`[HighTechSync] [INFO] ${pendingCount} items still pending. Setting up auto-retry...`);
                     setTimeout(() => {
-                        if (navigator.onLine && !_isSyncProcessing) processSyncQueue();
+                        if (navigator.onLine && !_isSyncProcessing) processSyncQueue(getAppState, updateAppState, showToast, renderSyncStatus);
                     }, 5000);
                 }
 

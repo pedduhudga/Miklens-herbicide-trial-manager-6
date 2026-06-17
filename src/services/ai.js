@@ -19714,7 +19714,12 @@ Total Trials: ${(state.trials || []).length} | Total Projects: ${(state.projects
             }, 90000);
 
             async function processSyncQueue() {
-                if (window.getAppState) return;
+                if (window.getAppState) {
+                    if (typeof window.processSyncQueue === 'function') {
+                        return window.processSyncQueue();
+                    }
+                    return;
+                }
                 if (_isSyncProcessing || state.syncQueue.length === 0) return;
 
                 const now = Date.now();

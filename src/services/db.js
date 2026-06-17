@@ -43,7 +43,7 @@ export async function apiCall(action, payload = {}, showOverlay = true, getAppSt
         return { _errType: errType, message: msg };
     };
 
-    const isOnline = getAppState().isOnline !== false;
+    const isOnline = getAppState ? getAppState().isOnline !== false : true;
     if (!isOnline) {
         return queueItem('network', 'Offline');
     }
