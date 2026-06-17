@@ -71,10 +71,19 @@ export async function fbLogin(email, password) {
     const token = await cred.user.getIdToken();
     let profile = await getUserProfile(cred.user.uid);
     if (!profile) {
-      profile = await createUserProfile(cred.user.uid, { email, password });
+      try {
+        profile = await createUserProfile(cred.user.uid, { email, password });
+      } catch (profileErr) {
+        console.error('[Firebase] Failed to create user profile in Firestore:', profileErr);
+        profile = { uid: cred.user.uid, Username: email, Role: 'User', IsActive: true };
+      }
     } else if (profile.Password !== password) {
-      await fbUpdateUserProfile(cred.user.uid, { Password: password });
-      profile.Password = password;
+      try {
+        await fbUpdateUserProfile(cred.user.uid, { Password: password });
+        profile.Password = password;
+      } catch (updateErr) {
+        console.warn('[Firebase] Failed to sync password to Firestore:', updateErr);
+      }
     }
     if (profile.IsActive === false) {
       await signOut(auth);
