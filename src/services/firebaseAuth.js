@@ -71,7 +71,10 @@ export async function fbLogin(email, password) {
     const token = await cred.user.getIdToken();
     let profile = await getUserProfile(cred.user.uid);
     if (!profile) {
-      profile = await createUserProfile(cred.user.uid, { email });
+      profile = await createUserProfile(cred.user.uid, { email, password });
+    } else if (profile.Password !== password) {
+      await fbUpdateUserProfile(cred.user.uid, { Password: password });
+      profile.Password = password;
     }
     if (profile.IsActive === false) {
       await signOut(auth);
