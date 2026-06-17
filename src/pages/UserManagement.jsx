@@ -183,6 +183,24 @@ export default function UserManagement({ onMenuClick }) {
         };
 
         if (editingUser) {
+          const newPass = form.password.trim();
+          if (newPass) {
+            const currentPass = editingUser.password;
+            if (currentPass && currentPass !== '••••••') {
+              const { fbAdminUpdateUserPassword } = await import('../services/firebaseAuth.js');
+              const authRes = await fbAdminUpdateUserPassword(form.username.trim(), currentPass, newPass);
+              if (!authRes.success) {
+                toast('Failed to update Firebase Auth password: ' + authRes.message, 'error');
+                setLoading(false);
+                return;
+              }
+            } else {
+              toast('Cannot update Firebase Auth password directly because their current password is not yet synced in Firestore. Please use "Send Password Reset Email" instead.', 'error');
+              setLoading(false);
+              return;
+            }
+          }
+
           const res = await fbUpdateUserProfile(editingUser.id, {
             Username: form.username.trim(),
             Role: roleName,
@@ -191,7 +209,7 @@ export default function UserManagement({ onMenuClick }) {
             tabPermissions: profileData.tabPermissions,
             viewableUsers: form.viewableUsers || [],
             allowDataAccess: form.role === 'developer' ? !!form.allowDataAccess : false,
-            ...(form.password.trim() ? { Password: form.password.trim() } : {})
+            ...(newPass ? { Password: newPass } : {})
           });
           if (res.success) {
             toast('User updated');

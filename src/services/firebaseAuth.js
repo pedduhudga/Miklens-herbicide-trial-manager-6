@@ -222,3 +222,37 @@ export async function fbUpdateUserProfile(uid, updates) {
 export async function fbGetUserProfile(uid) {
   return getUserProfile(uid);
 }
+
+export async function fbAdminUpdateUserPassword(email, currentPassword, newPassword) {
+  try {
+    const apps = getApps();
+    if (apps.length === 0) throw new Error('Primary Firebase App not initialized.');
+    const config = apps[0].options;
+    const tempAppName = `tempApp_update_${Date.now()}`;
+    const tempApp = initializeApp(config, tempAppName);
+    const tempAuth = getFirebaseAuthInstance(tempApp);
+
+    // Sign in as the target user using their current password
+    await signInWithEmailAndPassword(tempAuth, email, currentPassword);
+    
+    // Update their password in Firebase Auth
+    if (tempAuth.currentUser) {
+      await updatePassword(tempAuth.currentUser, newPassword);
+    } else {
+      throw new Error('Authentication failed or user session not established.');
+    }
+
+    try {
+      await tempApp.delete();
+    } catch (e) {
+      console.warn('[Firebase] Temp App cleanup failed:', e);
+    }
+    return { success: true };
+  } catch (err) {
+    const map = {
+      'auth/wrong-password': 'Current password stored in Firestore is incorrect.',
+      'auth/weak-password': 'New password must be at least 6 characters.',
+    };
+    return { success: false, message: map[err.code] || err.message };
+  }
+}
