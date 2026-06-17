@@ -108,8 +108,10 @@ function doPost(e) {
         }
 
         if (expectedToken === 'miklens-secure-api-token-2026') {
-            Logger.log(`Rejected request: default security token is used.`);
-            return sendResponse({ status: 'error', message: 'Unauthorized: Default security token detected. You must change the default appSecretToken in settings to secure this proxy.' });
+            if (action !== 'saveSettings' && action !== 'saveAllSettings') {
+                Logger.log(`Rejected request: default security token is used.`);
+                return sendResponse({ status: 'error', message: 'Unauthorized: Default security token detected. You must change the default appSecretToken in settings to secure this proxy.' });
+            }
         }
 
         if (!appSecretToken || appSecretToken !== expectedToken) {
