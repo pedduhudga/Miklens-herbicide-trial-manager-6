@@ -2059,14 +2059,28 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
             downloadBtn.style.display = 'none';
           }
 
+          // Dynamic Canvas-based color parser to convert oklch to standard hex/rgb
+          const canvasEl = clonedDoc.createElement('canvas');
+          const canvasCtx = canvasEl.getContext('2d');
+          
+          const convertOklchColor = (valStr) => {
+            if (!valStr || !valStr.includes('oklch')) return valStr;
+            // Match any oklch(...) occurrences and resolve them through canvas fillStyle
+            return valStr.replace(/oklch\([^)]+\)/g, (match) => {
+              try {
+                canvasCtx.fillStyle = match;
+                return canvasCtx.fillStyle; // Browser returns standard hex (#RRGGBB) or rgb/rgba
+              } catch (e) {
+                return 'rgba(0,0,0,0)';
+              }
+            });
+          };
+
           // 1. Sanitize style tags of oklch declarations to prevent stylesheet parsing crashes
           const styleElements = clonedDoc.querySelectorAll('style');
           styleElements.forEach(styleEl => {
             try {
-              let css = styleEl.innerHTML;
-              // Replace any oklch color expressions with standard colors or transparent
-              css = css.replace(/oklch\([^)]+\)/g, 'rgba(16, 185, 129, 0.2)');
-              styleEl.innerHTML = css;
+              styleEl.innerHTML = convertOklchColor(styleEl.innerHTML);
             } catch (err) {
               console.warn('Failed to sanitize oklch styles:', err);
             }
@@ -2083,40 +2097,14 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
             if (!el) return;
             try {
               const computed = window.getComputedStyle(el);
-              const classNameStr = String(el.className || '');
               
               // Traverse all computed properties to sanitize oklch definitions at the source
               for (let j = 0; j < computed.length; j++) {
                 const prop = computed[j];
                 const val = computed.getPropertyValue(prop);
                 if (val && val.includes('oklch')) {
-                  // Fallback values mapping standard colors for rendering
-                  if (prop === 'background-color') {
-                    if (classNameStr.includes('bg-emerald')) el.style.setProperty(prop, 'rgb(209, 250, 229)', 'important');
-                    else if (classNameStr.includes('bg-sky')) el.style.setProperty(prop, 'rgb(224, 242, 254)', 'important');
-                    else if (classNameStr.includes('bg-amber')) el.style.setProperty(prop, 'rgb(254, 243, 199)', 'important');
-                    else if (classNameStr.includes('bg-purple')) el.style.setProperty(prop, 'rgb(243, 232, 255)', 'important');
-                    else if (classNameStr.includes('bg-slate')) el.style.setProperty(prop, 'rgb(241, 245, 249)', 'important');
-                    else if (classNameStr.includes('bg-red-50')) el.style.setProperty(prop, 'rgb(254, 242, 242)', 'important');
-                    else el.style.setProperty(prop, 'rgba(255, 255, 255, 0)', 'important');
-                  } else if (prop.startsWith('border-') && prop.endsWith('-color')) {
-                    if (classNameStr.includes('border-emerald')) el.style.setProperty(prop, 'rgb(110, 231, 183)', 'important');
-                    else if (classNameStr.includes('border-sky')) el.style.setProperty(prop, 'rgb(125, 211, 252)', 'important');
-                    else if (classNameStr.includes('border-amber')) el.style.setProperty(prop, 'rgb(252, 211, 77)', 'important');
-                    else if (classNameStr.includes('border-purple')) el.style.setProperty(prop, 'rgb(216, 180, 254)', 'important');
-                    else if (classNameStr.includes('border-red-100')) el.style.setProperty(prop, 'rgb(254, 226, 226)', 'important');
-                    else el.style.setProperty(prop, 'rgb(226, 232, 240)', 'important');
-                  } else if (prop === 'color') {
-                    if (classNameStr.includes('text-emerald')) el.style.setProperty(prop, 'rgb(4, 120, 87)', 'important');
-                    else if (classNameStr.includes('text-sky')) el.style.setProperty(prop, 'rgb(3, 105, 161)', 'important');
-                    else if (classNameStr.includes('text-amber')) el.style.setProperty(prop, 'rgb(180, 83, 9)', 'important');
-                    else if (classNameStr.includes('text-purple')) el.style.setProperty(prop, 'rgb(109, 40, 217)', 'important');
-                    else if (classNameStr.includes('text-red')) el.style.setProperty(prop, 'rgb(220, 38, 38)', 'important');
-                    else el.style.setProperty(prop, 'rgb(51, 65, 85)', 'important');
-                  } else {
-                    // Prevent crash on text-shadow, box-shadow, linear-gradients, outlines, etc.
-                    el.style.setProperty(prop, 'transparent', 'important');
-                  }
+                  const converted = convertOklchColor(val);
+                  el.style.setProperty(prop, converted, 'important');
                 }
               }
             } catch (e) {
