@@ -2081,44 +2081,47 @@ Write a 3-paragraph Narrative covering Methodology, Results and Conclusions.`;
           
           targets.forEach(el => {
             if (!el) return;
-            // Scan all possible styling properties that might have oklch
-            ['backgroundColor', 'borderColor', 'color', 'outlineColor', 'stroke', 'fill'].forEach(prop => {
-              try {
-                // Get the computed style or inline style value
-                const val = el.style[prop] || window.getComputedStyle(el)[prop];
+            try {
+              const computed = window.getComputedStyle(el);
+              const classNameStr = String(el.className || '');
+              
+              // Traverse all computed properties to sanitize oklch definitions at the source
+              for (let j = 0; j < computed.length; j++) {
+                const prop = computed[j];
+                const val = computed.getPropertyValue(prop);
                 if (val && val.includes('oklch')) {
-                  const classNameStr = String(el.className || '');
-                  // Fallback values mapping standard colors
-                  if (prop === 'backgroundColor') {
-                    if (classNameStr.includes('bg-emerald')) el.style.backgroundColor = 'rgb(209, 250, 229)';
-                    else if (classNameStr.includes('bg-sky')) el.style.backgroundColor = 'rgb(224, 242, 254)';
-                    else if (classNameStr.includes('bg-amber')) el.style.backgroundColor = 'rgb(254, 243, 199)';
-                    else if (classNameStr.includes('bg-purple')) el.style.backgroundColor = 'rgb(243, 232, 255)';
-                    else if (classNameStr.includes('bg-slate')) el.style.backgroundColor = 'rgb(241, 245, 249)';
-                    else if (classNameStr.includes('bg-red-50')) el.style.backgroundColor = 'rgb(254, 242, 242)';
-                    else el.style.backgroundColor = 'rgba(255, 255, 255, 0)'; // default transparent/white
-                  } else if (prop === 'borderColor') {
-                    if (classNameStr.includes('border-emerald')) el.style.borderColor = 'rgb(110, 231, 183)';
-                    else if (classNameStr.includes('border-sky')) el.style.borderColor = 'rgb(125, 211, 252)';
-                    else if (classNameStr.includes('border-amber')) el.style.borderColor = 'rgb(252, 211, 77)';
-                    else if (classNameStr.includes('border-purple')) el.style.borderColor = 'rgb(216, 180, 254)';
-                    else if (classNameStr.includes('border-red-100')) el.style.borderColor = 'rgb(254, 226, 226)';
-                    else el.style.borderColor = 'rgb(226, 232, 240)';
+                  // Fallback values mapping standard colors for rendering
+                  if (prop === 'background-color') {
+                    if (classNameStr.includes('bg-emerald')) el.style.setProperty(prop, 'rgb(209, 250, 229)', 'important');
+                    else if (classNameStr.includes('bg-sky')) el.style.setProperty(prop, 'rgb(224, 242, 254)', 'important');
+                    else if (classNameStr.includes('bg-amber')) el.style.setProperty(prop, 'rgb(254, 243, 199)', 'important');
+                    else if (classNameStr.includes('bg-purple')) el.style.setProperty(prop, 'rgb(243, 232, 255)', 'important');
+                    else if (classNameStr.includes('bg-slate')) el.style.setProperty(prop, 'rgb(241, 245, 249)', 'important');
+                    else if (classNameStr.includes('bg-red-50')) el.style.setProperty(prop, 'rgb(254, 242, 242)', 'important');
+                    else el.style.setProperty(prop, 'rgba(255, 255, 255, 0)', 'important');
+                  } else if (prop.startsWith('border-') && prop.endsWith('-color')) {
+                    if (classNameStr.includes('border-emerald')) el.style.setProperty(prop, 'rgb(110, 231, 183)', 'important');
+                    else if (classNameStr.includes('border-sky')) el.style.setProperty(prop, 'rgb(125, 211, 252)', 'important');
+                    else if (classNameStr.includes('border-amber')) el.style.setProperty(prop, 'rgb(252, 211, 77)', 'important');
+                    else if (classNameStr.includes('border-purple')) el.style.setProperty(prop, 'rgb(216, 180, 254)', 'important');
+                    else if (classNameStr.includes('border-red-100')) el.style.setProperty(prop, 'rgb(254, 226, 226)', 'important');
+                    else el.style.setProperty(prop, 'rgb(226, 232, 240)', 'important');
                   } else if (prop === 'color') {
-                    if (classNameStr.includes('text-emerald')) el.style.color = 'rgb(4, 120, 87)';
-                    else if (classNameStr.includes('text-sky')) el.style.color = 'rgb(3, 105, 161)';
-                    else if (classNameStr.includes('text-amber')) el.style.color = 'rgb(180, 83, 9)';
-                    else if (classNameStr.includes('text-purple')) el.style.color = 'rgb(109, 40, 217)';
-                    else if (classNameStr.includes('text-red')) el.style.color = 'rgb(220, 38, 38)';
-                    else el.style.color = 'rgb(51, 65, 85)';
+                    if (classNameStr.includes('text-emerald')) el.style.setProperty(prop, 'rgb(4, 120, 87)', 'important');
+                    else if (classNameStr.includes('text-sky')) el.style.setProperty(prop, 'rgb(3, 105, 161)', 'important');
+                    else if (classNameStr.includes('text-amber')) el.style.setProperty(prop, 'rgb(180, 83, 9)', 'important');
+                    else if (classNameStr.includes('text-purple')) el.style.setProperty(prop, 'rgb(109, 40, 217)', 'important');
+                    else if (classNameStr.includes('text-red')) el.style.setProperty(prop, 'rgb(220, 38, 38)', 'important');
+                    else el.style.setProperty(prop, 'rgb(51, 65, 85)', 'important');
                   } else {
-                    el.style[prop] = 'rgba(0,0,0,0)';
+                    // Prevent crash on text-shadow, box-shadow, linear-gradients, outlines, etc.
+                    el.style.setProperty(prop, 'transparent', 'important');
                   }
                 }
-              } catch (e) {
-                // Ignore any issues reading properties
               }
-            });
+            } catch (e) {
+              // Ignore any errors reading properties
+            }
           });
         }
       });
