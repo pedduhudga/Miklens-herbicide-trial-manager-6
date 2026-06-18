@@ -106,7 +106,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       // 1. Re-authenticate
       const cred = await signInWithEmailAndPassword(auth, userEmail, currentPassword);
-      
+
       // 2. Update Auth password
       await updatePassword(cred.user, newPassword);
 
@@ -117,7 +117,7 @@ export default function Sidebar({ isOpen, onClose }) {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      
+
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Password updated successfully!', type: 'success' } }));
       setTimeout(() => setShowChangePasswordModal(false), 1500);
     } catch (err) {
@@ -322,7 +322,7 @@ export default function Sidebar({ isOpen, onClose }) {
                 <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">{user.role || user.Role}</span>
               </div>
             </div>
-            
+
             {firebaseEnabled && (
               <button
                 onClick={() => {
@@ -354,8 +354,7 @@ export default function Sidebar({ isOpen, onClose }) {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
             <button
               onClick={() => setShowChangePasswordModal(false)}
-              aria-label="Close change password modal"
-              className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition focus-visible:ring-2 focus-visible:ring-slate-400 outline-none"
+              className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -396,8 +395,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    aria-label="Toggle current password visibility"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none rounded-lg p-0.5"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -418,8 +416,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
-                    aria-label="Toggle new password visibility"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none rounded-lg p-0.5"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -440,8 +437,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label="Toggle confirm password visibility"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none rounded-lg p-0.5"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>

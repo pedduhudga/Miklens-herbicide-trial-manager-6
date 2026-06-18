@@ -1,0 +1,42 @@
+--- src/components/Sidebar.jsx
++++ src/components/Sidebar.jsx
+@@ -353,7 +353,8 @@
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
+             <button
+               onClick={() => setShowChangePasswordModal(false)}
+-              className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition"
++              aria-label="Close change password modal"
++              className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition focus-visible:ring-2 focus-visible:ring-slate-400 outline-none"
+             >
+               <X className="w-5 h-5" />
+             </button>
+@@ -395,7 +396,8 @@
+                   <button
+                     type="button"
+                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
++                    aria-label="Toggle current password visibility"
++                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none rounded-lg p-0.5"
+                   >
+                     {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                   </button>
+@@ -416,7 +418,8 @@
+                   <button
+                     type="button"
+                     onClick={() => setShowNewPassword(!showNewPassword)}
+-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
++                    aria-label="Toggle new password visibility"
++                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none rounded-lg p-0.5"
+                   >
+                     {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                   </button>
+@@ -437,7 +440,8 @@
+                   <button
+                     type="button"
+                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
++                    aria-label="Toggle confirm password visibility"
++                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none rounded-lg p-0.5"
+                   >
+                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                   </button>
