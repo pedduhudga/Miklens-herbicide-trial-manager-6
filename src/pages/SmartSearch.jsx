@@ -45,12 +45,14 @@ function buildIndex(state, activeCategory) {
     if (tCat !== cat) return;
     const obs = safeJsonParse(t.EfficacyDataJSON, []);
     const weedDetails = obs.flatMap(o => (o.weedDetails || []).map(w => w.species)).filter(Boolean);
+    const tags = [t.FormulationName, t.Location, t.WeedSpecies, t.InvestigatorName, t.Result, t.ID, ...weedDetails,
+             ...(t.WeedSpecies || '').split(',').map(s => s.trim())].filter(Boolean);
     items.push({
       type: 'trial', id: t.ID,
       title: t.FormulationName || 'Unknown Trial',
       sub: [t.Location, t.Date ? new Date(t.Date).toLocaleDateString() : null, t.Result].filter(Boolean).join(' · '),
-      tags: [t.FormulationName, t.Location, t.WeedSpecies, t.InvestigatorName, t.Result, t.ID, ...weedDetails,
-             ...(t.WeedSpecies || '').split(',').map(s => s.trim())].filter(Boolean),
+      tags,
+      searchString: tags.join(' ').toLowerCase(),
       raw: t,
     });
   });
@@ -58,11 +60,13 @@ function buildIndex(state, activeCategory) {
   (state.projects || []).forEach(p => {
     const pCat = p.Category || 'herbicide';
     if (pCat !== cat) return;
+    const tags = [p.Name, p.TargetWeed, p.Crop, p.Location, p.Metric].filter(Boolean);
     items.push({
       type: 'project', id: p.ID,
       title: p.Name || 'Unknown Project',
       sub: [p.Metric, p.TargetWeed, p.Crop, p.Location].filter(Boolean).join(' · '),
-      tags: [p.Name, p.TargetWeed, p.Crop, p.Location, p.Metric].filter(Boolean),
+      tags,
+      searchString: tags.join(' ').toLowerCase(),
       raw: p,
     });
   });
@@ -71,11 +75,13 @@ function buildIndex(state, activeCategory) {
     const fCat = f.Category || 'herbicide';
     if (fCat !== cat) return;
     const ings = safeJsonParse(f.IngredientsJSON, []).map(i => i.name).filter(Boolean);
+    const tags = [f.Name, ...ings, f.Notes].filter(Boolean);
     items.push({
       type: 'formulation', id: f.ID,
       title: f.Name || 'Unknown Formulation',
       sub: ings.length > 0 ? `Ingredients: ${ings.slice(0, 3).join(', ')}` : f.Notes || '',
-      tags: [f.Name, ...ings, f.Notes].filter(Boolean),
+      tags,
+      searchString: tags.join(' ').toLowerCase(),
       raw: f,
     });
   });
@@ -83,11 +89,13 @@ function buildIndex(state, activeCategory) {
   (state.ingredients || []).forEach(i => {
     const iCat = i.Category || 'herbicide';
     if (iCat !== cat) return;
+    const tags = [i.Name, i.Unit].filter(Boolean);
     items.push({
       type: 'ingredient', id: i.ID,
       title: i.Name || 'Unknown Ingredient',
       sub: [i.Unit && `Unit: ${i.Unit}`, i.Cost && `Cost: ${i.Cost}`].filter(Boolean).join(' · '),
-      tags: [i.Name, i.Unit].filter(Boolean),
+      tags,
+      searchString: tags.join(' ').toLowerCase(),
       raw: i,
     });
   });
@@ -95,11 +103,13 @@ function buildIndex(state, activeCategory) {
   (state.organisations || []).forEach(o => {
     const oCat = o.Category || 'herbicide';
     if (oCat !== cat) return;
+    const tags = [o.Name, o.Description].filter(Boolean);
     items.push({
       type: 'organisation', id: o.ID,
       title: o.Name || 'Unknown Organisation',
       sub: o.Description || '',
-      tags: [o.Name, o.Description].filter(Boolean),
+      tags,
+      searchString: tags.join(' ').toLowerCase(),
       raw: o,
     });
   });
@@ -147,7 +157,7 @@ export default function SmartSearch({ onMenuClick }) {
     const words = q.split(/\s+/);
     return index
       .map(item => {
-        const haystack = item.tags.join(' ').toLowerCase();
+        const haystack = item.searchString;
         const score = words.reduce((acc, w) => acc + (haystack.includes(w) ? 1 : 0), 0);
         return { ...item, score };
       })
