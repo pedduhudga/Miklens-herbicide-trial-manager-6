@@ -502,6 +502,16 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
+
+    // Performance optimization: Cache observation counts to avoid O(N log N) JSON parses
+    const obsCountCache = new Map();
+    const getObsCount = (trial) => {
+      if (!obsCountCache.has(trial)) {
+        obsCountCache.set(trial, safeJsonParse(trial.EfficacyDataJSON, []).length);
+      }
+      return obsCountCache.get(trial);
+    };
+
     list.sort((a, b) => {
       if (sortBy === 'date-desc') {
         const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
@@ -524,7 +534,7 @@ export default function Trials({ onMenuClick }) {
         return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
       }
       if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'obs') return getObsCount(b) - getObsCount(a);
       if (sortBy === 'shared') {
         const ownUid = user?.uid || user?.ID || user?.id;
         const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
