@@ -1,0 +1,3 @@
+## 2023-11-09 - Avoid JSON.parse in sorting callbacks
+**Learning:** In JavaScript, `Array.prototype.sort()` iterates over elements multiple times ($O(N \log N)$), causing any function called inside the callback to be executed multiple times. `JSON.parse` is an expensive operation and putting it inside the sort comparison function will result in severe performance degradation as the dataset grows.
+**Action:** Always pre-calculate or cache results (e.g., using a Map or generating an intermediate array) before running `.sort()` when parsing JSON, computing complex derivations, or making database-like queries for the sorted properties.
