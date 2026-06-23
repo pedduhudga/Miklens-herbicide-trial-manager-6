@@ -80,11 +80,9 @@ const emptyForm = (category = 'herbicide') => {
   return base;
 };
 
-const fuzzyMatch = (text, query) => {
+// ⚡ Bolt: Optimized fuzzy match to accept pre-tokenized query to prevent repeated string allocations
+const fuzzyMatchTokens = (text, tokens) => {
   if (!text) return false;
-  text = text.toLowerCase();
-  query = query.toLowerCase().trim();
-  const tokens = query.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return true;
   return tokens.every(token => {
     if (text.includes(token)) return true;
@@ -479,22 +477,26 @@ export default function Trials({ onMenuClick }) {
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
     if (deferredSearch) {
-      list = list.filter(t => {
-        const searchParts = [
-          t.FormulationName,
-          t.FormulationID,
-          t.InvestigatorName,
-          t.Location,
-          t.WeedSpecies,
-          t.ID,
-          t.Notes,
-          t.Conclusion,
-          t.Replication,
-          t.PlotNumber,
-          t.Date
-        ].filter(Boolean).join(' ');
-        return fuzzyMatch(searchParts, deferredSearch);
-      });
+      // ⚡ Bolt: Parse search query ONCE outside the loop instead of on every iteration (O(1) vs O(N) allocations)
+      const queryTokens = deferredSearch.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      if (queryTokens.length > 0) {
+        list = list.filter(t => {
+          const searchParts = [
+            t.FormulationName,
+            t.FormulationID,
+            t.InvestigatorName,
+            t.Location,
+            t.WeedSpecies,
+            t.ID,
+            t.Notes,
+            t.Conclusion,
+            t.Replication,
+            t.PlotNumber,
+            t.Date
+          ].filter(Boolean).join(' ').toLowerCase();
+          return fuzzyMatchTokens(searchParts, queryTokens);
+        });
+      }
     }
     if (filterFormulation) list = list.filter(t => t.FormulationID === filterFormulation || t.FormulationName === filterFormulation);
     if (filterResult) list = list.filter(t => (t.Result || '') === filterResult);
