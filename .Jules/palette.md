@@ -4,3 +4,4 @@
 ## 2026-06-11 - [Added ARIA Labels to CropperModal]
 **Learning:** Found several icon-only buttons lacking ARIA labels and clear focus states. This is a common accessibility issue across modal components.
 **Action:** Adding `aria-label` attributes and `focus-visible` classes ensures that components are screen reader friendly and keyboard navigable.
+## 2026-06-24 - Added ARIA labels and focus states to Sidebar Change Password Modal\n**Learning:** This application extensively uses icon-only buttons for toggling visibility (e.g., Eye/EyeOff for passwords) and modal controls (e.g., X for close) that lacked semantic ARIA labels and keyboard focus indicators.\n**Action:** Ensure all interactive elements, especially icon-only utility buttons within modals, are annotated with dynamic `aria-label`s and visible focus states (`focus-visible:ring-2`) for keyboard accessibility.
