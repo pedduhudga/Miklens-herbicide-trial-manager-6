@@ -4,3 +4,6 @@
 ## 2024-06-12 - Optimizing Trials List Search Performance
 **Learning:** Similar to the global search page, applying `useDeferredValue` to text inputs that filter large datasets prevents main thread blockage and ensures smooth user typing experience.
 **Action:** Used `useDeferredValue` on the `search` input in `Trials.jsx`.
+## 2024-06-24 - Avoiding O(N log N) overhead in Javascript sort callbacks
+**Learning:** Using expensive operations like `JSON.parse` (e.g. `safeJsonParse`) or instantiating new objects (e.g. `new Date()`) directly inside an array `.sort((a,b) => ...)` callback introduces significant performance bottlenecks, especially for large datasets. This is because the callback runs O(N log N) times.
+**Action:** Always memoize expensive data point extraction or parsing right before calling `.sort()` by using a local `new Map()` or storing intermediate results as a dedicated property on the items, thereby limiting the expensive operations strictly to O(N) instead.

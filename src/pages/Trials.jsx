@@ -480,19 +480,17 @@ export default function Trials({ onMenuClick }) {
 
     if (deferredSearch) {
       list = list.filter(t => {
-        const searchParts = [
-          t.FormulationName,
-          t.FormulationID,
-          t.InvestigatorName,
-          t.Location,
-          t.WeedSpecies,
-          t.ID,
-          t.Notes,
-          t.Conclusion,
-          t.Replication,
-          t.PlotNumber,
-          t.Date
-        ].filter(Boolean).join(' ');
+        const searchParts = (t.FormulationName || '') + ' ' +
+          (t.FormulationID || '') + ' ' +
+          (t.InvestigatorName || '') + ' ' +
+          (t.Location || '') + ' ' +
+          (t.WeedSpecies || '') + ' ' +
+          (t.ID || '') + ' ' +
+          (t.Notes || '') + ' ' +
+          (t.Conclusion || '') + ' ' +
+          (t.Replication || '') + ' ' +
+          (t.PlotNumber || '') + ' ' +
+          (t.Date || '');
         return fuzzyMatch(searchParts, deferredSearch);
       });
     }
@@ -502,35 +500,73 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
+
+    // Memoize expensive calculations for sort
+    const parsedCache = new Map();
+    const getObsCount = (t) => {
+      let count = parsedCache.get(t);
+      if (count !== undefined) return count;
+      count = safeJsonParse(t.EfficacyDataJSON, []).length;
+      parsedCache.set(t, count);
+      return count;
+    };
+
+    const dateCache = new Map();
+    const getDateVal = (t) => {
+      let val = dateCache.get(t);
+      if (val !== undefined) return val;
+      val = new Date(t.Date || 0).getTime();
+      dateCache.set(t, val);
+      return val;
+    };
+
+    const timeCache = new Map();
+    const getTimeVal = (t) => {
+      let val = timeCache.get(t);
+      if (val !== undefined) return val;
+      val = new Date(t.DateUpdatedAt || t.CreatedAt || t._createdAt?.toDate?.() || 0).getTime();
+      timeCache.set(t, val);
+      return val;
+    };
+
+    const createCache = new Map();
+    const getCreateVal = (t) => {
+      let val = createCache.get(t);
+      if (val !== undefined) return val;
+      val = new Date(t.CreatedAt || 0).getTime();
+      createCache.set(t, val);
+      return val;
+    };
+
     list.sort((a, b) => {
       if (sortBy === 'date-desc') {
-        const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
+        const dateDiff = getDateVal(b) - getDateVal(a);
         if (dateDiff !== 0) return dateDiff;
 
         // Secondary sort for same date: newest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
+        const aTime = getTimeVal(a);
+        const bTime = getTimeVal(b);
         if (bTime !== aTime) return bTime - aTime;
-        return new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0);
+        return getCreateVal(b) - getCreateVal(a);
       }
       if (sortBy === 'date-asc') {
-        const dateDiff = new Date(a.Date || 0) - new Date(b.Date || 0);
+        const dateDiff = getDateVal(a) - getDateVal(b);
         if (dateDiff !== 0) return dateDiff;
 
         // Secondary sort for same date: oldest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
+        const aTime = getTimeVal(a);
+        const bTime = getTimeVal(b);
         if (aTime !== bTime) return aTime - bTime;
-        return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
+        return getCreateVal(a) - getCreateVal(b);
       }
       if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'obs') return getObsCount(b) - getObsCount(a);
       if (sortBy === 'shared') {
         const ownUid = user?.uid || user?.ID || user?.id;
         const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
         const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
         if (aShared === bShared) {
-          return new Date(b.Date || 0) - new Date(a.Date || 0);
+          return getDateVal(b) - getDateVal(a);
         }
         return bShared ? 1 : -1;
       }
