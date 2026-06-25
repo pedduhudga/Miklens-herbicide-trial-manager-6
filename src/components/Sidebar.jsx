@@ -196,6 +196,7 @@ export default function Sidebar({ isOpen, onClose }) {
           <div className="relative">
             <button
               onClick={() => setCatDropdownOpen(!catDropdownOpen)}
+              aria-expanded={catDropdownOpen}
               className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition"
             >
               <div className="flex items-center gap-2">
@@ -354,6 +355,7 @@ export default function Sidebar({ isOpen, onClose }) {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
             <button
               onClick={() => setShowChangePasswordModal(false)}
+              aria-label="Close modal"
               className="absolute right-4 top-4 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition"
             >
               <X className="w-5 h-5" />
@@ -395,6 +397,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    aria-label={showCurrentPassword ? "Hide password" : "Show password"}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -416,6 +419,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
+                    aria-label={showNewPassword ? "Hide password" : "Show password"}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -437,6 +441,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
