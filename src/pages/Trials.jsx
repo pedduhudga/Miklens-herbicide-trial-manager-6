@@ -80,11 +80,9 @@ const emptyForm = (category = 'herbicide') => {
   return base;
 };
 
-const fuzzyMatch = (text, query) => {
+const fuzzyMatch = (text, tokens) => {
   if (!text) return false;
   text = text.toLowerCase();
-  query = query.toLowerCase().trim();
-  const tokens = query.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return true;
   return tokens.every(token => {
     if (text.includes(token)) return true;
@@ -479,22 +477,25 @@ export default function Trials({ onMenuClick }) {
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
     if (deferredSearch) {
-      list = list.filter(t => {
-        const searchParts = [
-          t.FormulationName,
-          t.FormulationID,
-          t.InvestigatorName,
-          t.Location,
-          t.WeedSpecies,
-          t.ID,
-          t.Notes,
-          t.Conclusion,
-          t.Replication,
-          t.PlotNumber,
-          t.Date
-        ].filter(Boolean).join(' ');
-        return fuzzyMatch(searchParts, deferredSearch);
-      });
+      const searchTokens = deferredSearch.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      if (searchTokens.length > 0) {
+        list = list.filter(t => {
+          const searchParts = [
+            t.FormulationName,
+            t.FormulationID,
+            t.InvestigatorName,
+            t.Location,
+            t.WeedSpecies,
+            t.ID,
+            t.Notes,
+            t.Conclusion,
+            t.Replication,
+            t.PlotNumber,
+            t.Date
+          ].join(' ');
+          return fuzzyMatch(searchParts, searchTokens);
+        });
+      }
     }
     if (filterFormulation) list = list.filter(t => t.FormulationID === filterFormulation || t.FormulationName === filterFormulation);
     if (filterResult) list = list.filter(t => (t.Result || '') === filterResult);
@@ -502,41 +503,45 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
-    list.sort((a, b) => {
-      if (sortBy === 'date-desc') {
-        const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
-        if (dateDiff !== 0) return dateDiff;
 
-        // Secondary sort for same date: newest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (bTime !== aTime) return bTime - aTime;
-        return new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0);
+    // ⚡ Bolt: Use Schwartzian transform to avoid O(N log N) parses/instantiations during sorting
+    const ownUid = user?.uid || user?.ID || user?.id;
+    const mappedList = list.map(t => {
+      const isShared = !!((t.CreatedBy && t.CreatedBy !== ownUid) || (Array.isArray(t.SharedWith) && t.SharedWith.length > 0));
+      return {
+        item: t,
+        dateTime: t.Date ? Date.parse(t.Date) || 0 : 0,
+        updateTime: Date.parse(t.DateUpdatedAt || t.CreatedAt || t._createdAt?.toDate?.() || 0) || 0,
+        createTime: Date.parse(t.CreatedAt || 0) || 0,
+        obsCount: sortBy === 'obs' ? safeJsonParse(t.EfficacyDataJSON, []).length : 0,
+        isShared: isShared,
+        name: t.FormulationName || ''
+      };
+    });
+
+    mappedList.sort((a, b) => {
+      if (sortBy === 'date-desc') {
+        if (b.dateTime !== a.dateTime) return b.dateTime - a.dateTime;
+        if (b.updateTime !== a.updateTime) return b.updateTime - a.updateTime;
+        return b.createTime - a.createTime;
       }
       if (sortBy === 'date-asc') {
-        const dateDiff = new Date(a.Date || 0) - new Date(b.Date || 0);
-        if (dateDiff !== 0) return dateDiff;
-
-        // Secondary sort for same date: oldest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (aTime !== bTime) return aTime - bTime;
-        return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
+        if (a.dateTime !== b.dateTime) return a.dateTime - b.dateTime;
+        if (a.updateTime !== b.updateTime) return a.updateTime - b.updateTime;
+        return a.createTime - b.createTime;
       }
-      if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'obs') return b.obsCount - a.obsCount;
       if (sortBy === 'shared') {
-        const ownUid = user?.uid || user?.ID || user?.id;
-        const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
-        const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
-        if (aShared === bShared) {
-          return new Date(b.Date || 0) - new Date(a.Date || 0);
+        if (a.isShared === b.isShared) {
+          return b.dateTime - a.dateTime;
         }
-        return bShared ? 1 : -1;
+        return b.isShared ? 1 : -1;
       }
       return 0;
     });
-    return list;
+
+    return mappedList.map(m => m.item);
   }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd, user]);
 
   const groupedRcbdTrials = useMemo(() => {
