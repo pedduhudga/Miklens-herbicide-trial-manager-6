@@ -366,6 +366,18 @@ export default function LargeScaleTrials({ onMenuClick }) {
     return (state.trials || []).filter(t => t.ProjectID === activeProjectId);
   }, [state.trials, activeProjectId]);
 
+  // Pre-calculate chronological index for each sub-trial to avoid O(N^2 log N) sort in render loop
+  const subTrialIndices = useMemo(() => {
+    const indices = new Map();
+    [...subTrials]
+      .map(item => ({ item, val: new Date(item.CreatedAt || item.Date || 0).getTime() }))
+      .sort((a, b) => a.val - b.val)
+      .forEach((obj, idx) => {
+        indices.set(obj.item.ID, idx);
+      });
+    return indices;
+  }, [subTrials]);
+
   const filteredSubTrials = useMemo(() => {
     let result = [...subTrials];
     if (search.trim()) {
@@ -386,17 +398,21 @@ export default function LargeScaleTrials({ onMenuClick }) {
       result = result.filter(st => st.IsStandardCheck === true || st.IsStandardCheck === 'true');
     }
 
-    result.sort((a, b) => {
-      if (sortBy === 'date-desc') return new Date(b.Date || 0) - new Date(a.Date || 0);
-      if (sortBy === 'date-asc') return new Date(a.Date || 0) - new Date(b.Date || 0);
-      if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') {
-        const lenA = safeJsonParse(a.EfficacyDataJSON, []).length;
-        const lenB = safeJsonParse(b.EfficacyDataJSON, []).length;
-        return lenB - lenA;
-      }
-      return 0;
-    });
+    // Schwartzian transform for efficient sorting without repeated Date/JSON parsing in comparator
+    if (sortBy === 'date-desc' || sortBy === 'date-asc') {
+      const isDesc = sortBy === 'date-desc';
+      result = result
+        .map(item => ({ item, val: new Date(item.Date || 0).getTime() }))
+        .sort((a, b) => isDesc ? b.val - a.val : a.val - b.val)
+        .map(obj => obj.item);
+    } else if (sortBy === 'name') {
+      result.sort((a, b) => (a.FormulationName || '').localeCompare(b.FormulationName || ''));
+    } else if (sortBy === 'obs') {
+      result = result
+        .map(item => ({ item, val: safeJsonParse(item.EfficacyDataJSON, []).length }))
+        .sort((a, b) => b.val - a.val)
+        .map(obj => obj.item);
+    }
 
     return result;
   }, [subTrials, search, filterResult, filterRole, sortBy]);
@@ -4136,8 +4152,7 @@ const primaryObsField = getPrimaryObservationField(activeCategory);
                     {filteredSubTrials.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredSubTrials.map((st, idx) => {
-                          const sortedSubTrialsByDate = [...subTrials].sort((a, b) => new Date(a.CreatedAt || a.Date || 0) - new Date(b.CreatedAt || b.Date || 0));
-                          const subIdx = sortedSubTrialsByDate.findIndex(t => t.ID === st.ID);
+                          const subIdx = subTrialIndices.get(st.ID) ?? -1;
                           const subTrialLabel = `Sub ${subIdx >= 0 ? subIdx + 1 : idx + 1}`;
 
                           return (
