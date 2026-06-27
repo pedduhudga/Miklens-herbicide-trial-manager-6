@@ -479,6 +479,9 @@ export default function Trials({ onMenuClick }) {
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
     if (deferredSearch) {
+      const searchQuery = deferredSearch.toLowerCase().trim();
+      const searchTokens = searchQuery.split(/\s+/).filter(Boolean);
+
       list = list.filter(t => {
         const searchParts = [
           t.FormulationName,
@@ -492,7 +495,8 @@ export default function Trials({ onMenuClick }) {
           t.Replication,
           t.PlotNumber,
           t.Date
-        ].filter(Boolean).join(' ');
+        ].filter(Boolean).join(' ').toLowerCase();
+
         return fuzzyMatch(searchParts, deferredSearch);
       });
     }
@@ -502,41 +506,65 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
-    list.sort((a, b) => {
-      if (sortBy === 'date-desc') {
-        const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
-        if (dateDiff !== 0) return dateDiff;
 
-        // Secondary sort for same date: newest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (bTime !== aTime) return bTime - aTime;
-        return new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0);
+    // ⚡ Bolt Optimization: Schwartzian transform (decorate-sort-undecorate)
+    // to avoid O(N log N) JSON parsing and Date instantiation inside the sort loop.
+    const ownUid = user?.uid || user?.ID || user?.id;
+
+    // 1. Decorate
+    const decorated = list.map(t => {
+      const dateVal = new Date(t.Date || 0).getTime();
+      const updatedTimeVal = new Date(t.DateUpdatedAt || t.CreatedAt || t._createdAt?.toDate?.() || 0).getTime();
+      const createdTimeVal = new Date(t.CreatedAt || 0).getTime();
+
+      let obsCount = 0;
+      if (sortBy === 'obs') {
+        obsCount = safeJsonParse(t.EfficacyDataJSON, []).length;
+      }
+
+      let isShared = false;
+      if (sortBy === 'shared') {
+        isShared = !!((t.CreatedBy && t.CreatedBy !== ownUid) || (Array.isArray(t.SharedWith) && t.SharedWith.length > 0));
+      }
+
+      return {
+        item: t,
+        dateVal,
+        updatedTimeVal,
+        createdTimeVal,
+        nameVal: t.FormulationName || '',
+        obsCount,
+        isShared
+      };
+    });
+
+    // 2. Sort
+    decorated.sort((a, b) => {
+      if (sortBy === 'date-desc') {
+        const dateDiff = b.dateVal - a.dateVal;
+        if (dateDiff !== 0) return dateDiff;
+        if (b.updatedTimeVal !== a.updatedTimeVal) return b.updatedTimeVal - a.updatedTimeVal;
+        return b.createdTimeVal - a.createdTimeVal;
       }
       if (sortBy === 'date-asc') {
-        const dateDiff = new Date(a.Date || 0) - new Date(b.Date || 0);
+        const dateDiff = a.dateVal - b.dateVal;
         if (dateDiff !== 0) return dateDiff;
-
-        // Secondary sort for same date: oldest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (aTime !== bTime) return aTime - bTime;
-        return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
+        if (a.updatedTimeVal !== b.updatedTimeVal) return a.updatedTimeVal - b.updatedTimeVal;
+        return a.createdTimeVal - b.createdTimeVal;
       }
-      if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'name') return a.nameVal.localeCompare(b.nameVal);
+      if (sortBy === 'obs') return b.obsCount - a.obsCount;
       if (sortBy === 'shared') {
-        const ownUid = user?.uid || user?.ID || user?.id;
-        const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
-        const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
-        if (aShared === bShared) {
-          return new Date(b.Date || 0) - new Date(a.Date || 0);
+        if (a.isShared === b.isShared) {
+          return b.dateVal - a.dateVal;
         }
-        return bShared ? 1 : -1;
+        return b.isShared ? 1 : -1;
       }
       return 0;
     });
-    return list;
+
+    // 3. Undecorate
+    return decorated.map(d => d.item);
   }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd, user]);
 
   const groupedRcbdTrials = useMemo(() => {

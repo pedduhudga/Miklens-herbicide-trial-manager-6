@@ -4,3 +4,6 @@
 ## 2024-06-12 - Optimizing Trials List Search Performance
 **Learning:** Similar to the global search page, applying `useDeferredValue` to text inputs that filter large datasets prevents main thread blockage and ensures smooth user typing experience.
 **Action:** Used `useDeferredValue` on the `search` input in `Trials.jsx`.
+## 2024-06-27 - Optimizing Sorting in Large Lists (Schwartzian Transform)
+**Learning:** In a heavily utilized page like `Trials.jsx` which filters and sorts thousands of large data objects locally, sorting callbacks containing O(N log N) expensive operations—like parsing JSON (`safeJsonParse(t.EfficacyDataJSON).length`) or instantiating Dates (`new Date(t.Date)`) inside the comparator—can severely degrade performance and block the main thread.
+**Action:** Use the Schwartzian transform (decorate-sort-undecorate) to pre-compute sort keys (like Date or parsed JSON values) in a single O(N) pass, perform an optimized O(N log N) sort using those lightweight keys, and pull static query tokenization outside of loops to eliminate repetitive parsing and computing.
