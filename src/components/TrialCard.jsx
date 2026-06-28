@@ -352,10 +352,10 @@ const TrialCard = memo(function TrialCard({
           <div className="flex gap-1 shrink-0" onClick={stopPropagation}>
             {isEditable && (
               <>
-                <button onClick={handleRecordWeather} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded" title="Record Real-time Weather Info">
+                <button onClick={handleRecordWeather} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded" title="Record Real-time Weather Info" aria-label="Record real-time weather info">
                   <CloudSun className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
+                <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit" aria-label="Edit trial">
                   <Edit className="w-3.5 h-3.5" />
                 </button>
               </>
@@ -364,7 +364,7 @@ const TrialCard = memo(function TrialCard({
             <div className="relative">
               <button
                 onClick={handleMenuClick}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" title="More actions">
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" title="More actions" aria-label="More actions">
                 <MoreVertical className="w-3.5 h-3.5" />
               </button>
               {isMenuOpen && (
@@ -475,7 +475,7 @@ const TrialCard = memo(function TrialCard({
                 {controlDays}d control{isCompleted ? ' (finalized)' : ''}
               </span>
               {isEditable && (
-                <button onClick={handleEditControlDays} title="Edit control days" className="text-slate-300 hover:text-slate-600 transition">
+                <button onClick={handleEditControlDays} title="Edit control days" aria-label="Edit control days" className="text-slate-300 hover:text-slate-600 transition">
                   <Pencil className="w-3 h-3" />
                 </button>
               )}
@@ -501,7 +501,7 @@ const TrialCard = memo(function TrialCard({
               </button>
             ))}
             {trial.Result && (
-              <button onClick={e => handleQuickRate(e, trial.Result)} title="Clear rating"
+              <button onClick={e => handleQuickRate(e, trial.Result)} title="Clear rating" aria-label="Clear rating"
                 className="text-[9px] text-slate-400 hover:text-red-500 ml-0.5 transition">
                 ×
               </button>

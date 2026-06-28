@@ -206,6 +206,7 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
               <button
                 key={ratio}
                 onClick={() => handleAspectChange(ratio)}
+                aria-label={`Set aspect ratio to ${ratio}`}
                 className={`px-3.5 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${
                   aspectRatio === ratio
                     ? 'bg-emerald-500 text-white shadow-md'
@@ -219,6 +220,7 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
 
           <button
             onClick={onClose}
+            aria-label="Close camera"
             className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white hover:bg-black/60 transition"
           >
             <X className="w-5 h-5" />
@@ -253,6 +255,7 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
              {flashSupported && (
                <button
                   onClick={toggleFlash}
+                  aria-label={flashOn ? 'Turn flash off' : 'Turn flash on'}
                   className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${flashOn ? 'bg-yellow-400 text-yellow-900' : 'bg-black/40 text-white backdrop-blur-md'}`}
                >
                  <Zap className="w-6 h-6" />
@@ -262,6 +265,7 @@ export default function CameraCapture({ isOpen = true, onClose, onCapture, initi
 
           <button
             onClick={handleCapture}
+            aria-label="Capture photo"
             className="w-[72px] h-[72px] rounded-full bg-white border-4 border-white/30 flex items-center justify-center active:scale-90 transition-transform shadow-xl hover:bg-slate-100"
           >
             <div className="w-[58px] h-[58px] rounded-full border-2 border-black bg-white active:bg-slate-200 transition-colors"></div>
