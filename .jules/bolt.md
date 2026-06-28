@@ -1,0 +1,3 @@
+## 2023-10-27 - [Schwartzian Transform for Sorting]
+**Learning:** Avoid heavy processing inside array sorting comparators (e.g., parsing JSON strings, instantiating new Date objects). These functions execute O(N log N) times, which can quickly become a bottleneck for large datasets like lists of trials.
+**Action:** Use the Schwartzian transform (decorate-sort-undecorate) to extract heavy computations to a mapping phase which executes only O(N) times before sorting based on the pre-computed properties. Also, extract non-dynamic search term processing (like string tokenization) outside of loops to pre-compute once rather than evaluating on each iteration.
