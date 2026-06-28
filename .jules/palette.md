@@ -1,0 +1,3 @@
+## 2025-02-28 - Missing ARIA Labels on Icon-only Buttons
+**Learning:** Icon-only buttons (like password visibility toggles and modal close buttons) frequently lack `aria-label`s and proper `aria-pressed` states in this app. Also, removing them from the tab order (`tabIndex="-1"`) breaks keyboard accessibility for essential functionality. Absolute positioned decorative icons inside inputs can intercept pointer events if `pointer-events-none` is not applied.
+**Action:** Always verify keyboard focus, add contextual `aria-label`/`aria-pressed` to icon buttons, and use `pointer-events-none` on overlapping decorative icons within inputs.

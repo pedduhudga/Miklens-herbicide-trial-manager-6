@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAppState } from '../hooks/useAppState.jsx';
-import { Lock, User, Key, Eye, EyeOff, AlertCircle, ShieldCheck, Mail, X, Sprout, ArrowRight, HelpCircle } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, AlertCircle, ShieldCheck, Mail, X, Sprout, ArrowRight, HelpCircle } from 'lucide-react';
 import { fbResetPassword } from '../services/firebaseAuth.js';
 
 export default function Login() {
@@ -180,12 +180,13 @@ export default function Login() {
 
             {/* Email/Username field */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
+              <label htmlFor="email" className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">
+                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 pointer-events-none">
                   <User className="w-5 h-5" />
                 </span>
                 <input
+                  id="email"
                   type="text"
                   required
                   value={username}
@@ -199,7 +200,7 @@ export default function Login() {
             {/* Password field */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center px-1">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Password</label>
+                <label htmlFor="password" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Password</label>
                 {firebaseEnabled && (
                   <button
                     type="button"
@@ -215,10 +216,11 @@ export default function Login() {
                 )}
               </div>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">
+                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 pointer-events-none">
                   <Lock className="w-5 h-5" />
                 </span>
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
@@ -229,8 +231,9 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
-                  tabIndex="-1"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 focus-visible:text-emerald-400 focus-visible:outline-none transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -277,7 +280,8 @@ export default function Login() {
           <div className="bg-[#0b1329] border border-white/10 rounded-[32px] shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
             <button
               onClick={() => setShowForgotModal(false)}
-              className="absolute right-4 top-4 p-1.5 hover:bg-white/5 rounded-xl text-slate-400 hover:text-slate-200 transition-colors"
+              aria-label="Close forgot password modal"
+              className="absolute right-4 top-4 p-1.5 hover:bg-white/5 rounded-xl text-slate-400 hover:text-slate-200 focus-visible:text-emerald-400 focus-visible:outline-none transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -305,8 +309,9 @@ export default function Login() {
               )}
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
+                <label htmlFor="forgot-email" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
                 <input
+                  id="forgot-email"
                   type="email"
                   required
                   value={forgotEmail}
