@@ -502,41 +502,55 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
-    list.sort((a, b) => {
+
+    // Performance Optimization: Use Schwartzian transform to avoid expensive calculations in the sort loop
+    const ownUid = user?.uid || user?.ID || user?.id;
+    const decoratedList = list.map(t => {
+      let sortData = {};
+      if (sortBy === 'date-desc' || sortBy === 'date-asc' || sortBy === 'shared') {
+        sortData.date = new Date(t.Date || 0).getTime();
+        if (sortBy !== 'shared') {
+          sortData.time = new Date(t.DateUpdatedAt || t.CreatedAt || t._createdAt?.toDate?.() || 0).getTime();
+          sortData.createdAt = new Date(t.CreatedAt || 0).getTime();
+        }
+      }
+      if (sortBy === 'obs') {
+        sortData.obsCount = safeJsonParse(t.EfficacyDataJSON, []).length;
+      }
+      if (sortBy === 'shared') {
+        sortData.isShared = !!((t.CreatedBy && t.CreatedBy !== ownUid) || (Array.isArray(t.SharedWith) && t.SharedWith.length > 0));
+      }
+      return { t, ...sortData };
+    });
+
+    decoratedList.sort((a, b) => {
       if (sortBy === 'date-desc') {
-        const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
+        const dateDiff = b.date - a.date;
         if (dateDiff !== 0) return dateDiff;
 
         // Secondary sort for same date: newest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (bTime !== aTime) return bTime - aTime;
-        return new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0);
+        if (b.time !== a.time) return b.time - a.time;
+        return b.createdAt - a.createdAt;
       }
       if (sortBy === 'date-asc') {
-        const dateDiff = new Date(a.Date || 0) - new Date(b.Date || 0);
+        const dateDiff = a.date - b.date;
         if (dateDiff !== 0) return dateDiff;
 
         // Secondary sort for same date: oldest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (aTime !== bTime) return aTime - bTime;
-        return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
+        if (a.time !== b.time) return a.time - b.time;
+        return a.createdAt - b.createdAt;
       }
-      if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'name') return (a.t.FormulationName || '').localeCompare(b.t.FormulationName || '');
+      if (sortBy === 'obs') return b.obsCount - a.obsCount;
       if (sortBy === 'shared') {
-        const ownUid = user?.uid || user?.ID || user?.id;
-        const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
-        const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
-        if (aShared === bShared) {
-          return new Date(b.Date || 0) - new Date(a.Date || 0);
+        if (a.isShared === b.isShared) {
+          return b.date - a.date;
         }
-        return bShared ? 1 : -1;
+        return b.isShared ? 1 : -1;
       }
       return 0;
     });
-    return list;
+    return decoratedList.map(item => item.t);
   }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd, user]);
 
   const groupedRcbdTrials = useMemo(() => {
