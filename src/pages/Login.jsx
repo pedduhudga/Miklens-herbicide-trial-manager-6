@@ -182,7 +182,7 @@ export default function Login() {
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">Email Address</label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">
+                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 pointer-events-none">
                   <User className="w-5 h-5" />
                 </span>
                 <input
@@ -215,7 +215,7 @@ export default function Login() {
                 )}
               </div>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">
+                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 pointer-events-none">
                   <Lock className="w-5 h-5" />
                 </span>
                 <input
@@ -229,8 +229,8 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
-                  tabIndex="-1"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-r-2xl outline-none"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
