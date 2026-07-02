@@ -1,0 +1,3 @@
+## $(date +%Y-%m-%d) - O(N² log N) Render Loop Bottleneck
+**Learning:** Found a severe React render loop anti-pattern where an entire list (`subTrials`) was being copied, date-parsed, and sorted inside a `.map` iteration (`filteredSubTrials.map`) to calculate a chronological index label. This leads to massive O(N² log N) overhead during rendering for large lists.
+**Action:** Always inspect array `.map` blocks in React for inline sorting or filtering of other arrays. Extract these into a `useMemo` block outside the loop, creating a pre-computed dictionary (e.g., a `Map` of `ID -> Index`) to enable O(1) lookups during rendering.

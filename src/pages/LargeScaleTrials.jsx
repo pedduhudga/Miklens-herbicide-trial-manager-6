@@ -366,6 +366,12 @@ export default function LargeScaleTrials({ onMenuClick }) {
     return (state.trials || []).filter(t => t.ProjectID === activeProjectId);
   }, [state.trials, activeProjectId]);
 
+  // Precompute chronological index for O(1) lookup during render instead of O(N log N) per card
+  const subTrialIndexMap = useMemo(() => {
+    const sorted = [...subTrials].sort((a, b) => new Date(a.CreatedAt || a.Date || 0) - new Date(b.CreatedAt || b.Date || 0));
+    return new Map(sorted.map((t, idx) => [t.ID, idx]));
+  }, [subTrials]);
+
   const filteredSubTrials = useMemo(() => {
     let result = [...subTrials];
     if (search.trim()) {
@@ -4136,8 +4142,7 @@ const primaryObsField = getPrimaryObservationField(activeCategory);
                     {filteredSubTrials.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredSubTrials.map((st, idx) => {
-                          const sortedSubTrialsByDate = [...subTrials].sort((a, b) => new Date(a.CreatedAt || a.Date || 0) - new Date(b.CreatedAt || b.Date || 0));
-                          const subIdx = sortedSubTrialsByDate.findIndex(t => t.ID === st.ID);
+                          const subIdx = subTrialIndexMap.get(st.ID) ?? -1;
                           const subTrialLabel = `Sub ${subIdx >= 0 ? subIdx + 1 : idx + 1}`;
 
                           return (
