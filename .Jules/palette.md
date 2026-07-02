@@ -4,3 +4,6 @@
 ## 2026-06-11 - [Added ARIA Labels to CropperModal]
 **Learning:** Found several icon-only buttons lacking ARIA labels and clear focus states. This is a common accessibility issue across modal components.
 **Action:** Adding `aria-label` attributes and `focus-visible` classes ensures that components are screen reader friendly and keyboard navigable.
+## 2024-05-15 - Accessibility Pass: Tab Index Anti-pattern
+**Learning:** Found instances where standalone interactive elements like password visibility toggle buttons had `tabIndex="-1"` assigned to them, breaking keyboard navigation entirely.
+**Action:** Always verify and remove restrictive tab indexes on form controls to ensure proper keyboard navigation, alongside applying visual focus indicators (e.g., `focus-visible:ring-2`).
