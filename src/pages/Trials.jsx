@@ -502,40 +502,62 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
-    list.sort((a, b) => {
-      if (sortBy === 'date-desc') {
-        const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
-        if (dateDiff !== 0) return dateDiff;
 
-        // Secondary sort for same date: newest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (bTime !== aTime) return bTime - aTime;
-        return new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0);
+    // ⚡ Bolt: Cache expensive sorting keys (Dates, JSON parsing) using a Schwartzian transform map
+    // to avoid O(N log N) redundant calculations inside the sorting callback loop.
+    const sortCache = new Map();
+    const ownUid = user?.uid || user?.ID || user?.id;
+
+    list.forEach(t => {
+      let cacheObj = {};
+
+      if (sortBy === 'date-desc' || sortBy === 'date-asc' || sortBy === 'shared') {
+        cacheObj.date = new Date(t.Date || 0).getTime();
+      }
+
+      if (sortBy === 'date-desc' || sortBy === 'date-asc') {
+        cacheObj.updatedAt = new Date(t.DateUpdatedAt || t.CreatedAt || t._createdAt?.toDate?.() || 0).getTime();
+        cacheObj.createdAt = new Date(t.CreatedAt || 0).getTime();
+      }
+
+      if (sortBy === 'obs') {
+        cacheObj.obsLen = safeJsonParse(t.EfficacyDataJSON, []).length;
+      }
+
+      if (sortBy === 'shared') {
+        cacheObj.isShared = !!((t.CreatedBy && t.CreatedBy !== ownUid) || (Array.isArray(t.SharedWith) && t.SharedWith.length > 0));
+      }
+
+      sortCache.set(t, cacheObj);
+    });
+
+    list.sort((a, b) => {
+      const cA = sortCache.get(a);
+      const cB = sortCache.get(b);
+
+      if (sortBy === 'date-desc') {
+        const dateDiff = cB.date - cA.date;
+        if (dateDiff !== 0) return dateDiff;
+        if (cB.updatedAt !== cA.updatedAt) return cB.updatedAt - cA.updatedAt;
+        return cB.createdAt - cA.createdAt;
       }
       if (sortBy === 'date-asc') {
-        const dateDiff = new Date(a.Date || 0) - new Date(b.Date || 0);
+        const dateDiff = cA.date - cB.date;
         if (dateDiff !== 0) return dateDiff;
-
-        // Secondary sort for same date: oldest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (aTime !== bTime) return aTime - bTime;
-        return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
+        if (cA.updatedAt !== cB.updatedAt) return cA.updatedAt - cB.updatedAt;
+        return cA.createdAt - cB.createdAt;
       }
       if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'obs') return cB.obsLen - cA.obsLen;
       if (sortBy === 'shared') {
-        const ownUid = user?.uid || user?.ID || user?.id;
-        const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
-        const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
-        if (aShared === bShared) {
-          return new Date(b.Date || 0) - new Date(a.Date || 0);
+        if (cA.isShared === cB.isShared) {
+          return cB.date - cA.date;
         }
-        return bShared ? 1 : -1;
+        return cB.isShared ? 1 : -1;
       }
       return 0;
     });
+
     return list;
   }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd, user]);
 
