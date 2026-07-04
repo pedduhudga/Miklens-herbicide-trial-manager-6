@@ -1,0 +1,5 @@
+## 2024-05-24 - Pre-tokenization and Schwartzian Transform for O(N) performance
+
+**Learning:** This codebase heavily filters and sorts deeply nested list views on the client side. A recurring anti-pattern is executing expensive operations like inline date parsing (`new Date()`), string tokenization (`.split(/\s+/)` inside `.filter()`), and JSON parsing (`safeJsonParse()`) inside array iteration methods (e.g. `list.filter(...)` and `list.sort(...)`). Because `.sort()` has a time complexity of O(N log N) or worse, recalculating these parsing operations inside the sorting callback causes enormous rendering bottlenecks, creating an effective O(N² log N) overhead on large datasets.
+
+**Action:** Whenever implementing complex sorting or text filtering on large lists, always extract tokenization outside the main loop to prevent O(M) regex duplication. Furthermore, apply the Schwartzian transform (decorate-sort-undecorate) to pre-compute sort keys (like Date values or array counts) into a wrapper object array in O(N) time. The sorting algorithm can then simply compare native primitive integers, vastly reducing runtime overhead.
