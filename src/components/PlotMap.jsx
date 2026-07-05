@@ -20,7 +20,7 @@ import {
 import { 
   MapPin, Crosshair, Download, Layers, 
   Navigation, Grid3x3, Ruler, Copy, CheckCircle,
-  AlertTriangle, RefreshCw, Satellite, Map as MapIcon
+  AlertTriangle, RefreshCw, Satellite, Map as MapIcon, X
 } from 'lucide-react';
 
 // Leaflet is loaded from CDN in index.html
@@ -320,8 +320,8 @@ export default function PlotMap({ projectId, onClose }) {
               <p className="text-emerald-100 text-sm">{project?.Name || 'Project'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition">
-            ✕
+          <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-white/20 rounded-lg transition">
+            <X className="w-5 h-5" />
           </button>
         </div>
 

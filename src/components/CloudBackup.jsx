@@ -29,7 +29,7 @@ import {
 import { 
   Cloud, CloudOff, Download, Upload, Trash2, 
   CheckCircle, AlertTriangle, RefreshCw, HardDrive,
-  Database, FileJson
+  Database, FileJson, X
 } from 'lucide-react';
 
 export default function CloudBackup({ onClose }) {
@@ -244,8 +244,8 @@ export default function CloudBackup({ onClose }) {
             <Cloud className="w-6 h-6" />
             <h3 className="font-bold text-lg">Cloud Backup</h3>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition">
-            ✕
+          <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-white/20 rounded-lg transition">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
