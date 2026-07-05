@@ -1,0 +1,3 @@
+## 2024-07-04 - Accessibility of Icon-Only Toggle Buttons
+**Learning:** Icon-only buttons used for toggling states (like password visibility or modal closing) within input fields or modals frequently lack implicit accessibility labels and visible focus indicators, making them difficult to use for screen reader and keyboard-only users.
+**Action:** Always manually add context-aware `aria-label` attributes (e.g., dynamically switching between "Show password" and "Hide password" based on state) and state-reflective `aria-expanded` attributes. Also, explicitly apply `focus-visible:outline-none focus-visible:ring-2` to ensure keyboard navigation visibility for standalone icons.
