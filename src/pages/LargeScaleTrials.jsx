@@ -386,19 +386,28 @@ export default function LargeScaleTrials({ onMenuClick }) {
       result = result.filter(st => st.IsStandardCheck === true || st.IsStandardCheck === 'true');
     }
 
-    result.sort((a, b) => {
-      if (sortBy === 'date-desc') return new Date(b.Date || 0) - new Date(a.Date || 0);
-      if (sortBy === 'date-asc') return new Date(a.Date || 0) - new Date(b.Date || 0);
-      if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') {
-        const lenA = safeJsonParse(a.EfficacyDataJSON, []).length;
-        const lenB = safeJsonParse(b.EfficacyDataJSON, []).length;
-        return lenB - lenA;
+    // ⚡ Bolt: Schwartzian transform (decorate-sort-undecorate)
+    // to avoid expensive parsing (Date, JSON) inside O(N log N) render loop sorting
+    const decoratedResult = result.map(t => {
+      let sortKey = null;
+      if (sortBy === 'date-desc' || sortBy === 'date-asc') {
+        sortKey = new Date(t.Date || 0).getTime();
       }
+      if (sortBy === 'obs') {
+        sortKey = safeJsonParse(t.EfficacyDataJSON, []).length;
+      }
+      return { item: t, sortKey };
+    });
+
+    decoratedResult.sort((a, b) => {
+      if (sortBy === 'date-desc') return b.sortKey - a.sortKey;
+      if (sortBy === 'date-asc') return a.sortKey - b.sortKey;
+      if (sortBy === 'name') return (a.item.FormulationName || '').localeCompare(b.item.FormulationName || '');
+      if (sortBy === 'obs') return b.sortKey - a.sortKey;
       return 0;
     });
 
-    return result;
+    return decoratedResult.map(d => d.item);
   }, [subTrials, search, filterResult, filterRole, sortBy]);
 
   // Active sub-trial details

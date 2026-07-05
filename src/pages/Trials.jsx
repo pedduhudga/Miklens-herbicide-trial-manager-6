@@ -80,11 +80,14 @@ const emptyForm = (category = 'herbicide') => {
   return base;
 };
 
-const fuzzyMatch = (text, query) => {
+const fuzzyMatch = (text, query, preTokenized = null) => {
   if (!text) return false;
   text = text.toLowerCase();
-  query = query.toLowerCase().trim();
-  const tokens = query.split(/\s+/).filter(Boolean);
+  let tokens = preTokenized;
+  if (!tokens) {
+    query = (query || '').toLowerCase().trim();
+    tokens = query.split(/\s+/).filter(Boolean);
+  }
   if (tokens.length === 0) return true;
   return tokens.every(token => {
     if (text.includes(token)) return true;
@@ -479,6 +482,7 @@ export default function Trials({ onMenuClick }) {
     else if (activeTab === 'finalized') list = list.filter(t => t.IsCompleted === true || t.IsCompleted === 'true');
 
     if (deferredSearch) {
+      const tokens = deferredSearch.toLowerCase().trim().split(/\s+/).filter(Boolean);
       list = list.filter(t => {
         const searchParts = [
           t.FormulationName,
@@ -493,7 +497,7 @@ export default function Trials({ onMenuClick }) {
           t.PlotNumber,
           t.Date
         ].filter(Boolean).join(' ');
-        return fuzzyMatch(searchParts, deferredSearch);
+        return fuzzyMatch(searchParts, null, tokens);
       });
     }
     if (filterFormulation) list = list.filter(t => t.FormulationID === filterFormulation || t.FormulationName === filterFormulation);
@@ -502,41 +506,53 @@ export default function Trials({ onMenuClick }) {
 
     if (filterDateStart) list = list.filter(t => t.Date && t.Date >= filterDateStart);
     if (filterDateEnd)   list = list.filter(t => t.Date && t.Date <= filterDateEnd);
-    list.sort((a, b) => {
-      if (sortBy === 'date-desc') {
-        const dateDiff = new Date(b.Date || 0) - new Date(a.Date || 0);
-        if (dateDiff !== 0) return dateDiff;
 
-        // Secondary sort for same date: newest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (bTime !== aTime) return bTime - aTime;
-        return new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0);
+    // ⚡ Bolt: Schwartzian transform (decorate-sort-undecorate)
+    // to avoid expensive parsing (Date, JSON) inside O(N log N) render loop sorting
+    const ownUid = user?.uid || user?.ID || user?.id;
+    const decoratedList = list.map(t => {
+      let sortKey = null;
+      let secondaryKey = null;
+
+      if (sortBy === 'date-desc' || sortBy === 'date-asc' || sortBy === 'shared') {
+        sortKey = new Date(t.Date || 0).getTime();
+        secondaryKey = new Date(t.DateUpdatedAt || t.CreatedAt || t._createdAt?.toDate?.() || 0).getTime();
+        if (secondaryKey === 0) secondaryKey = new Date(t.CreatedAt || 0).getTime();
+      }
+
+      if (sortBy === 'obs') {
+        sortKey = safeJsonParse(t.EfficacyDataJSON, []).length;
+      }
+
+      let isShared = false;
+      if (sortBy === 'shared') {
+        isShared = !!((t.CreatedBy && t.CreatedBy !== ownUid) || (Array.isArray(t.SharedWith) && t.SharedWith.length > 0));
+      }
+
+      return { item: t, sortKey, secondaryKey, isShared };
+    });
+
+    decoratedList.sort((a, b) => {
+      if (sortBy === 'date-desc') {
+        if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
+        return b.secondaryKey - a.secondaryKey;
       }
       if (sortBy === 'date-asc') {
-        const dateDiff = new Date(a.Date || 0) - new Date(b.Date || 0);
-        if (dateDiff !== 0) return dateDiff;
-
-        // Secondary sort for same date: oldest DateUpdatedAt / CreatedAt on top
-        const aTime = new Date(a.DateUpdatedAt || a.CreatedAt || a._createdAt?.toDate?.() || 0).getTime();
-        const bTime = new Date(b.DateUpdatedAt || b.CreatedAt || b._createdAt?.toDate?.() || 0).getTime();
-        if (aTime !== bTime) return aTime - bTime;
-        return new Date(a.CreatedAt || 0) - new Date(b.CreatedAt || 0);
+        if (a.sortKey !== b.sortKey) return a.sortKey - b.sortKey;
+        return a.secondaryKey - b.secondaryKey;
       }
-      if (sortBy === 'name') return (a.FormulationName || '').localeCompare(b.FormulationName || '');
-      if (sortBy === 'obs') return (safeJsonParse(b.EfficacyDataJSON, []).length) - (safeJsonParse(a.EfficacyDataJSON, []).length);
+      if (sortBy === 'name') return (a.item.FormulationName || '').localeCompare(b.item.FormulationName || '');
+      if (sortBy === 'obs') return b.sortKey - a.sortKey;
       if (sortBy === 'shared') {
-        const ownUid = user?.uid || user?.ID || user?.id;
-        const aShared = !!((a.CreatedBy && a.CreatedBy !== ownUid) || (Array.isArray(a.SharedWith) && a.SharedWith.length > 0));
-        const bShared = !!((b.CreatedBy && b.CreatedBy !== ownUid) || (Array.isArray(b.SharedWith) && b.SharedWith.length > 0));
-        if (aShared === bShared) {
-          return new Date(b.Date || 0) - new Date(a.Date || 0);
+        if (a.isShared === b.isShared) {
+          return b.sortKey - a.sortKey;
         }
-        return bShared ? 1 : -1;
+        return b.isShared ? 1 : -1;
       }
       return 0;
     });
-    return list;
+
+    return decoratedList.map(d => d.item);
   }, [trials, activeTab, deferredSearch, filterFormulation, filterResult, filterProject, sortBy, filterDateStart, filterDateEnd, user]);
 
   const groupedRcbdTrials = useMemo(() => {

@@ -1,0 +1,4 @@
+## 2025-02-18 - Avoid array iteration operations inside React rendering lists
+
+**Learning:** Array `.sort()` and `.filter()` operations can be very expensive when they involve re-tokenization (e.g., regex `split`), Date initialization (`new Date()`), and string parsing (`JSON.parse`) on every comparison callback. These calls get executed O(N log N) times inside the standard sort, or O(N) times inside filters.
+**Action:** When filtering or sorting data (e.g. lists inside `useMemo`), pre-compute sort keys and tokenized arrays before looping using the Schwartzian transform (decorate-sort-undecorate). Map the data structure into an intermediary array containing sortable primitives, sort the array based on those primitive fields, and map it back. This drastically limits computationally heavy actions.
