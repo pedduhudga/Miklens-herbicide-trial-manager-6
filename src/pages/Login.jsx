@@ -229,8 +229,9 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
-                  tabIndex="-1"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-r-2xl"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-expanded={showPassword}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -277,7 +278,8 @@ export default function Login() {
           <div className="bg-[#0b1329] border border-white/10 rounded-[32px] shadow-2xl w-full max-w-md p-6 space-y-4 relative animate-[modalPopIn_0.3s_ease-out]">
             <button
               onClick={() => setShowForgotModal(false)}
-              className="absolute right-4 top-4 p-1.5 hover:bg-white/5 rounded-xl text-slate-400 hover:text-slate-200 transition-colors"
+              className="absolute right-4 top-4 p-1.5 hover:bg-white/5 rounded-xl text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              aria-label="Close modal"
             >
               <X className="w-5 h-5" />
             </button>

@@ -1,0 +1,3 @@
+## 2024-05-24 - Interactive Icon Accessibility and Keyboard Navigation
+**Learning:** Found a recurring anti-pattern where icon-only buttons (like password visibility toggles and modal close icons) had `tabIndex="-1"` which blocked keyboard accessibility, and also lacked both `aria-label`s and visible focus states (`focus-visible`).
+**Action:** When working on forms and modals, always ensure interactive icon-only buttons are fully accessible via keyboard (remove `tabIndex="-1"`, add `focus-visible:ring-2`), and convey their purpose and state to screen readers (add `aria-label` and `aria-expanded`).
